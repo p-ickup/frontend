@@ -33,7 +33,8 @@ export default async function Index() {
       <div className="flex max-w-4xl flex-1 flex-col gap-20 px-3">
         <Header />
         <main className="flex flex-1 flex-col gap-6">
-          <h2 className="mb-4 text-4xl font-bold">Next steps</h2>
+          <h2 className="mb-4 text-4xl font-bold">Next Steps</h2>
+          {/* comment */}
           {isSupabaseConnected ? <SignUpUserSteps /> : <ConnectSupabaseSteps />}
         </main>
       </div>
