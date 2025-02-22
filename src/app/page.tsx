@@ -5,6 +5,7 @@ import Header from '@/components/Header'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@/utils/supabase'
 import ThemeToggle from '@/components/ThemeToggle'
+import ApiButtons from '@/components/ApiButtons'
 
 export default async function Index() {
   const cookieStore = cookies()
@@ -36,6 +37,7 @@ export default async function Index() {
           <h2 className="mb-4 text-4xl font-bold">Next Steps</h2>
           {/* comment */}
           {isSupabaseConnected ? <SignUpUserSteps /> : <ConnectSupabaseSteps />}
+          <ApiButtons />
         </main>
       </div>
 
