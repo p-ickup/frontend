@@ -1,5 +1,6 @@
 'use client'
 
+import PickupHeader from '@/components/PickupHeader'
 import { createBrowserClient } from '@/utils/supabase'
 import { useState } from 'react'
 
@@ -79,115 +80,120 @@ export default function Questionnaire() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
-      <h1 className="mb-4 text-3xl font-bold">Questionnaire</h1>
-      <p className="mb-6">Fill out the form below to submit your feedback.</p>
+    <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
+      {/* Header at the top */}
+      <PickupHeader />
 
-      <form
-        onSubmit={handleSubmit}
-        className="w-96 rounded-lg bg-white p-6 shadow-md"
-      >
-        <label className="mb-2 block">
-          First Name:
-          <input
-            type="text"
-            value={firstname}
-            onChange={(e) => setFirstName(e.target.value)}
-            className="mt-1 w-full rounded border bg-white p-2 text-black"
-            required
-          />
-        </label>
+      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
+        <h1 className="mb-4 text-3xl font-bold">Questionnaire</h1>
+        <p className="mb-6">Fill out the form below to submit your feedback.</p>
 
-        <label className="mb-2 block">
-          Last Name:
-          <input
-            type="text"
-            value={lastname}
-            onChange={(e) => setLastName(e.target.value)}
-            className="mt-1 w-full rounded border bg-white p-2 text-black"
-          />
-        </label>
-
-        <label className="mb-2 block">
-          School:
-          <select
-            value={school}
-            onChange={(e) => setSchool(e.target.value)}
-            className="mt-1 w-full rounded border bg-white p-2 text-black"
-            required
-          >
-            <option value="" disabled>
-              Select your school
-            </option>
-            <option value="Pomona">Pomona</option>
-            <option value="Claremont McKenna">Claremont McKenna</option>
-            <option value="Harvey Mudd">Harvey Mudd</option>
-            <option value="Scripps">Scripps</option>
-            <option value="Pitzer">Pitzer</option>
-          </select>
-        </label>
-
-        <label className="mb-2 block">
-          Email:
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded border bg-white p-2 text-black"
-            required
-          />
-        </label>
-
-        <label className="mb-2 block">
-          Phone Number:
-          <input
-            type="text"
-            value={phonenumber}
-            onChange={(e) => setPhoneNumber(e.target.value)}
-            className="mt-1 w-full rounded border bg-white p-2 text-black"
-            required
-          />
-        </label>
-
-        <label className="mb-2 block">
-          Upload Photo (optional):
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handlePhotoChange}
-            className="mt-1 w-full rounded border bg-white p-2 text-black"
-          />
-        </label>
-
-        <label className="mb-2 block">
-          Instagram (optional):
-          <input
-            type="text"
-            value={instagram}
-            onChange={(e) => setInstagram(e.target.value)}
-            className="mt-1 w-full rounded border bg-white p-2 text-black"
-            required
-          />
-        </label>
-
-        <label className="mb-4 block">
-          Feedback (optional):
-          <textarea
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            className="mt-1 w-full rounded border bg-white p-2 text-black"
-          />
-        </label>
-
-        <button
-          type="submit"
-          className="w-full rounded bg-blue-600 p-2 text-white hover:bg-blue-700"
+        <form
+          onSubmit={handleSubmit}
+          className="w-96 rounded-lg bg-white p-6 shadow-md"
         >
-          Submit
-        </button>
+          <label className="mb-2 block">
+            First Name:
+            <input
+              type="text"
+              value={firstname}
+              onChange={(e) => setFirstName(e.target.value)}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+              required
+            />
+          </label>
 
-        {message && <p className="mt-4 text-center">{message}</p>}
-      </form>
+          <label className="mb-2 block">
+            Last Name:
+            <input
+              type="text"
+              value={lastname}
+              onChange={(e) => setLastName(e.target.value)}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+            />
+          </label>
+
+          <label className="mb-2 block">
+            School:
+            <select
+              value={school}
+              onChange={(e) => setSchool(e.target.value)}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+              required
+            >
+              <option value="" disabled>
+                Select your school
+              </option>
+              <option value="Pomona">Pomona</option>
+              <option value="Claremont McKenna">Claremont McKenna</option>
+              <option value="Harvey Mudd">Harvey Mudd</option>
+              <option value="Scripps">Scripps</option>
+              <option value="Pitzer">Pitzer</option>
+            </select>
+          </label>
+
+          <label className="mb-2 block">
+            Email:
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+              required
+            />
+          </label>
+
+          <label className="mb-2 block">
+            Phone Number:
+            <input
+              type="text"
+              value={phonenumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+              required
+            />
+          </label>
+
+          <label className="mb-2 block">
+            Upload Photo (optional):
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoChange}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+            />
+          </label>
+
+          <label className="mb-2 block">
+            Instagram (optional):
+            <input
+              type="text"
+              value={instagram}
+              onChange={(e) => setInstagram(e.target.value)}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+              required
+            />
+          </label>
+
+          <label className="mb-4 block">
+            Feedback (optional):
+            <textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+            />
+          </label>
+
+          <button
+            type="submit"
+            className="w-full rounded bg-blue-600 p-2 text-white hover:bg-blue-700"
+          >
+            Submit
+          </button>
+
+          {message && <p className="mt-4 text-center">{message}</p>}
+        </form>
+      </div>
     </div>
   )
 }
