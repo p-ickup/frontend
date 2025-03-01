@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import RedirectButton from "./RedirectButton";
+import SimpleRedirectButton from "./SimpleRedirectButton";
+import Image from "next/image";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -47,22 +48,42 @@ export default function PickupHeader() {
   };
 
   return (
-    <header className="flex justify-between items-center p-4 bg-gradient-to-r from-teal-500 to-yellow-100 text-white">
-      <h1 className="text-xl font-bold">P-ickup</h1>
-      <nav>
-        <RedirectButton label="Questionnaire" route="/questionnaire" />
-        <RedirectButton label="Results" route="/results" />
-
-        {user ? (
-          <Button onClick={handleLogout} className="bg-red-500">
-            Logout
-          </Button>
-        ) : (
-          <Button onClick={handleLogin} className="bg-green-500">
-            Login
-          </Button>
-        )}
+    <header className="flex justify-between items-center p-2 bg-gradient-to-r from-teal-500 to-yellow-100 text-white">
+      
+      <h1 className="text-xl font-bold">
+        <SimpleRedirectButton label="P-ickup" route="/home" />
+      </h1>
+      <nav className="flex space-x-4">
+        <SimpleRedirectButton label="Questionnaire" route="/questionnaire" />
+        <SimpleRedirectButton label="Results" route="/results" />
       </nav>
+      
+      <div>
+        {user ? (
+            // TODO: If the user is logged in, show the profile image and handle logout
+            <div onClick={handleLogout} className="cursor-pointer">
+                <Image
+                src="/images/profileIcon.webp" // Path to your PNG file
+                alt="Profile Image"
+                width={100} // Resize as needed
+                height={100} // Resize as needed
+                className="object-contain" // Maintains aspect ratio
+                />
+            </div>
+            ) : (
+            // If the user is not logged in, show the login image and handle login
+            <div onClick={handleLogin} className="cursor-pointer">
+                <Image
+                src="/images/profileIcon.webp" // Path to your PNG file
+                alt="Login Image"
+                width={100} // Resize as needed
+                height={100} // Resize as needed
+                className="object-contain" // Maintains aspect ratio
+                />
+            </div>
+        )}
+      </div>
+        
     </header>
   );
 }
