@@ -3,6 +3,7 @@
 import PickupHeader from '@/components/PickupHeader'
 import { createBrowserClient } from '@/utils/supabase'
 import { useState } from 'react'
+//hello
 
 export default function Questionnaire() {
   const supabase = createBrowserClient()
@@ -49,20 +50,18 @@ export default function Questionnaire() {
         .getPublicUrl(fileName).data.publicUrl
     }
 
-    const { data, error } = await supabase
-      .from('questionnaire')
-      .insert([
-        {
-          firstname,
-          lastname,
-          school,
-          email,
-          phonenumber,
-          photo_url: photoUrl,
-          instagram,
-          feedback,
-        },
-      ])
+    const { data, error } = await supabase.from('questionnaire').insert([
+      {
+        firstname,
+        lastname,
+        school,
+        email,
+        phonenumber,
+        photo_url: photoUrl,
+        instagram,
+        feedback,
+      },
+    ])
 
     if (error) {
       setMessage(`Error: ${error.message}`)
