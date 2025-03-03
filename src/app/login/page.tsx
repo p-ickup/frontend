@@ -1,7 +1,7 @@
-import Link from 'next/link'
-import { headers, cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
 import { createServerClient } from '@/utils/supabase'
+import { cookies, headers } from 'next/headers'
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
 
 export default function Login({
   searchParams,
