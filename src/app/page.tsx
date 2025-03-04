@@ -1,18 +1,18 @@
+import ApiButtons from '@/components/ApiButtons'
 import AuthButton from '@/components/AuthButton'
 import ConnectSupabaseSteps from '@/components/ConnectSupabaseSteps'
-import SignUpUserSteps from '@/components/SignUpUserSteps'
 import Header from '@/components/Header'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@/utils/supabase'
+import SignUpUserSteps from '@/components/SignUpUserSteps'
 import ThemeToggle from '@/components/ThemeToggle'
-import ApiButtons from '@/components/ApiButtons'
+import { createServerClient } from '@/utils/supabase'
+import { cookies } from 'next/headers'
+import Link from 'next/link' // Import Next.js Link component
 
+// adding a change here
 export default async function Index() {
   const cookieStore = cookies()
 
   const canInitSupabaseClient = () => {
-    // This function is just for the interactive tutorial.
-    // Feel free to remove it once you have Supabase connected.
     try {
       createServerClient(cookieStore)
       return true
@@ -35,9 +35,15 @@ export default async function Index() {
         <Header />
         <main className="flex flex-1 flex-col gap-6">
           <h2 className="mb-4 text-4xl font-bold">Next Steps</h2>
-          {/* comment */}
           {isSupabaseConnected ? <SignUpUserSteps /> : <ConnectSupabaseSteps />}
           <ApiButtons />
+
+          {/* Button to Home Page */}
+          <Link href="/home">
+            <button className="mt-6 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+              Go to Home Page
+            </button>
+          </Link>
         </main>
       </div>
 
