@@ -13,12 +13,13 @@ export default function Questionnaire() {
   const [email, setEmail] = useState('')
   const [phonenumber, setPhoneNumber] = useState('')
   const [photo, setPhoto] = useState<File | null>(null)
+  const [photoUrl, setPhotoUrl] = useState('') // Store existing photo URL
   const [instagram, setInstagram] = useState('')
   const [message, setMessage] = useState('')
-  const [loading, setLoading] = useState(true) // Loading State
-  const [hasProfile, setHasProfile] = useState(false) // Track if user has existing profile
+  const [loading, setLoading] = useState(true)
+  const [hasProfile, setHasProfile] = useState(false) // Check if profile exists in table
 
-  // Fetch user data with error handling
+  // Fetch user data on mount
   useEffect(() => {
     const fetchUserData = async () => {
       const {
@@ -39,7 +40,7 @@ export default function Questionnaire() {
         .from('Users')
         .select('*')
         .eq('user_id', user.id)
-        .single() // Fetch only one row
+        .single()
 
       if (error) {
         console.error('Error fetching user data:', error)
@@ -47,14 +48,15 @@ export default function Questionnaire() {
       } else if (data) {
         console.log('User profile data:', data)
 
-        // Pre-fill form fields if user data already exists in table
+        // Pre-fill form fields
         setFirstName(data.firstname || '')
         setLastName(data.lastname || '')
         setSchool(data.school || '')
         setEmail(data.email || '')
         setPhoneNumber(data.phonenumber || '')
-        setInstagram(data.instagram || '')
-        setHasProfile(true) // User profile exists
+        setInstagram(data.instagram || '') // Instagram optional
+        setPhotoUrl(data.photo_url || '') // Store existing photo URL
+        setHasProfile(true)
       }
 
       setLoading(false)
@@ -82,9 +84,7 @@ export default function Questionnaire() {
       return
     }
 
-    // Upload photo
-
-    let photoUrl = ''
+    let updatedPhotoUrl = photoUrl // Default to existing photo
 
     if (photo) {
       const fileName = `${Date.now()}-${photo.name}`
@@ -101,10 +101,8 @@ export default function Questionnaire() {
       const { data: urlData } = supabase.storage
         .from('profile_picture')
         .getPublicUrl(fileName)
-      photoUrl = urlData.publicUrl || ''
+      updatedPhotoUrl = urlData.publicUrl || ''
     }
-
-    // Table
 
     console.log('Submitting Data:', {
       user_id: user.id,
@@ -113,8 +111,8 @@ export default function Questionnaire() {
       school,
       email,
       phonenumber,
-      photo_url: photoUrl,
-      instagram,
+      photo_url: updatedPhotoUrl,
+      instagram: instagram || null, // If empty, don't insert empty string
     })
 
     const { data, error } = await supabase.from('Users').upsert(
@@ -126,8 +124,8 @@ export default function Questionnaire() {
           school,
           email,
           phonenumber,
-          photo_url: photoUrl,
-          instagram,
+          photo_url: updatedPhotoUrl,
+          instagram: instagram || null, // Prevents inserting an empty string
         },
       ],
       { onConflict: 'user_id' },
@@ -141,7 +139,8 @@ export default function Questionnaire() {
           ? '✅ Profile updated successfully!'
           : '✅ Profile created successfully!',
       )
-      setHasProfile(true) // Ensure state updates to show "Update Profile" if user is updating profile
+      setHasProfile(true)
+      setPhotoUrl(updatedPhotoUrl) // Ensure UI updates with new photo
     }
   }
 
@@ -154,7 +153,7 @@ export default function Questionnaire() {
           {hasProfile ? 'Update Profile' : 'Create Profile'}
         </h1>
         <p className="mb-6">
-          Please fill out your personal information and preferences down below.
+          Please fill out your personal information and preferences below.
         </p>
 
         {loading ? (
@@ -234,6 +233,13 @@ export default function Questionnaire() {
                 onChange={handlePhotoChange}
                 className="mt-1 w-full rounded border bg-white p-2 text-black"
               />
+              {photoUrl && (
+                <img
+                  src={photoUrl}
+                  alt="Profile"
+                  className="mt-2 h-20 w-20 rounded-full"
+                />
+              )}
             </label>
 
             <label className="mb-2 block">
