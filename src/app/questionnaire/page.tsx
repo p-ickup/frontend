@@ -2,8 +2,7 @@
 
 import PickupHeader from '@/components/PickupHeader'
 import { createBrowserClient } from '@/utils/supabase'
-import { useState } from 'react'
-//hello
+import { useEffect, useState } from 'react'
 
 export default function Questionnaire() {
   const supabase = createBrowserClient()
@@ -15,8 +14,54 @@ export default function Questionnaire() {
   const [phonenumber, setPhoneNumber] = useState('')
   const [photo, setPhoto] = useState<File | null>(null)
   const [instagram, setInstagram] = useState('')
-  const [feedback, setFeedback] = useState('')
   const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(true) // Loading State
+  const [hasProfile, setHasProfile] = useState(false) // Track if user has existing profile
+
+  // Fetch user data with error handling
+  useEffect(() => {
+    const fetchUserData = async () => {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser()
+
+      if (authError || !user) {
+        setMessage('Error: You must be logged in to fetch data!')
+        setLoading(false)
+        return
+      }
+
+      console.log('Fetching data for user:', user.id)
+
+      // Get user profile from Supabase
+      const { data, error } = await supabase
+        .from('Users')
+        .select('*')
+        .eq('user_id', user.id)
+        .single() // Fetch only one row
+
+      if (error) {
+        console.error('Error fetching user data:', error)
+        setMessage(`Error fetching data: ${error.message}`)
+      } else if (data) {
+        console.log('User profile data:', data)
+
+        // Pre-fill form fields if user data already exists in table
+        setFirstName(data.firstname || '')
+        setLastName(data.lastname || '')
+        setSchool(data.school || '')
+        setEmail(data.email || '')
+        setPhoneNumber(data.phonenumber || '')
+        setInstagram(data.instagram || '')
+        setHasProfile(true) // User profile exists
+      }
+
+      setLoading(false)
+    }
+
+    fetchUserData()
+  }, [])
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -27,173 +72,191 @@ export default function Questionnaire() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!firstname || !lastname || !school || !email || !phonenumber) {
-      setMessage('Missing information!')
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      setMessage('Error: You must be logged in to submit data!')
       return
     }
+
+    // Upload photo
+
     let photoUrl = ''
-    // ✅ Upload image to Supabase Storage if a file was selected
+
     if (photo) {
       const fileName = `${Date.now()}-${photo.name}`
       const { data, error } = await supabase.storage
-        .from('questionnaire-uploads')
+        .from('profile_picture')
         .upload(fileName, photo)
 
       if (error) {
+        console.error('Storage Upload Error:', error)
         setMessage(`Error uploading image: ${error.message}`)
         return
       }
 
-      // ✅ Get the public URL of the uploaded image
-      photoUrl = supabase.storage
-        .from('questionnaire-uploads')
-        .getPublicUrl(fileName).data.publicUrl
+      const { data: urlData } = supabase.storage
+        .from('profile_picture')
+        .getPublicUrl(fileName)
+      photoUrl = urlData.publicUrl || ''
     }
 
-    const { data, error } = await supabase.from('questionnaire').insert([
-      {
-        firstname,
-        lastname,
-        school,
-        email,
-        phonenumber,
-        photo_url: photoUrl,
-        instagram,
-        feedback,
-      },
-    ])
+    // Table
+
+    console.log('Submitting Data:', {
+      user_id: user.id,
+      firstname,
+      lastname,
+      school,
+      email,
+      phonenumber,
+      photo_url: photoUrl,
+      instagram,
+    })
+
+    const { data, error } = await supabase.from('Users').upsert(
+      [
+        {
+          user_id: user.id,
+          firstname,
+          lastname,
+          school,
+          email,
+          phonenumber,
+          photo_url: photoUrl,
+          instagram,
+        },
+      ],
+      { onConflict: 'user_id' },
+    )
 
     if (error) {
       setMessage(`Error: ${error.message}`)
     } else {
-      setMessage('✅ Data submitted successfully!')
-      setFirstName('')
-      setLastName('')
-      setSchool('')
-      setEmail('')
-      setPhoneNumber('')
-      setPhoto(null)
-      setInstagram('')
-      setFeedback('')
+      setMessage(
+        hasProfile
+          ? '✅ Profile updated successfully!'
+          : '✅ Profile created successfully!',
+      )
+      setHasProfile(true) // Ensure state updates to show "Update Profile" if user is updating profile
     }
   }
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      {/* Header at the top */}
       <PickupHeader />
 
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
-        <h1 className="mb-4 text-3xl font-bold">Questionnaire</h1>
-        <p className="mb-6">Fill out the form below to submit your feedback.</p>
+        <h1 className="mb-4 text-3xl font-bold">
+          {hasProfile ? 'Update Profile' : 'Create Profile'}
+        </h1>
+        <p className="mb-6">
+          Please fill out your personal information and preferences down below.
+        </p>
 
-        <form
-          onSubmit={handleSubmit}
-          className="w-96 rounded-lg bg-white p-6 shadow-md"
-        >
-          <label className="mb-2 block">
-            First Name:
-            <input
-              type="text"
-              value={firstname}
-              onChange={(e) => setFirstName(e.target.value)}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-              required
-            />
-          </label>
-
-          <label className="mb-2 block">
-            Last Name:
-            <input
-              type="text"
-              value={lastname}
-              onChange={(e) => setLastName(e.target.value)}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-            />
-          </label>
-
-          <label className="mb-2 block">
-            School:
-            <select
-              value={school}
-              onChange={(e) => setSchool(e.target.value)}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-              required
-            >
-              <option value="" disabled>
-                Select your school
-              </option>
-              <option value="Pomona">Pomona</option>
-              <option value="Claremont McKenna">Claremont McKenna</option>
-              <option value="Harvey Mudd">Harvey Mudd</option>
-              <option value="Scripps">Scripps</option>
-              <option value="Pitzer">Pitzer</option>
-            </select>
-          </label>
-
-          <label className="mb-2 block">
-            Email:
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-              required
-            />
-          </label>
-
-          <label className="mb-2 block">
-            Phone Number:
-            <input
-              type="text"
-              value={phonenumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-              required
-            />
-          </label>
-
-          <label className="mb-2 block">
-            Upload Photo (optional):
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handlePhotoChange}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-            />
-          </label>
-
-          <label className="mb-2 block">
-            Instagram (optional):
-            <input
-              type="text"
-              value={instagram}
-              onChange={(e) => setInstagram(e.target.value)}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-              required
-            />
-          </label>
-
-          <label className="mb-4 block">
-            Feedback (optional):
-            <textarea
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-            />
-          </label>
-
-          <button
-            type="submit"
-            className="w-full rounded bg-blue-600 p-2 text-white hover:bg-blue-700"
+        {loading ? (
+          <p>Loading...</p>
+        ) : (
+          <form
+            onSubmit={handleSubmit}
+            className="w-96 rounded-lg bg-white p-6 shadow-md"
           >
-            Submit
-          </button>
+            <label className="mb-2 block">
+              First Name:
+              <input
+                type="text"
+                value={firstname}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="mt-1 w-full rounded border bg-white p-2 text-black"
+                required
+              />
+            </label>
 
-          {message && <p className="mt-4 text-center">{message}</p>}
-        </form>
+            <label className="mb-2 block">
+              Last Name:
+              <input
+                type="text"
+                value={lastname}
+                onChange={(e) => setLastName(e.target.value)}
+                className="mt-1 w-full rounded border bg-white p-2 text-black"
+              />
+            </label>
+
+            <label className="mb-2 block">
+              School:
+              <select
+                value={school}
+                onChange={(e) => setSchool(e.target.value)}
+                className="mt-1 w-full rounded border bg-white p-2 text-black"
+                required
+              >
+                <option value="" disabled>
+                  Select your school
+                </option>
+                <option value="Pomona">Pomona</option>
+                <option value="Claremont McKenna">Claremont McKenna</option>
+                <option value="Harvey Mudd">Harvey Mudd</option>
+                <option value="Scripps">Scripps</option>
+                <option value="Pitzer">Pitzer</option>
+              </select>
+            </label>
+
+            <label className="mb-2 block">
+              Email:
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="mt-1 w-full rounded border bg-white p-2 text-black"
+                required
+              />
+            </label>
+
+            <label className="mb-2 block">
+              Phone Number:
+              <input
+                type="text"
+                value={phonenumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                className="mt-1 w-full rounded border bg-white p-2 text-black"
+                required
+              />
+            </label>
+
+            <label className="mb-2 block">
+              Upload Photo (optional):
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoChange}
+                className="mt-1 w-full rounded border bg-white p-2 text-black"
+              />
+            </label>
+
+            <label className="mb-2 block">
+              Instagram (optional):
+              <input
+                type="text"
+                value={instagram}
+                onChange={(e) => setInstagram(e.target.value)}
+                className="mt-1 w-full rounded border bg-white p-2 text-black"
+              />
+            </label>
+
+            <button
+              type="submit"
+              className="w-full rounded bg-blue-600 p-2 text-white hover:bg-blue-700"
+            >
+              {hasProfile ? 'Update Profile' : 'Create Profile'}
+            </button>
+
+            {message && <p className="mt-4 text-center">{message}</p>}
+          </form>
+        )}
       </div>
-
     </div>
   )
 }
