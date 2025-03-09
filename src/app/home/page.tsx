@@ -1,5 +1,5 @@
-import RedirectButton from '@/components/RedirectButton'
 import PickupHeader from '@/components/PickupHeader'
+import RedirectButton from '@/components/RedirectButton'
 
 export default function Home() {
   return (
@@ -12,7 +12,7 @@ export default function Home() {
         <p className="mb-6">About P-ickup</p>
 
         {/* Reusable Redirect Button */}
-        <RedirectButton label="Click Here to Start" route="/questionnaire" />
+        <RedirectButton label="Click Here to Start" route="/profile" />
       </div>
     </div>
   )
