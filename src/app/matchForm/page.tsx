@@ -14,6 +14,7 @@ export default function MatchForm() {
   const [numBags, setNumBags] = useState(0)
   const [earliestArrival, setEarliestArrival] = useState('')
   const [latestArrival, setLatestArrival] = useState('')
+  const [budget, setBudget] = useState(50) // New budget default = 50. Can change later
   const [message, setMessage] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -42,6 +43,7 @@ export default function MatchForm() {
       numBags,
       earliestArrival,
       latestArrival,
+      budget,
     })
 
     // Insert data into the Supabase 'Flights' table
@@ -50,10 +52,11 @@ export default function MatchForm() {
         user_id: user.id,
         airport,
         flight_no,
-        // flight_date: dateOfFlight,
+        date: dateOfFlight,
         bag_no: numBags,
-        // earliest_arrival: earliestArrival, // Already in HH:mm format
-        // latest_arrival: latestArrival,     // Already in HH:mm format
+        earliest_time: earliestArrival, // Already in HH:mm format
+        latest_time: latestArrival, // Already in HH:mm format
+        max_price: budget,
       },
     ])
 
@@ -122,7 +125,7 @@ export default function MatchForm() {
           </label>
 
           <label className="mb-2 block">
-            Earliest Arrival Time:
+            Earliest Arrival Time (PST):
             <input
               type="time" // Only allows hour:minute input
               value={earliestArrival}
@@ -133,13 +136,26 @@ export default function MatchForm() {
           </label>
 
           <label className="mb-2 block">
-            Latest Arrival Time:
+            Latest Arrival Time (PST):
             <input
               type="time" // Only allows hour:minute input
               value={latestArrival}
               onChange={(e) => setLatestArrival(e.target.value)}
               className="mt-1 w-full rounded border bg-white p-2 text-black"
               required
+            />
+          </label>
+
+          <label className="mb-2 block">
+            Budget: <strong>${budget}</strong>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={budget}
+              onChange={(e) => setBudget(Number(e.target.value))}
+              className="mt-1 w-full"
             />
           </label>
 

@@ -15,7 +15,6 @@ export default function Questionnaire() {
   const [photo, setPhoto] = useState<File | null>(null)
   const [photoUrl, setPhotoUrl] = useState('') // Store existing photo URL
   const [instagram, setInstagram] = useState('')
-  const [budget, setBudget] = useState(50) // New budget default = 50. Can change later
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(true)
   const [hasProfile, setHasProfile] = useState(false) // Check if profile exists in table
@@ -57,7 +56,6 @@ export default function Questionnaire() {
         setPhoneNumber(data.phonenumber || '')
         setInstagram(data.instagram || '') // Instagram optional
         setPhotoUrl(data.photo_url || '') // Store existing photo URL
-        setBudget(data.budget ?? 50) // load existing budget or default to 50
         setHasProfile(true)
       }
 
@@ -115,7 +113,6 @@ export default function Questionnaire() {
       phonenumber,
       photo_url: updatedPhotoUrl,
       instagram: instagram || null, // If empty insert null since insta is optional
-      budget,
     })
 
     const { data, error } = await supabase.from('Users').upsert(
@@ -129,7 +126,6 @@ export default function Questionnaire() {
           phonenumber,
           photo_url: updatedPhotoUrl,
           instagram: instagram || null,
-          budget,
         },
       ],
       { onConflict: 'user_id' },
@@ -253,19 +249,6 @@ export default function Questionnaire() {
                 value={instagram}
                 onChange={(e) => setInstagram(e.target.value)}
                 className="mt-1 w-full rounded border bg-white p-2 text-black"
-              />
-            </label>
-
-            <label className="mb-2 block">
-              Budget: <strong>${budget}</strong>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="5"
-                value={budget}
-                onChange={(e) => setBudget(Number(e.target.value))}
-                className="mt-1 w-full"
               />
             </label>
 
