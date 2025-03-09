@@ -54,7 +54,7 @@ export default function PickupHeader() {
         <SimpleRedirectButton label="P-ickup" route="/home" />
       </h1>
       <nav className="flex space-x-4">
-        <SimpleRedirectButton label="Questionnaire" route="/questionnaire" />
+        <SimpleRedirectButton label="Questionnaire" route="/matchForm" />
         <SimpleRedirectButton label="Results" route="/results" />
       </nav>
       
