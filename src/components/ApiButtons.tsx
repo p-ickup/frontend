@@ -9,7 +9,7 @@ export default function ApiButtons() {
   // Handle GET request
   const handleGet = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:5000/api/hello')
+      const res = await fetch(`${process.env.BACKEND_LINK}}/api/hello`)
       const data: { message: string } = await res.json()
       setResponse(data.message)
     } catch (error) {
@@ -21,7 +21,7 @@ export default function ApiButtons() {
   // Handle POST request
   const handlePost = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:5000/api/send-data', {
+      const res = await fetch(`${process.env.BACKEND_LINK}}/api/send-data`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'Hello from Frontend!' }),
@@ -34,10 +34,10 @@ export default function ApiButtons() {
     }
   }
 
-  // Handle Predict request (POST)
+  // Handle Predict request
   const handlePredict = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:5000/api/predict', {
+      const res = await fetch(`${process.env.BACKEND_LINK}}/api/predict`, {
         method: 'GET',
       })
       const data = await res.json()
