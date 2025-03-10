@@ -9,7 +9,9 @@ export default function ApiButtons() {
   // Handle GET request
   const handleGet = async () => {
     try {
-      const res = await fetch(`${process.env.BACKEND_LINK}}/api/hello`)
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_LINK}/api/hello`,
+      )
       const data: { message: string } = await res.json()
       setResponse(data.message)
     } catch (error) {
@@ -21,11 +23,14 @@ export default function ApiButtons() {
   // Handle POST request
   const handlePost = async () => {
     try {
-      const res = await fetch(`${process.env.BACKEND_LINK}}/api/send-data`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'Hello from Frontend!' }),
-      })
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_LINK}/api/send-data`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'Hello from Frontend!' }),
+        },
+      )
       const data: { status: string } = await res.json()
       setResponse(data.status)
     } catch (error) {
@@ -37,9 +42,12 @@ export default function ApiButtons() {
   // Handle Predict request
   const handlePredict = async () => {
     try {
-      const res = await fetch(`${process.env.BACKEND_LINK}}/api/predict`, {
-        method: 'GET',
-      })
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_LINK}/api/predict`,
+        {
+          method: 'GET',
+        },
+      )
       const data = await res.json()
       setPrediction(data.prediction) // Display the prediction
     } catch (error) {
