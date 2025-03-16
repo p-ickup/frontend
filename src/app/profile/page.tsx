@@ -45,9 +45,7 @@ export default function Questionnaire() {
 
       if (error) {
         console.error('Error fetching user data:', error)
-        setMessage(
-          `We couldn't load your profile information. Please try again later.`,
-        )
+        setMessage(`Please enter your profile information.`)
       } else if (data) {
         console.log('User profile data:', data)
 
