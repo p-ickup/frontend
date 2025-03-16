@@ -1,5 +1,5 @@
 import Image from 'next/image'
-import { MatchWithDetails } from '../../types/match'
+import { MatchWithDetails } from '../../app/results/page'
 
 interface MatchCardProps {
   matches: MatchWithDetails[]
