@@ -2,18 +2,25 @@
 
 import PickupHeader from '@/components/PickupHeader'
 import RedirectButton from '@/components/RedirectButton'
+import TripToggle from '@/components/ToWhereToggle'
+
 import { createBrowserClient } from '@/utils/supabase'
 import { useEffect, useState } from 'react'
 
 export default function MatchForm() {
   const supabase = createBrowserClient()
 
+  const [tripType, setTripType] = useState<boolean>(true) // true = "To Airport", false = "To School"
+  const handleTripSelect = (type: boolean) => {
+    setTripType(type)
+  }
   const [airport, setAirport] = useState('')
   const [flight_no, setFlightNumber] = useState('')
   const [dateOfFlight, setDateOfFlight] = useState('')
   const [numBags, setNumBags] = useState(0)
   const [earliestArrival, setEarliestArrival] = useState('')
   const [latestArrival, setLatestArrival] = useState('')
+  const [dropoff, setDropoff] = useState(0.5)
   const [budget, setBudget] = useState(50) // New budget default = 50. Can change later
   const [message, setMessage] = useState('')
 
@@ -37,12 +44,14 @@ export default function MatchForm() {
 
     console.log('Submitting flight data:', {
       user_id: user.id,
+      to_airport: tripType ? 1 : 0, // Store as 1 (true) or 0 (false)
       airport,
       flight_no,
       dateOfFlight,
       numBags,
       earliestArrival,
       latestArrival,
+      max_dropoff: dropoff,
       budget,
     })
 
@@ -50,12 +59,14 @@ export default function MatchForm() {
     const { data, error } = await supabase.from('Flights').insert([
       {
         user_id: user.id,
+        to_airport: tripType ? 1 : 0, // Store as 1 (true) or 0 (false)
         airport,
         flight_no,
         date: dateOfFlight,
         bag_no: numBags,
         earliest_time: earliestArrival, // Already in HH:mm format
         latest_time: latestArrival, // Already in HH:mm format
+        max_dropoff: dropoff,
         max_price: budget,
       },
     ])
@@ -80,7 +91,13 @@ export default function MatchForm() {
           onSubmit={handleSubmit}
           className="w-96 rounded-lg bg-white p-6 shadow-md"
         >
-          <label className="mb-2 block">
+          <h2>Select Trip Type</h2>
+          <TripToggle onSelect={handleTripSelect} />
+          <p className="mt-2">
+            Selected: {tripType ? 'To Airport' : 'To School'}
+          </p>
+
+          {/* <label className="mb-2 block">
             Airport:
             <input
               type="text"
@@ -89,6 +106,21 @@ export default function MatchForm() {
               className="mt-1 w-full rounded border bg-white p-2 text-black"
               required
             />
+          </label> */}
+          <label className="mb-2 block">
+            Airport:
+            <select
+              value={airport}
+              onChange={(e) => setAirport(e.target.value)}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+              required
+            >
+              <option value="" disabled>
+                Select your airport
+              </option>
+              <option value="LAX">LAX</option>
+              <option value="ONT">ONT</option>
+            </select>
           </label>
 
           <label className="mb-2 block">
@@ -143,6 +175,20 @@ export default function MatchForm() {
               onChange={(e) => setLatestArrival(e.target.value)}
               className="mt-1 w-full rounded border bg-white p-2 text-black"
               required
+            />
+          </label>
+
+          <label className="mb-2 block">
+            Furthest pickup/dropoff radius (from home school):{' '}
+            <strong>{dropoff} mi</strong>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.25"
+              value={dropoff}
+              onChange={(e) => setDropoff(Number(e.target.value))}
+              className="mt-1 w-full"
             />
           </label>
 
