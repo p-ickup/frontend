@@ -178,20 +178,53 @@ export default function Results() {
 
   const fetchMatches = async () => {
     try {
-      console.log('Supabase client:', !!supabase)
-      const { data: matches, error } = await supabase
-        .from('Matches')
-        .select('*')
-      console.log('Read result:', { matches, error })
+      // Get current authenticated user
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+      if (userError) throw userError
+      if (!user) throw new Error('No user found')
 
-      if (!matches) {
+      // Step 1: Find all ride IDs where the user has a match
+      const { data: userRideIds, error: rideError } = await supabase
+        .from('Matches')
+        .select('ride_id')
+        .eq('user_id', user.id)
+
+      if (rideError) throw rideError
+      if (!userRideIds || userRideIds.length === 0) {
         setMatches({ upcoming: {}, previous: {} })
         return
       }
 
+      // Step 2: Get all matches for those rides with user and flight details
+      const { data: allMatches, error: matchError } = await supabase
+        .from('Matches')
+        .select(
+          `
+        *,
+        Flights (*),
+        Users (*)
+      `,
+        )
+        .in(
+          'ride_id',
+          userRideIds.map((r) => r.ride_id),
+        )
+      console.log('All matches:', allMatches)
+
+      if (matchError) throw matchError
+      if (!allMatches) throw new Error('No matches found')
+
+      // Convert to MatchWithDetails array
+      const matchesWithDetails: MatchWithDetails[] = allMatches.filter(
+        (match) => match.user_id !== user.id,
+      )
+
       // Group into upcoming and previous, and then by ride_id
       const now = new Date()
-      const grouped = mockMatches.reduce<GroupedMatches>(
+      const grouped = matchesWithDetails.reduce<GroupedMatches>(
         (acc, match) => {
           const matchDate = new Date(match.created_at)
           const rideId = match.ride_id
