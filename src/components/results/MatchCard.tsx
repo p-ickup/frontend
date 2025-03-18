@@ -1,5 +1,7 @@
 import Image from 'next/image'
 import { MatchWithDetails } from '../../app/results/page'
+import { useEffect, useState } from 'react'
+import { createBrowserClient } from '../../utils/supabase'
 
 interface MatchCardProps {
   matches: MatchWithDetails[]
@@ -17,6 +19,23 @@ const getAirportAddress = (airport: string): string => {
 const MatchCard = ({ matches, upcoming }: MatchCardProps) => {
   // Use the first match for common information
   const firstMatch = matches[0]
+  const supabase = createBrowserClient()
+  const getProfileUrl = (photoPath: string | null) => {
+    if (!photoPath) return '/images/profileIcon.webp'
+    if (photoPath.startsWith('/images')) return photoPath
+
+    // Check if photoPath already contains the full URL
+    if (photoPath.includes('supabase.co')) {
+      return photoPath
+    }
+
+    const { data } = supabase.storage
+      .from('profile_picture')
+      .getPublicUrl(photoPath)
+
+    return data?.publicUrl || '/images/profileIcon.webp'
+  }
+
   return (
     <div className="mb-6 w-full max-w-3xl rounded-xl border border-gray-100 bg-white p-5 shadow-md transition-all hover:shadow-lg">
       <div className="flex justify-between">
@@ -135,7 +154,7 @@ const MatchCard = ({ matches, upcoming }: MatchCardProps) => {
                 </p>
                 <div className="relative overflow-hidden rounded-full">
                   <Image
-                    src={'/images/profileIcon.webp'}
+                    src={getProfileUrl(match.Users.photo_url)}
                     alt={`${match.Users.firstname}'s profile`}
                     width={60}
                     height={60}
