@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import PickupHeader from '@/components/PickupHeader'
 import RedirectButton from '@/components/RedirectButton'
 import { createBrowserClient } from '@/utils/supabase'
+import { useRouter } from 'next/router'
+import Image from 'next/image'
 
 interface MatchForm {
   flight_id: string
@@ -64,6 +66,11 @@ export default function Questionnaires() {
     }
   }
 
+  // const router = useRouter()
+  // const createMatch = () => {
+  //   router.push('/matchForms') // This route is for creating a new match
+  // }
+
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
       {/* Header at the top */}
@@ -86,23 +93,35 @@ export default function Questionnaires() {
         {matchForms.length > 0 ? (
           <ul className="w-96 rounded-lg bg-white p-4 shadow-md">
             {matchForms.map((form) => (
-              <li key={form.flight_id} className="mb-4 border-b pb-2">
+              <li key={form.flight_id} className="relative mb-4 border-b pb-2">
                 <p>
                   <strong>Flight Number:</strong> {form.flight_no}
                 </p>
                 <p>
-                  <strong>Date:</strong> {form.date}
+                  <strong>Date: </strong>
+                  <span className="text-lg">
+                    {new Date(form.date).toLocaleDateString('en-US')}
+                  </span>
                 </p>
-                <div className="mt-2 flex justify-between">
+                {/* Button container aligned to the bottom-right */}
+                <div className="mt-[-20px] flex items-center justify-end gap-x-4">
                   <RedirectButton
                     label="Edit"
                     route={`/editForm/${form.flight_id}`}
+                    color="bg-yellow-400"
+                    size="px-4 py-2 text-lg"
                   />
                   <button
                     onClick={() => handleDelete(form.flight_id)}
-                    className="ml-4 rounded bg-red-600 px-3 py-1 text-white hover:bg-red-700"
+                    className="flex items-center justify-center rounded-lg p-2 hover:bg-red-600"
                   >
-                    Cancel
+                    <Image
+                      src="/images/trashIcon.webp"
+                      alt="Cancel Pending Match Form"
+                      width={30}
+                      height={30}
+                      className="object-contain"
+                    />
                   </button>
                 </div>
               </li>
