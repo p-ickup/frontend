@@ -10,7 +10,7 @@ export default function Questionnaire() {
   const [firstname, setFirstName] = useState('')
   const [lastname, setLastName] = useState('')
   const [school, setSchool] = useState('')
-  const [email, setEmail] = useState('')
+  // const [email, setEmail] = useState('')
   const [phonenumber, setPhoneNumber] = useState('')
   const [photo, setPhoto] = useState<File | null>(null)
   const [photoUrl, setPhotoUrl] = useState('') // Store existing photo URL
@@ -52,7 +52,7 @@ export default function Questionnaire() {
         setFirstName(data.firstname || '')
         setLastName(data.lastname || '')
         setSchool(data.school || '')
-        setEmail(data.email || '')
+        // setEmail(data.email || '')
         setPhoneNumber(data.phonenumber || '')
         setInstagram(data.instagram || '') // Instagram optional
         setPhotoUrl(data.photo_url || '') // Store existing photo URL
@@ -109,7 +109,6 @@ export default function Questionnaire() {
       firstname,
       lastname,
       school,
-      email,
       phonenumber,
       photo_url: updatedPhotoUrl,
       instagram: instagram || null, // If empty insert null since insta is optional
@@ -122,7 +121,6 @@ export default function Questionnaire() {
           firstname,
           lastname,
           school,
-          email,
           phonenumber,
           photo_url: updatedPhotoUrl,
           instagram: instagram || null,
@@ -203,7 +201,7 @@ export default function Questionnaire() {
               </select>
             </label>
 
-            <label className="mb-2 block">
+            {/* <label className="mb-2 block">
               Email:
               <input
                 type="email"
@@ -212,7 +210,7 @@ export default function Questionnaire() {
                 className="mt-1 w-full rounded border bg-white p-2 text-black"
                 required
               />
-            </label>
+            </label> */}
 
             <label className="mb-2 block">
               Phone Number:
