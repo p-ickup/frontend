@@ -5,11 +5,16 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/utils/supabase'
 import PickupHeader from '@/components/PickupHeader'
 import RedirectButton from '@/components/RedirectButton'
+import TripToggle from '@/components/ToWhereToggle'
 
 export default function EditForm() {
   const pathname = usePathname()
   const flight_id = pathname.split('/').pop() // Extract ID from URL
 
+  const [tripType, setTripType] = useState<boolean>(true) // true = "To Airport", false = "To School"
+  const handleTripSelect = (type: boolean) => {
+    setTripType(type)
+  }
   const [airport, setAirport] = useState('')
   const [flight_no, setFlightNumber] = useState('')
   const [dateOfFlight, setDateOfFlight] = useState('')
@@ -35,6 +40,7 @@ export default function EditForm() {
       if (error) {
         setMessage(`Error fetching flight data: ${error.message}`)
       } else {
+        setTripType(data.to_airport)
         setAirport(data.airport)
         setFlightNumber(data.flight_no)
         setDateOfFlight(data.date)
@@ -61,6 +67,7 @@ export default function EditForm() {
     const { error } = await supabase
       .from('Flights')
       .update({
+        to_airport: tripType,
         airport,
         flight_no,
         date: dateOfFlight,
@@ -88,6 +95,12 @@ export default function EditForm() {
           onSubmit={handleSubmit}
           className="w-96 rounded-lg bg-white p-6 shadow-md"
         >
+          <h2>Select Trip Type</h2>
+          <TripToggle onSelect={handleTripSelect} />
+          <p className="mt-2">
+            Selected: {tripType ? 'To Airport' : 'To School'}
+          </p>
+
           <label className="mb-2 block">
             Airport:
             <select
