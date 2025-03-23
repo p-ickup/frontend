@@ -33,7 +33,7 @@ export default function Questionnaires() {
         .from('Flights')
         .select('flight_id, flight_no, date')
         .eq('user_id', userId) // ✅ Now using correct user ID
-        .order('date', { ascending: false })
+        .order('date', { ascending: true })
 
       if (error) {
         console.error(
