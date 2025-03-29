@@ -1,14 +1,15 @@
-'use client'
+'use client' // Ensure this is at the top
 
+import { useEffect, useState } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { createBrowserClient } from '@/utils/supabase'
 import PickupHeader from '@/components/PickupHeader'
 import RedirectButton from '@/components/RedirectButton'
 import TripToggle from '@/components/ToWhereToggle'
 
-import { createBrowserClient } from '@/utils/supabase'
-import { useEffect, useState } from 'react'
-
-export default function MatchForm() {
-  const supabase = createBrowserClient()
+export default function EditForm() {
+  const pathname = usePathname()
+  const flight_id = pathname.split('/').pop() // Extract ID from URL
 
   const [tripType, setTripType] = useState<boolean>(true) // true = "To Airport", false = "To School"
   const handleTripSelect = (type: boolean) => {
@@ -21,72 +22,75 @@ export default function MatchForm() {
   const [earliestArrival, setEarliestArrival] = useState('')
   const [latestArrival, setLatestArrival] = useState('')
   const [dropoff, setDropoff] = useState(0.5)
-  const [budget, setBudget] = useState(50) // New budget default = 50. Can change later
+  const [budget, setBudget] = useState(50)
   const [message, setMessage] = useState('')
+
+  const supabase = createBrowserClient()
+
+  useEffect(() => {
+    if (!flight_id) return
+
+    const fetchFlightData = async () => {
+      const { data, error } = await supabase
+        .from('Flights')
+        .select('*')
+        .eq('flight_id', flight_id)
+        .single()
+
+      if (error) {
+        setMessage(`Error fetching flight data: ${error.message}`)
+      } else {
+        setTripType(data.to_airport)
+        setAirport(data.airport)
+        setFlightNumber(data.flight_no)
+        setDateOfFlight(data.date)
+        setNumBags(data.bag_no)
+        setEarliestArrival(data.earliest_time)
+        setLatestArrival(data.latest_time)
+        setDropoff(data.max_dropoff)
+        setBudget(data.max_price)
+      }
+    }
+
+    fetchFlightData()
+  }, [flight_id])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
+    const { data: user, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
       setMessage('Error: You must be logged in to submit flight details!')
       return
     }
 
-    if (!flight_no || !numBags || !earliestArrival || !latestArrival) {
-      setMessage('Missing information!')
-      return
-    }
-
-    console.log('Submitting flight data:', {
-      user_id: user.id,
-      to_airport: tripType ? 1 : 0, // Store as 1 (true) or 0 (false)
-      airport,
-      flight_no,
-      dateOfFlight,
-      numBags,
-      earliestArrival,
-      latestArrival,
-      max_dropoff: dropoff,
-      budget,
-    })
-
-    // Insert data into the Supabase 'Flights' table
-    const { data, error } = await supabase.from('Flights').insert([
-      {
-        user_id: user.id,
-        to_airport: tripType ? 1 : 0, // Store as 1 (true) or 0 (false)
+    const { error } = await supabase
+      .from('Flights')
+      .update({
+        to_airport: tripType,
         airport,
         flight_no,
         date: dateOfFlight,
         bag_no: numBags,
-        earliest_time: earliestArrival, // Already in HH:mm format
-        latest_time: latestArrival, // Already in HH:mm format
+        earliest_time: earliestArrival,
+        latest_time: latestArrival,
         max_dropoff: dropoff,
         max_price: budget,
-      },
-    ])
+      })
+      .eq('flight_id', flight_id)
 
     if (error) {
-      console.error('Error inserting flight data:', error)
-      setMessage(`Error: ${error.message}`)
+      setMessage(`Error updating flight data: ${error.message}`)
     } else {
-      setMessage('✅ Flight details submitted successfully!')
+      setMessage('✅ Flight details updated successfully!')
     }
   }
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
       <PickupHeader />
-
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
-        <h1 className="mb-4 text-3xl font-bold">Flight Information</h1>
-        <p className="mb-6">Enter your flight details below.</p>
-
+        <h1 className="mb-4 text-3xl font-bold">Edit Flight Information</h1>
         <form
           onSubmit={handleSubmit}
           className="w-96 rounded-lg bg-white p-6 shadow-md"
@@ -97,16 +101,6 @@ export default function MatchForm() {
             Selected: {tripType ? 'To Airport' : 'To School'}
           </p>
 
-          {/* <label className="mb-2 block">
-            Airport:
-            <input
-              type="text"
-              value={airport}
-              onChange={(e) => setAirport(e.target.value)}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-              required
-            />
-          </label> */}
           <label className="mb-2 block">
             Airport:
             <select
@@ -159,7 +153,7 @@ export default function MatchForm() {
           <label className="mb-2 block">
             Earliest Arrival Time (PST):
             <input
-              type="time" // Only allows hour:minute input
+              type="time"
               value={earliestArrival}
               onChange={(e) => setEarliestArrival(e.target.value)}
               className="mt-1 w-full rounded border bg-white p-2 text-black"
@@ -170,7 +164,7 @@ export default function MatchForm() {
           <label className="mb-2 block">
             Latest Arrival Time (PST):
             <input
-              type="time" // Only allows hour:minute input
+              type="time"
               value={latestArrival}
               onChange={(e) => setLatestArrival(e.target.value)}
               className="mt-1 w-full rounded border bg-white p-2 text-black"
@@ -209,10 +203,10 @@ export default function MatchForm() {
             <RedirectButton label="Cancel" route="/questionnaires" />
             <button
               onClick={handleSubmit}
-              type="button"
+              type="submit"
               className="mt-4 rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white hover:bg-green-700"
             >
-              Match
+              Update Flight Info
             </button>
           </div>
 
