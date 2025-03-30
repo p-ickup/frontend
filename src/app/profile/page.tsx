@@ -28,7 +28,9 @@ export default function Questionnaire() {
       } = await supabase.auth.getUser()
 
       if (authError || !user) {
-        setMessage('Error: You must be logged in to fetch data!')
+        setMessage(
+          'You must be logged in to view this page. Please sign in first.',
+        )
         setLoading(false)
         return
       }
@@ -44,7 +46,7 @@ export default function Questionnaire() {
 
       if (error) {
         console.error('Error fetching user data:', error)
-        setMessage(`Error fetching data: ${error.message}`)
+        setMessage(`Please enter your profile information.`)
       } else if (data) {
         console.log('User profile data:', data)
 
@@ -80,7 +82,9 @@ export default function Questionnaire() {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      setMessage('Error: You must be logged in to submit data!')
+      setMessage(
+        'You must be logged in to submit your profile. Please sign in first.',
+      )
       return
     }
 
@@ -94,7 +98,9 @@ export default function Questionnaire() {
 
       if (error) {
         console.error('Storage Upload Error:', error)
-        setMessage(`Error uploading image: ${error.message}`)
+        setMessage(
+          `We couldn't upload your photo. Please ensure it's a valid image file before trying again.`,
+        )
         return
       }
 
@@ -130,12 +136,14 @@ export default function Questionnaire() {
     )
 
     if (error) {
-      setMessage(`Error: ${error.message}`)
+      setMessage(
+        `Something went wrong while saving your profile. Please check your details and try again.`,
+      )
     } else {
       setMessage(
         hasProfile
-          ? '✅ Profile updated successfully!'
-          : '✅ Profile created successfully!',
+          ? 'Profile updated successfully!'
+          : 'Profile created successfully!',
       )
       setHasProfile(true)
       setPhotoUrl(updatedPhotoUrl) // Ensure UI updates with new photo
