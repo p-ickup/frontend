@@ -2,6 +2,7 @@
 
 import { createBrowserClient } from '@/utils/supabase'
 import { useEffect, useState } from 'react'
+import Image from 'next/image'
 
 export default function Questionnaire() {
   const supabase = createBrowserClient()
@@ -237,10 +238,12 @@ export default function Questionnaire() {
                 className="mt-1 w-full rounded border bg-white p-2 text-black"
               />
               {photoUrl && (
-                <img
+                <Image
                   src={photoUrl}
                   alt="Profile"
-                  className="mt-2 h-20 w-20 rounded-full"
+                  width={20}
+                  height={20}
+                  className="mt-2 rounded-full"
                 />
               )}
             </label>
