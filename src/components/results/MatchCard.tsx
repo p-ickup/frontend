@@ -1,7 +1,7 @@
 import Image from 'next/image'
-import { MatchWithDetails } from '../../app/results/page'
+import { MatchWithDetails } from '@/app/results/page'
 import { useEffect, useState } from 'react'
-import { createBrowserClient } from '../../utils/supabase'
+import { createBrowserClient } from '@/utils/supabase'
 
 interface MatchCardProps {
   matches: MatchWithDetails[]

@@ -1,6 +1,5 @@
 'use client'
 
-import PickupHeader from '@/components/PickupHeader'
 import { createBrowserClient } from '@/utils/supabase'
 import { useEffect, useState } from 'react'
 
@@ -152,8 +151,6 @@ export default function Questionnaire() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      <PickupHeader />
-
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
         <h1 className="mb-4 text-3xl font-bold">
           {hasProfile ? 'Update Profile' : 'Create Profile'}

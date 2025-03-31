@@ -1,10 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import PickupHeader from '@/components/PickupHeader'
-import RedirectButton from '@/components/RedirectButton'
+import RedirectButton from '@/components/buttons/RedirectButton'
 import { createBrowserClient } from '@/utils/supabase'
-import { useRouter } from 'next/router'
 import Image from 'next/image'
 
 interface MatchForm {
@@ -74,7 +72,6 @@ export default function Questionnaires() {
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
       {/* Header at the top */}
-      <PickupHeader />
 
       {/* Buttons Section */}
       <div className="mt-6 flex flex-col items-center gap-4">
@@ -104,12 +101,10 @@ export default function Questionnaires() {
                   </span>
                 </p>
                 {/* Button container aligned to the bottom-right */}
-                <div className="mt-[-20px] flex items-center justify-end gap-x-4">
+                <div className="mt-[-20px] flex items-center justify-end gap-x-4 bg-yellow-400 px-4 py-2 text-lg">
                   <RedirectButton
                     label="Edit"
                     route={`/editForm/${form.flight_id}`}
-                    color="bg-yellow-400"
-                    size="px-4 py-2 text-lg"
                   />
                   <button
                     onClick={() => handleDelete(form.flight_id)}

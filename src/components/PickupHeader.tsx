@@ -2,9 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { Button } from '@/components/ui/button'
-import SimpleRedirectButton from './SimpleRedirectButton'
-import Image from 'next/image'
+import SimpleRedirectButton from './buttons/SimpleRedirectButton'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,7 +36,7 @@ export default function PickupHeader() {
   // Login function
   const handleLogin = async () => {
     const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google', // You can change to "github", "facebook", etc.
+      provider: 'google',
     })
     if (error) console.error('Login error:', error)
   }
@@ -52,36 +50,31 @@ export default function PickupHeader() {
   return (
     <header className="flex items-center justify-between bg-gradient-to-r from-teal-500 to-yellow-100 p-2 text-white">
       <h1 className="text-xl font-bold">
-        <SimpleRedirectButton label="P-ickup" route="/home" />
+        <SimpleRedirectButton label="P-ickup" route="/" />
       </h1>
       <nav className="flex space-x-4">
         <SimpleRedirectButton label="Questionnaire" route="/questionnaires" />
         <SimpleRedirectButton label="Results" route="/results" />
       </nav>
 
-      <div>
+      <div className="flex items-center space-x-4">
         {user ? (
-          // TODO: If the user is logged in, show the profile image and handle logout
-          <div onClick={handleLogout} className="cursor-pointer">
-            <Image
-              src="/images/profileIcon.webp" // Path to your PNG file
-              alt="Profile Image"
-              width={100} // Resize as needed
-              height={100} // Resize as needed
-              className="object-contain" // Maintains aspect ratio
-            />
+          <div className="flex items-center space-x-4">
+            <span className="text-sm">{user.email}</span>
+            <button
+              onClick={handleLogout}
+              className="rounded-md border border-white bg-white px-4 py-2 text-sm font-medium text-teal-500 hover:bg-teal-50"
+            >
+              Logout
+            </button>
           </div>
         ) : (
-          // If the user is not logged in, show the login image and handle login
-          <div onClick={handleLogin} className="cursor-pointer">
-            <Image
-              src="/images/profileIcon.webp" // Path to your PNG file
-              alt="Login Image"
-              width={100} // Resize as needed
-              height={100} // Resize as needed
-              className="object-contain" // Maintains aspect ratio
-            />
-          </div>
+          <button
+            onClick={handleLogin}
+            className="rounded-md border border-white bg-white px-4 py-2 text-sm font-medium text-teal-500 hover:bg-teal-50"
+          >
+            Login with Google
+          </button>
         )}
       </div>
     </header>
