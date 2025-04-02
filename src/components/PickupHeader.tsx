@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import SimpleRedirectButton from './buttons/SimpleRedirectButton'
+import Image from 'next/image'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -69,12 +70,16 @@ export default function PickupHeader() {
             </button>
           </div>
         ) : (
-          <button
-            onClick={handleLogin}
-            className="rounded-md border border-white bg-white px-4 py-2 text-sm font-medium text-teal-500 hover:bg-teal-50"
-          >
-            Login with Google
-          </button>
+          // If the user is not logged in, show the login image and handle login
+          <div onClick={handleLogin} className="cursor-pointer">
+            <Image
+              src="/images/profileIcon.webp" // Path to your PNG file
+              alt="Login Image"
+              width={100} // Resize as needed
+              height={100} // Resize as needed
+              className="object-contain" // Maintains aspect ratio
+            />
+          </div>
         )}
       </div>
     </header>
