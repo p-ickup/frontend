@@ -6,6 +6,7 @@ import RedirectButton from '@/components/RedirectButton'
 import { createBrowserClient } from '@/utils/supabase'
 import { useRouter } from 'next/router'
 import Image from 'next/image'
+import ConfirmCancel from '@/components/questionnaires/ConfirmCancel'
 
 interface MatchForm {
   flight_id: string
@@ -50,7 +51,11 @@ export default function Questionnaires() {
     fetchMatchForms()
   }, [])
 
-  const handleDelete = async (flightId: string) => {
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  const confirmDelete = async (flightId: string) => {
+    // Perform deletion logic here
+    console.log('Form deleted!')
     const { error } = await supabase
       .from('Flights')
       .delete()
@@ -64,12 +69,12 @@ export default function Questionnaires() {
         prevForms.filter((form) => form.flight_id !== flightId),
       )
     }
+    setIsModalOpen(false)
   }
 
-  // const router = useRouter()
-  // const createMatch = () => {
-  //   router.push('/matchForms') // This route is for creating a new match
-  // }
+  const handleDelete = () => {
+    setIsModalOpen(true)
+  }
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
@@ -112,7 +117,7 @@ export default function Questionnaires() {
                     size="px-4 py-2 text-lg"
                   />
                   <button
-                    onClick={() => handleDelete(form.flight_id)}
+                    onClick={() => handleDelete()}
                     className="flex items-center justify-center rounded-lg p-2 hover:bg-red-600"
                   >
                     <Image
@@ -123,6 +128,13 @@ export default function Questionnaires() {
                       className="object-contain"
                     />
                   </button>
+
+                  {/* ConfirmCancel Modal */}
+                  <ConfirmCancel
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
+                    onConfirm={() => confirmDelete(form.flight_id)}
+                  />
                 </div>
               </li>
             ))}
