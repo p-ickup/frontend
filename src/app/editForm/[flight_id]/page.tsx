@@ -12,9 +12,6 @@ export default function EditForm() {
   const flight_id = pathname.split('/').pop() // Extract ID from URL
 
   const [tripType, setTripType] = useState<boolean>(true) // true = "To Airport", false = "To School"
-  const handleTripSelect = (type: boolean) => {
-    setTripType(type)
-  }
   const [airport, setAirport] = useState('')
   const [flight_no, setFlightNumber] = useState('')
   const [dateOfFlight, setDateOfFlight] = useState('')
@@ -23,6 +20,7 @@ export default function EditForm() {
   const [latestArrival, setLatestArrival] = useState('')
   const [dropoff, setDropoff] = useState(0.5)
   const [budget, setBudget] = useState(50)
+  const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
 
   const supabase = createBrowserClient()
@@ -49,6 +47,7 @@ export default function EditForm() {
         setLatestArrival(data.latest_time)
         setDropoff(data.max_dropoff)
         setBudget(data.max_price)
+        setTerminal(data.terminal)
       }
     }
 
@@ -76,6 +75,7 @@ export default function EditForm() {
         latest_time: latestArrival,
         max_dropoff: dropoff,
         max_price: budget,
+        terminal,
       })
       .eq('flight_id', flight_id)
 
@@ -96,10 +96,7 @@ export default function EditForm() {
           className="w-96 rounded-lg bg-white p-6 shadow-md"
         >
           <h2>Select Trip Type</h2>
-          <TripToggle onSelect={handleTripSelect} />
-          <p className="mt-2">
-            Selected: {tripType ? 'To Airport' : 'To School'}
-          </p>
+          <TripToggle onSelect={setTripType} />
 
           <label className="mb-2 block">
             Airport:
@@ -115,6 +112,17 @@ export default function EditForm() {
               <option value="LAX">LAX</option>
               <option value="ONT">ONT</option>
             </select>
+          </label>
+
+          <label className="mb-2 block">
+            Terminal:
+            <input
+              type="text"
+              value={terminal}
+              onChange={(e) => setTerminal(e.target.value)}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+              required
+            />
           </label>
 
           <label className="mb-2 block">

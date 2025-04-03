@@ -11,9 +11,6 @@ export default function MatchForm() {
   const supabase = createBrowserClient()
 
   const [tripType, setTripType] = useState<boolean>(true) // true = "To Airport", false = "To School"
-  const handleTripSelect = (type: boolean) => {
-    setTripType(type)
-  }
   const [airport, setAirport] = useState('')
   const [flight_no, setFlightNumber] = useState('')
   const [dateOfFlight, setDateOfFlight] = useState('')
@@ -22,6 +19,7 @@ export default function MatchForm() {
   const [latestArrival, setLatestArrival] = useState('')
   const [dropoff, setDropoff] = useState(0.5)
   const [budget, setBudget] = useState(50) // New budget default = 50. Can change later
+  const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,6 +51,7 @@ export default function MatchForm() {
       latestArrival,
       max_dropoff: dropoff,
       budget,
+      terminal,
     })
 
     // Insert data into the Supabase 'Flights' table
@@ -68,6 +67,7 @@ export default function MatchForm() {
         latest_time: latestArrival, // Already in HH:mm format
         max_dropoff: dropoff,
         max_price: budget,
+        terminal,
       },
     ])
 
@@ -92,21 +92,8 @@ export default function MatchForm() {
           className="w-96 rounded-lg bg-white p-6 shadow-md"
         >
           <h2>Select Trip Type</h2>
-          <TripToggle onSelect={handleTripSelect} />
-          <p className="mt-2">
-            Selected: {tripType ? 'To Airport' : 'To School'}
-          </p>
+          <TripToggle onSelect={setTripType} />
 
-          {/* <label className="mb-2 block">
-            Airport:
-            <input
-              type="text"
-              value={airport}
-              onChange={(e) => setAirport(e.target.value)}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-              required
-            />
-          </label> */}
           <label className="mb-2 block">
             Airport:
             <select
@@ -121,6 +108,17 @@ export default function MatchForm() {
               <option value="LAX">LAX</option>
               <option value="ONT">ONT</option>
             </select>
+          </label>
+
+          <label className="mb-2 block">
+            Terminal:
+            <input
+              type="text"
+              value={terminal}
+              onChange={(e) => setTerminal(e.target.value)}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+              required
+            />
           </label>
 
           <label className="mb-2 block">
