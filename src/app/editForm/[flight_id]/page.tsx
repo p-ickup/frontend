@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/utils/supabase'
 import PickupHeader from '@/components/PickupHeader'
 import RedirectButton from '@/components/RedirectButton'
-import TripToggle from '@/components/ToWhereToggle'
+import TripToggle from '@/components/questionnaires/ToWhereToggle'
 
 export default function EditForm() {
   const pathname = usePathname()

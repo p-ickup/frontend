@@ -2,7 +2,7 @@
 
 import PickupHeader from '@/components/PickupHeader'
 import RedirectButton from '@/components/RedirectButton'
-import TripToggle from '@/components/ToWhereToggle'
+import TripToggle from '@/components/questionnaires/ToWhereToggle'
 
 import { createBrowserClient } from '@/utils/supabase'
 import { useEffect, useState } from 'react'
