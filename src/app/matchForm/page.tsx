@@ -2,6 +2,7 @@
 
 import PickupHeader from '@/components/PickupHeader'
 import RedirectButton from '@/components/RedirectButton'
+import SubmitSuccess from '@/components/questionnaires/SubmitSuccess'
 import TripToggle from '@/components/questionnaires/ToWhereToggle'
 
 import { createBrowserClient } from '@/utils/supabase'
@@ -21,6 +22,12 @@ export default function MatchForm() {
   const [budget, setBudget] = useState(50) // New budget default = 50. Can change later
   const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
+
+  // handling pop up
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  useEffect(() => {
+    setIsModalOpen(false)
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,6 +78,7 @@ export default function MatchForm() {
       },
     ])
 
+    setIsModalOpen(true)
     if (error) {
       console.error('Error inserting flight data:', error)
       setMessage(`Error: ${error.message}`)
@@ -212,6 +220,13 @@ export default function MatchForm() {
             >
               Match
             </button>
+
+            {/* SubmitSuccess Modal */}
+            <SubmitSuccess
+              isOpen={isModalOpen}
+              route="/questionnaires"
+              onClose={() => setIsModalOpen(false)}
+            />
           </div>
 
           {message && <p className="mt-4 text-center">{message}</p>}

@@ -6,6 +6,7 @@ import { createBrowserClient } from '@/utils/supabase'
 import PickupHeader from '@/components/PickupHeader'
 import RedirectButton from '@/components/RedirectButton'
 import TripToggle from '@/components/questionnaires/ToWhereToggle'
+import SubmitSuccess from '@/components/questionnaires/SubmitSuccess'
 
 export default function EditForm() {
   const pathname = usePathname()
@@ -22,6 +23,12 @@ export default function EditForm() {
   const [budget, setBudget] = useState(50)
   const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
+
+  // handling pop up
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  useEffect(() => {
+    setIsModalOpen(false)
+  }, [])
 
   const supabase = createBrowserClient()
 
@@ -84,6 +91,7 @@ export default function EditForm() {
     } else {
       setMessage('✅ Flight details updated successfully!')
     }
+    setIsModalOpen(true)
   }
 
   return (
@@ -216,6 +224,13 @@ export default function EditForm() {
             >
               Update Flight Info
             </button>
+
+            {/* SubmitSuccess Modal */}
+            <SubmitSuccess
+              isOpen={isModalOpen}
+              route="/questionnaires"
+              onClose={() => setIsModalOpen(false)}
+            />
           </div>
 
           {message && <p className="mt-4 text-center">{message}</p>}
