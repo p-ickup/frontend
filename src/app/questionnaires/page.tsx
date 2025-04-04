@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import PickupHeader from '@/components/PickupHeader'
 import RedirectButton from '@/components/RedirectButton'
 import { createBrowserClient } from '@/utils/supabase'
-import { useRouter } from 'next/router'
 import Image from 'next/image'
 import ConfirmCancel from '@/components/questionnaires/ConfirmCancel'
 
@@ -16,8 +15,9 @@ interface MatchForm {
 
 export default function Questionnaires() {
   const supabase = createBrowserClient()
-  const [matchForms, setMatchForms] = useState<MatchForm[]>([]) // Define state type
+  const [matchForms, setMatchForms] = useState<MatchForm[]>([])
   const [message, setMessage] = useState('')
+  const [modalFlightId, setModalFlightId] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchMatchForms = async () => {
@@ -28,12 +28,12 @@ export default function Questionnaires() {
         return
       }
 
-      const userId = data.user.id // ✅ Correctly access user ID
+      const userId = data.user.id
 
       const { data: matchForms, error } = await supabase
         .from('Flights')
         .select('flight_id, flight_no, date')
-        .eq('user_id', userId) // ✅ Now using correct user ID
+        .eq('user_id', userId)
         .order('date', { ascending: true })
 
       if (error) {
@@ -44,41 +44,42 @@ export default function Questionnaires() {
         )
         setMessage(`Error fetching match forms: ${error.message}`)
       } else {
-        setMatchForms(matchForms as MatchForm[]) // ✅ Ensure TypeScript knows the format
+        setMatchForms(matchForms as MatchForm[])
       }
     }
 
     fetchMatchForms()
   }, [])
 
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const handleDelete = (flightId: string) => {
+    setModalFlightId(flightId) // ✅ Set the specific flight ID
+  }
 
-  const confirmDelete = async (flightId: string) => {
-    // Perform deletion logic here
-    console.log('Form deleted!')
+  const confirmDelete = async () => {
+    if (!modalFlightId) return // Ensure there is a flight ID
+
+    console.log('Deleting flight with ID:', modalFlightId)
     const { error } = await supabase
       .from('Flights')
       .delete()
-      .eq('flight_id', flightId)
+      .eq('flight_id', modalFlightId)
 
     if (error) {
       console.error('Error deleting match form:', error)
       setMessage('Error deleting form.')
     } else {
       setMatchForms((prevForms) =>
-        prevForms.filter((form) => form.flight_id !== flightId),
+        prevForms.filter((form) => form.flight_id !== modalFlightId),
       )
+      console.log(`Flight ${modalFlightId} deleted successfully.`)
     }
-    setIsModalOpen(false)
-  }
 
-  const handleDelete = () => {
-    setIsModalOpen(true)
+    setModalFlightId(null) // ✅ Close modal after deletion
   }
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      {/* Header at the top */}
+      {/* Header */}
       <PickupHeader />
 
       {/* Buttons Section */}
@@ -108,7 +109,8 @@ export default function Questionnaires() {
                     {new Date(form.date).toLocaleDateString('en-US')}
                   </span>
                 </p>
-                {/* Button container aligned to the bottom-right */}
+
+                {/* Button container */}
                 <div className="mt-[-20px] flex items-center justify-end gap-x-4">
                   <RedirectButton
                     label="Edit"
@@ -117,7 +119,7 @@ export default function Questionnaires() {
                     size="px-4 py-2 text-lg"
                   />
                   <button
-                    onClick={() => handleDelete()}
+                    onClick={() => handleDelete(form.flight_id)}
                     className="flex items-center justify-center rounded-lg p-2 hover:bg-red-600"
                   >
                     <Image
@@ -128,13 +130,6 @@ export default function Questionnaires() {
                       className="object-contain"
                     />
                   </button>
-
-                  {/* ConfirmCancel Modal */}
-                  <ConfirmCancel
-                    isOpen={isModalOpen}
-                    onClose={() => setIsModalOpen(false)}
-                    onConfirm={() => confirmDelete(form.flight_id)}
-                  />
                 </div>
               </li>
             ))}
@@ -143,6 +138,13 @@ export default function Questionnaires() {
           <p>No match forms found.</p>
         )}
       </div>
+
+      {/* ConfirmCancel Modal */}
+      <ConfirmCancel
+        isOpen={modalFlightId !== null}
+        onClose={() => setModalFlightId(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }
