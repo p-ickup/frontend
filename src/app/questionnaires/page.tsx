@@ -11,6 +11,7 @@ interface MatchForm {
   flight_id: string
   flight_no: string
   date: string
+  matched: boolean
 }
 
 export default function Questionnaires() {
@@ -32,7 +33,7 @@ export default function Questionnaires() {
 
       const { data: matchForms, error } = await supabase
         .from('Flights')
-        .select('flight_id, flight_no, date')
+        .select('flight_id, flight_no, date, matched')
         .eq('user_id', userId)
         .order('date', { ascending: true })
 
@@ -98,41 +99,49 @@ export default function Questionnaires() {
 
         {matchForms.length > 0 ? (
           <ul className="w-96 rounded-lg bg-white p-4 shadow-md">
-            {matchForms.map((form) => (
-              <li key={form.flight_id} className="relative mb-4 border-b pb-2">
-                <p>
-                  <strong>Flight Number:</strong> {form.flight_no}
-                </p>
-                <p>
-                  <strong>Date: </strong>
-                  <span className="text-lg">
-                    {new Date(form.date).toLocaleDateString('en-US')}
-                  </span>
-                </p>
+            {matchForms
+              .filter(
+                (form) =>
+                  form.matched == false && new Date(form.date) >= new Date(),
+              )
+              .map((form) => (
+                <li
+                  key={form.flight_id}
+                  className="relative mb-4 border-b pb-2"
+                >
+                  <p>
+                    <strong>Flight Number:</strong> {form.flight_no}
+                  </p>
+                  <p>
+                    <strong>Date: </strong>
+                    <span className="text-lg">
+                      {new Date(form.date).toLocaleDateString('en-US')}
+                    </span>
+                  </p>
 
-                {/* Button container */}
-                <div className="mt-[-20px] flex items-center justify-end gap-x-4">
-                  <RedirectButton
-                    label="Edit"
-                    route={`/editForm/${form.flight_id}`}
-                    color="bg-yellow-400"
-                    size="px-4 py-2 text-lg"
-                  />
-                  <button
-                    onClick={() => handleDelete(form.flight_id)}
-                    className="flex items-center justify-center rounded-lg p-2 hover:bg-red-600"
-                  >
-                    <Image
-                      src="/images/trashIcon.webp"
-                      alt="Cancel Pending Match Form"
-                      width={30}
-                      height={30}
-                      className="object-contain"
+                  {/* Button container */}
+                  <div className="mt-[-20px] flex items-center justify-end gap-x-4">
+                    <RedirectButton
+                      label="Edit"
+                      route={`/editForm/${form.flight_id}`}
+                      color="bg-yellow-400"
+                      size="px-4 py-2 text-lg"
                     />
-                  </button>
-                </div>
-              </li>
-            ))}
+                    <button
+                      onClick={() => handleDelete(form.flight_id)}
+                      className="flex items-center justify-center rounded-lg p-2 hover:bg-red-600"
+                    >
+                      <Image
+                        src="/images/trashIcon.webp"
+                        alt="Cancel Pending Match Form"
+                        width={30}
+                        height={30}
+                        className="object-contain"
+                      />
+                    </button>
+                  </div>
+                </li>
+              ))}
           </ul>
         ) : (
           <p>No match forms found.</p>
