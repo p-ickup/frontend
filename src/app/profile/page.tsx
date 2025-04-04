@@ -1,8 +1,8 @@
 'use client'
 
-import PickupHeader from '@/components/PickupHeader'
 import { createBrowserClient } from '@/utils/supabase'
 import { useEffect, useState } from 'react'
+import Image from 'next/image'
 
 export default function Questionnaire() {
   const supabase = createBrowserClient()
@@ -152,8 +152,6 @@ export default function Questionnaire() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      <PickupHeader />
-
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
         <h1 className="mb-4 text-3xl font-bold">
           {hasProfile ? 'Update Profile' : 'Create Profile'}
@@ -240,10 +238,12 @@ export default function Questionnaire() {
                 className="mt-1 w-full rounded border bg-white p-2 text-black"
               />
               {photoUrl && (
-                <img
+                <Image
                   src={photoUrl}
                   alt="Profile"
-                  className="mt-2 h-20 w-20 rounded-full"
+                  width={20}
+                  height={20}
+                  className="mt-2 rounded-full"
                 />
               )}
             </label>
