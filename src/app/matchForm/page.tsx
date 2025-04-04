@@ -78,13 +78,15 @@ export default function MatchForm() {
       },
     ])
 
-    setIsModalOpen(true)
     if (error) {
       console.error('Error inserting flight data:', error)
       setMessage(`Error: ${error.message}`)
-    } else {
-      setMessage('✅ Flight details submitted successfully!')
+      return // Exit early if there's an error
     }
+
+    // Success - Show success modal
+    setIsModalOpen(true)
+    setMessage('✅ Flight details submitted successfully!')
   }
 
   return (
