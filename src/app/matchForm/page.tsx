@@ -1,7 +1,6 @@
 'use client'
 
-import PickupHeader from '@/components/PickupHeader'
-import RedirectButton from '@/components/RedirectButton'
+import RedirectButton from '@/components/buttons/RedirectButton'
 import SubmitSuccess from '@/components/questionnaires/SubmitSuccess'
 import TripToggle from '@/components/questionnaires/ToWhereToggle'
 
@@ -91,8 +90,6 @@ export default function MatchForm() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      <PickupHeader />
-
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
         <h1 className="mb-4 text-3xl font-bold">Flight Information</h1>
         <p className="mb-6">Enter your flight details below.</p>

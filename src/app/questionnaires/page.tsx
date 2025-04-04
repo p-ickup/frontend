@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import PickupHeader from '@/components/PickupHeader'
-import RedirectButton from '@/components/RedirectButton'
+import RedirectButton from '@/components/buttons/RedirectButton'
 import { createBrowserClient } from '@/utils/supabase'
 import Image from 'next/image'
 import ConfirmCancel from '@/components/questionnaires/ConfirmCancel'
@@ -80,8 +79,7 @@ export default function Questionnaires() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      {/* Header */}
-      <PickupHeader />
+      {/* Header at the top */}
 
       {/* Buttons Section */}
       <div className="mt-6 flex flex-col items-center gap-4">

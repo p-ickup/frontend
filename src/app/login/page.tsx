@@ -16,13 +16,32 @@ export default function Login({
     const cookieStore = cookies()
     const supabase = createServerClient(cookieStore)
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
     if (error) {
       return redirect('/login?message=Could not authenticate user')
+    }
+
+    // Fetch user session to get updated metadata
+    const { data: sessionData } = await supabase.auth.getSession()
+
+    if (!sessionData?.session?.user) {
+      return redirect('/login?message=Could not retrieve user session')
+    }
+
+    const user = sessionData.session.user
+    const firstTime = user?.user_metadata?.first_time
+
+    if (firstTime) {
+      // Update metadata to mark first login as completed
+      await supabase.auth.updateUser({
+        data: { first_time: false },
+      })
+
+      return redirect('/profile') // Redirect to profile
     }
 
     return redirect('/')
@@ -37,11 +56,12 @@ export default function Login({
     const cookieStore = cookies()
     const supabase = createServerClient(cookieStore)
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: `${origin}/api/auth/callback`,
+        data: { first_time: true }, // Add metadata to track first-time login
       },
     })
 
@@ -49,14 +69,14 @@ export default function Login({
       return redirect('/login?message=Could not authenticate user')
     }
 
-    return redirect('/login?message=Check email to continue sign in process')
+    return redirect('/login?message=Check email to continue sign-in process')
   }
 
   return (
-    <div className="flex w-full flex-1 flex-col justify-center gap-2 px-8 sm:max-w-md">
+    <div className="h-screen w-auto gap-2 px-8 sm:max-w-md">
       <Link
         href="/"
-        className="bg-btn-background hover:bg-btn-background-hover group absolute left-8 top-8 flex items-center rounded-md px-4 py-2 text-sm text-foreground no-underline"
+        className="bg-btn-background hover:bg-btn-background-hover group flex items-center rounded-md px-4 py-2 text-sm text-foreground no-underline"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
