@@ -1,6 +1,7 @@
 'use client'
 
-import RedirectButton from '@/components/buttons/RedirectButton'
+import PickupHeader from '@/components/PickupHeader'
+import RedirectButton from '@/components/RedirectButton'
 import TripToggle from '@/components/ToWhereToggle'
 
 import { createBrowserClient } from '@/utils/supabase'
@@ -80,6 +81,8 @@ export default function MatchForm() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
+      <PickupHeader />
+
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
         <h1 className="mb-4 text-3xl font-bold">Flight Information</h1>
         <p className="mb-6">Enter your flight details below.</p>

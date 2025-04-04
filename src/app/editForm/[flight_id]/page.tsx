@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/utils/supabase'
-import RedirectButton from '@/components/buttons/RedirectButton'
+import PickupHeader from '@/components/PickupHeader'
+import RedirectButton from '@/components/RedirectButton'
 import TripToggle from '@/components/ToWhereToggle'
 
 export default function EditForm() {
@@ -87,6 +88,7 @@ export default function EditForm() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
+      <PickupHeader />
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
         <h1 className="mb-4 text-3xl font-bold">Edit Flight Information</h1>
         <form

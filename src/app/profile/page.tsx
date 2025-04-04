@@ -1,8 +1,8 @@
 'use client'
 
+import PickupHeader from '@/components/PickupHeader'
 import { createBrowserClient } from '@/utils/supabase'
 import { useEffect, useState } from 'react'
-import Image from 'next/image'
 
 export default function Questionnaire() {
   const supabase = createBrowserClient()
@@ -28,9 +28,7 @@ export default function Questionnaire() {
       } = await supabase.auth.getUser()
 
       if (authError || !user) {
-        setMessage(
-          'You must be logged in to view this page. Please sign in first.',
-        )
+        setMessage('Error: You must be logged in to fetch data!')
         setLoading(false)
         return
       }
@@ -46,7 +44,7 @@ export default function Questionnaire() {
 
       if (error) {
         console.error('Error fetching user data:', error)
-        setMessage(`Please enter your profile information.`)
+        setMessage(`Error fetching data: ${error.message}`)
       } else if (data) {
         console.log('User profile data:', data)
 
@@ -82,9 +80,7 @@ export default function Questionnaire() {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      setMessage(
-        'You must be logged in to submit your profile. Please sign in first.',
-      )
+      setMessage('Error: You must be logged in to submit data!')
       return
     }
 
@@ -98,9 +94,7 @@ export default function Questionnaire() {
 
       if (error) {
         console.error('Storage Upload Error:', error)
-        setMessage(
-          `We couldn't upload your photo. Please ensure it's a valid image file before trying again.`,
-        )
+        setMessage(`Error uploading image: ${error.message}`)
         return
       }
 
@@ -136,14 +130,12 @@ export default function Questionnaire() {
     )
 
     if (error) {
-      setMessage(
-        `Something went wrong while saving your profile. Please check your details and try again.`,
-      )
+      setMessage(`Error: ${error.message}`)
     } else {
       setMessage(
         hasProfile
-          ? 'Profile updated successfully!'
-          : 'Profile created successfully!',
+          ? '✅ Profile updated successfully!'
+          : '✅ Profile created successfully!',
       )
       setHasProfile(true)
       setPhotoUrl(updatedPhotoUrl) // Ensure UI updates with new photo
@@ -152,6 +144,8 @@ export default function Questionnaire() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
+      <PickupHeader />
+
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
         <h1 className="mb-4 text-3xl font-bold">
           {hasProfile ? 'Update Profile' : 'Create Profile'}
@@ -238,12 +232,10 @@ export default function Questionnaire() {
                 className="mt-1 w-full rounded border bg-white p-2 text-black"
               />
               {photoUrl && (
-                <Image
+                <img
                   src={photoUrl}
                   alt="Profile"
-                  width={20}
-                  height={20}
-                  className="mt-2 rounded-full"
+                  className="mt-2 h-20 w-20 rounded-full"
                 />
               )}
             </label>
