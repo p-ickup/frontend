@@ -77,6 +77,27 @@ export default function Questionnaires() {
     setModalFlightId(null) // ✅ Close modal after deletion
   }
 
+  // variables dealing with showing specific forms
+  const today = new Date()
+  today.setHours(0, 0, 0, 0) // Normalize to midnight to avoid timezone issues
+  const threeDaysFromNow = new Date(today)
+  threeDaysFromNow.setDate(today.getDate() + 3) // Add 3 days
+
+  const editableUnmatched = matchForms.filter((form) => {
+    const formDate = new Date(form.date)
+    formDate.setHours(0, 0, 0, 0)
+    return form.matched === false && formDate >= threeDaysFromNow
+  })
+
+  const noneditableUnmatched = matchForms.filter((form) => {
+    const formDate = new Date(form.date)
+    formDate.setHours(0, 0, 0, 0)
+    return (
+      form.matched == false && formDate < threeDaysFromNow && formDate >= today
+    )
+  })
+
+  // DISPLAY!
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
       {/* Header at the top */}
@@ -95,51 +116,80 @@ export default function Questionnaires() {
 
         {message && <p className="mb-4 text-red-500">{message}</p>}
 
-        {matchForms.length > 0 ? (
+        {/* Show forms within 3 days that havent been matched, redirect to Unmatched page*/}
+        {noneditableUnmatched.length > 0 ? (
           <ul className="w-96 rounded-lg bg-white p-4 shadow-md">
-            {matchForms
-              .filter(
-                (form) =>
-                  form.matched == false && new Date(form.date) >= new Date(),
-              )
-              .map((form) => (
-                <li
-                  key={form.flight_id}
-                  className="relative mb-4 border-b pb-2"
-                >
-                  <p>
-                    <strong>Flight Number:</strong> {form.flight_no}
-                  </p>
-                  <p>
-                    <strong>Date: </strong>
-                    <span className="text-lg">
-                      {new Date(form.date).toLocaleDateString('en-US')}
-                    </span>
-                  </p>
+            {noneditableUnmatched.map((form) => (
+              <li key={form.flight_id} className="relative mb-4 border-b pb-2">
+                <h1 className="text-lg">
+                  <strong>‼️‼️We were unable to match you😕:</strong>{' '}
+                </h1>
+                <p>
+                  <strong>Flight Number:</strong> {form.flight_no}
+                </p>
+                <p>
+                  <strong>Date: </strong>
+                  <span className="text-lg">
+                    {new Date(form.date).toLocaleDateString('en-US')}
+                  </span>
+                </p>
 
-                  {/* Button container */}
-                  <div className="mt-[-20px] flex items-center justify-end gap-x-4">
-                    <RedirectButton
-                      label="Edit"
-                      route={`/editForm/${form.flight_id}`}
-                      color="bg-yellow-400"
-                      size="px-4 py-2 text-lg"
+                {/* Button container */}
+                <div className="mt-[-20px] flex items-center justify-end gap-x-4">
+                  <RedirectButton
+                    label="Find others who need a ride!"
+                    route={`/results`} //TODO: direct to the Unmatched page
+                    color="bg-teal-400"
+                    size="px-4 py-2 text-lg"
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p> </p>
+        )}
+
+        <p> ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</p>
+
+        {/* Show forms that can still be edited (3+ days prior to ride share) */}
+        {editableUnmatched.length > 0 ? (
+          <ul className="w-96 rounded-lg bg-white p-4 shadow-md">
+            {editableUnmatched.map((form) => (
+              <li key={form.flight_id} className="relative mb-4 border-b pb-2">
+                <p>
+                  <strong>Flight Number:</strong> {form.flight_no}
+                </p>
+                <p>
+                  <strong>Date: </strong>
+                  <span className="text-lg">
+                    {new Date(form.date).toLocaleDateString('en-US')}
+                  </span>
+                </p>
+
+                {/* Button container */}
+                <div className="mt-[-20px] flex items-center justify-end gap-x-4">
+                  <RedirectButton
+                    label="Edit"
+                    route={`/editForm/${form.flight_id}`}
+                    color="bg-yellow-400"
+                    size="px-4 py-2 text-lg"
+                  />
+                  <button
+                    onClick={() => handleDelete(form.flight_id)}
+                    className="flex items-center justify-center rounded-lg p-2 hover:bg-red-600"
+                  >
+                    <Image
+                      src="/images/trashIcon.webp"
+                      alt="Cancel Pending Match Form"
+                      width={30}
+                      height={30}
+                      className="object-contain"
                     />
-                    <button
-                      onClick={() => handleDelete(form.flight_id)}
-                      className="flex items-center justify-center rounded-lg p-2 hover:bg-red-600"
-                    >
-                      <Image
-                        src="/images/trashIcon.webp"
-                        alt="Cancel Pending Match Form"
-                        width={30}
-                        height={30}
-                        className="object-contain"
-                      />
-                    </button>
-                  </div>
-                </li>
-              ))}
+                  </button>
+                </div>
+              </li>
+            ))}
           </ul>
         ) : (
           <p>No match forms found.</p>
