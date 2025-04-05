@@ -1,10 +1,10 @@
 'use client'
 import RedirectButton from '@/components/buttons/RedirectButton'
-import { useState, useEffect } from 'react'
-import { createBrowserClient } from '@/utils/supabase'
-import type { Database } from '@/lib/database.types'
-import MatchCard from '@/components/results/MatchCard'
 import EmptyState from '@/components/results/EmptyState'
+import MatchCard from '@/components/results/MatchCard'
+import type { Database } from '@/lib/database.types'
+import { createBrowserClient } from '@/utils/supabase'
+import { useEffect, useState } from 'react'
 
 type Tables = Database['public']['Tables']
 type User = Tables['Users']['Row']
@@ -185,6 +185,8 @@ export default function Results() {
                 <EmptyState type="upcoming" />
               )}
             </div>
+
+            <RedirectButton label="View Unmatched Users" route="/unmatched" />
 
             {/* Toggle Previous Matches Button */}
             <button
