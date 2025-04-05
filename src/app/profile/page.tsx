@@ -87,6 +87,13 @@ export default function Questionnaire() {
       )
       return
     }
+    // Basic US phone number regex: allows (123) 456-7890, 123-456-7890, 1234567890, etc.
+    const phoneRegex = /^\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}$/
+
+    if (!phoneRegex.test(phonenumber)) {
+      setMessage('Please enter a valid phone number.')
+      return
+    }
 
     let updatedPhotoUrl = photoUrl // Default to existing photo
 
