@@ -1,8 +1,8 @@
 'use client'
 
 import { createBrowserClient } from '@/utils/supabase'
-import { useEffect, useState } from 'react'
 import Image from 'next/image'
+import { useEffect, useState } from 'react'
 
 export default function Questionnaire() {
   const supabase = createBrowserClient()
@@ -185,6 +185,7 @@ export default function Questionnaire() {
                 value={lastname}
                 onChange={(e) => setLastName(e.target.value)}
                 className="mt-1 w-full rounded border bg-white p-2 text-black"
+                required
               />
             </label>
 
