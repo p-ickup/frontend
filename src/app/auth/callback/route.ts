@@ -5,7 +5,7 @@ import { createServerClient } from '@/utils/supabase'
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
-  const redirectTo = requestUrl.searchParams.get('redirectTo') || '/home' // Default to home
+  const redirectTo = requestUrl.searchParams.get('redirectTo') || '/' // Default to home
 
   if (!code) {
     return NextResponse.redirect(
