@@ -22,7 +22,9 @@ export default function UnmatchedPage() {
     const fetchUnmatched = async () => {
       const { data, error } = await supabase
         .from('Flights')
-        .select('*, Users:Users!Flights_user_id_fkey(firstname, lastname)')
+        .select(
+          '*, Users:Users!Flights_user_id_fkey(firstname, lastname, phonenumber)',
+        )
         .eq('matched', false)
       if (error) {
         console.log('Supabase full error object:', error)
@@ -50,7 +52,7 @@ export default function UnmatchedPage() {
       ) : (
         <ul className="space-y-4">
           {flights.map((flight) => {
-            console.log('flight:', flight) // ✅ your log goes here
+            console.log('flight:', flight)
 
             return (
               <li
@@ -77,6 +79,15 @@ export default function UnmatchedPage() {
                 <p>
                   <strong>Airport:</strong> {flight.airport}
                 </p>
+                <p>
+                  <strong>Phone:</strong>{' '}
+                  {flight.Users ? (
+                    `${flight.Users.phonenumber}`
+                  ) : (
+                    <span className="italic text-red-500">no phone number</span>
+                  )}
+                </p>
+                <p></p>
               </li>
             )
           })}
