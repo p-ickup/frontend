@@ -4,16 +4,14 @@ import { useEffect, useState } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@/utils/supabase'
 import RedirectButton from '@/components/buttons/RedirectButton'
-import TripToggle from '@/components/ToWhereToggle'
+import TripToggle from '@/components/questionnaires/ToWhereToggle'
+import SubmitSuccess from '@/components/questionnaires/SubmitSuccess'
 
 export default function EditForm() {
   const pathname = usePathname()
   const flight_id = pathname.split('/').pop() // Extract ID from URL
 
   const [tripType, setTripType] = useState<boolean>(true) // true = "To Airport", false = "To School"
-  const handleTripSelect = (type: boolean) => {
-    setTripType(type)
-  }
   const [airport, setAirport] = useState('')
   const [flight_no, setFlightNumber] = useState('')
   const [dateOfFlight, setDateOfFlight] = useState('')
@@ -22,7 +20,14 @@ export default function EditForm() {
   const [latestArrival, setLatestArrival] = useState('')
   const [dropoff, setDropoff] = useState(0.5)
   const [budget, setBudget] = useState(50)
+  const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
+
+  // handling pop up
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  useEffect(() => {
+    setIsModalOpen(false)
+  }, [])
 
   const supabase = createBrowserClient()
 
@@ -48,6 +53,7 @@ export default function EditForm() {
         setLatestArrival(data.latest_time)
         setDropoff(data.max_dropoff)
         setBudget(data.max_price)
+        setTerminal(data.terminal)
       }
     }
 
@@ -75,14 +81,19 @@ export default function EditForm() {
         latest_time: latestArrival,
         max_dropoff: dropoff,
         max_price: budget,
+        terminal,
       })
       .eq('flight_id', flight_id)
 
     if (error) {
-      setMessage(`Error updating flight data: ${error.message}`)
-    } else {
-      setMessage('✅ Flight details updated successfully!')
+      console.error('Error inserting flight data:', error)
+      setMessage(`Error: ${error.message}`)
+      return // Exit early if there's an error
     }
+
+    // Success - Show success modal
+    setIsModalOpen(true)
+    setMessage('✅ Flight details updated successfully!')
   }
 
   return (
@@ -94,10 +105,7 @@ export default function EditForm() {
           className="w-96 rounded-lg bg-white p-6 shadow-md"
         >
           <h2>Select Trip Type</h2>
-          <TripToggle onSelect={handleTripSelect} />
-          <p className="mt-2">
-            Selected: {tripType ? 'To Airport' : 'To School'}
-          </p>
+          <TripToggle onSelect={setTripType} />
 
           <label className="mb-2 block">
             Airport:
@@ -113,6 +121,17 @@ export default function EditForm() {
               <option value="LAX">LAX</option>
               <option value="ONT">ONT</option>
             </select>
+          </label>
+
+          <label className="mb-2 block">
+            Terminal:
+            <input
+              type="text"
+              value={terminal}
+              onChange={(e) => setTerminal(e.target.value)}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+              required
+            />
           </label>
 
           <label className="mb-2 block">
@@ -206,6 +225,13 @@ export default function EditForm() {
             >
               Update Flight Info
             </button>
+
+            {/* SubmitSuccess Modal */}
+            <SubmitSuccess
+              isOpen={isModalOpen}
+              route="/questionnaires"
+              onClose={() => setIsModalOpen(false)}
+            />
           </div>
 
           {message && <p className="mt-4 text-center">{message}</p>}
