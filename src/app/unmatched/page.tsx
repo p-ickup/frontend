@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 
 type Tables = Database['public']['Tables']
 type Flight = Tables['Flights']['Row']
-type User = Tables['Users']['Row'] & { email?: string } // add email override
+type User = Tables['Users']['Row'] & { email?: string }
 
 interface FlightWithUser extends Flight {
   Users: User | null
@@ -18,6 +18,9 @@ export default function UnmatchedPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showConfirmation, setShowConfirmation] = useState(false)
+  const [selectedFlight, setSelectedFlight] = useState<FlightWithUser | null>(
+    null,
+  )
 
   useEffect(() => {
     const fetchUnmatched = async () => {
@@ -59,7 +62,7 @@ export default function UnmatchedPage() {
       error: authError,
     } = await supabase.auth.getUser()
 
-    if (authError || !user) return
+    if (authError || !user || !selectedFlight) return
 
     const { error } = await supabase
       .from('Flights')
@@ -72,6 +75,7 @@ export default function UnmatchedPage() {
     }
 
     setShowConfirmation(false)
+    setSelectedFlight(null)
   }
 
   if (loading) return <div className="p-6">Loading...</div>
@@ -79,17 +83,7 @@ export default function UnmatchedPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 text-black">
-      {/* I've been matched button */}
-      <div className="mb-6 flex justify-end">
-        <button
-          className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-          onClick={() => setShowConfirmation(true)}
-        >
-          I&apos;ve been matched
-        </button>
-      </div>
-
-      <h1 className="mb-6 text-2xl font-bold">Unmatched Users</h1>
+      <h1 className="mb-6 text-2xl font-bold">Unmatched Flights</h1>
 
       {flights.length === 0 ? (
         <p>No unmatched flights found.</p>
@@ -98,58 +92,83 @@ export default function UnmatchedPage() {
           {flights.map((flight) => (
             <li
               key={flight.flight_id}
-              className="rounded-lg bg-white p-4 shadow"
+              className="flex items-start justify-between rounded-lg bg-white p-4 shadow"
             >
-              <p>
-                <strong>User:</strong>{' '}
-                {flight.Users ? (
-                  `${flight.Users.firstname} ${flight.Users.lastname}`
-                ) : (
-                  <span className="italic text-red-500">Unknown user</span>
-                )}
-              </p>
+              {/* Left: user and flight info */}
+              <div className="flex-1">
+                <p>
+                  <strong>User:</strong>{' '}
+                  {flight.Users ? (
+                    `${flight.Users.firstname} ${flight.Users.lastname}`
+                  ) : (
+                    <span className="italic text-red-500">Unknown user</span>
+                  )}
+                </p>
 
-              <p>
-                <strong>Email:</strong>{' '}
-                {flight.Users ? (
-                  `${flight.Users.email}`
-                ) : (
-                  <span className="italic text-red-500">Email unknown</span>
-                )}
-              </p>
+                <p>
+                  <strong>Email:</strong>{' '}
+                  {flight.Users ? (
+                    `${flight.Users.email}`
+                  ) : (
+                    <span className="italic text-red-500">Email unknown</span>
+                  )}
+                </p>
 
-              <p>
-                <strong>Flight Date:</strong> {flight.date}
-              </p>
-              <p>
-                <strong>Earliest Time:</strong> {flight.earliest_time}
-              </p>
-              <p>
-                <strong>Latest Time:</strong> {flight.latest_time}
-              </p>
-              <p>
-                <strong>Airport:</strong> {flight.airport}
-              </p>
+                <p>
+                  <strong>Flight Date:</strong> {flight.date}
+                </p>
+                <p>
+                  <strong>Earliest Time:</strong> {flight.earliest_time}
+                </p>
+                <p>
+                  <strong>Latest Time:</strong> {flight.latest_time}
+                </p>
+                <p>
+                  <strong>Airport:</strong> {flight.airport}
+                </p>
+              </div>
+
+              {/* Right: Match button */}
+              <div className="ml-4 mt-2 shrink-0">
+                <button
+                  className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                  onClick={() => {
+                    setSelectedFlight(flight)
+                    setShowConfirmation(true)
+                  }}
+                >
+                  Match
+                </button>
+              </div>
             </li>
           ))}
         </ul>
       )}
 
       {/* Confirmation popup */}
-      {showConfirmation && (
+      {showConfirmation && selectedFlight && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="w-[90%] max-w-md rounded bg-white p-6 shadow-lg">
             <h2 className="mb-4 text-lg font-semibold">
-              I&apos;ve been matched
+              Match with{' '}
+              {selectedFlight.Users
+                ? `${selectedFlight.Users.firstname} ${selectedFlight.Users.lastname}`
+                : 'this user'}
             </h2>
             <p className="mb-6">
-              I have contacted another student and no longer need to be matched
-              through P-ickup.
+              I have contacted{' '}
+              {selectedFlight.Users
+                ? `${selectedFlight.Users.firstname} ${selectedFlight.Users.lastname}`
+                : 'this user'}{' '}
+              and no longer need to be matched through P-ickup.
             </p>
             <div className="flex justify-end space-x-3">
               <button
                 className="rounded border px-4 py-2 hover:bg-gray-100"
-                onClick={() => setShowConfirmation(false)}
+                onClick={() => {
+                  setShowConfirmation(false)
+                  setSelectedFlight(null)
+                }}
               >
                 Close
               </button>
