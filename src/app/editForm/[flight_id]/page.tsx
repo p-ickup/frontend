@@ -1,19 +1,18 @@
-'use client' // Ensure this is at the top
+'use client'
 
-import { useEffect, useState } from 'react'
-import { usePathname, useSearchParams } from 'next/navigation'
-import { createBrowserClient } from '@/utils/supabase'
 import RedirectButton from '@/components/buttons/RedirectButton'
 import TripToggle from '@/components/ToWhereToggle'
+import { createBrowserClient } from '@/utils/supabase'
+import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 export default function EditForm() {
   const pathname = usePathname()
-  const flight_id = pathname.split('/').pop() // Extract ID from URL
+  const flight_id = pathname.split('/').pop()
 
-  const [tripType, setTripType] = useState<boolean>(true) // true = "To Airport", false = "To School"
-  const handleTripSelect = (type: boolean) => {
-    setTripType(type)
-  }
+  const supabase = createBrowserClient()
+
+  const [tripType, setTripType] = useState<boolean>(true)
   const [airport, setAirport] = useState('')
   const [flight_no, setFlightNumber] = useState('')
   const [dateOfFlight, setDateOfFlight] = useState('')
@@ -22,9 +21,12 @@ export default function EditForm() {
   const [latestArrival, setLatestArrival] = useState('')
   const [dropoff, setDropoff] = useState(0.5)
   const [budget, setBudget] = useState(50)
+  const [optInUnmatched, setOptInUnmatched] = useState(false)
   const [message, setMessage] = useState('')
 
-  const supabase = createBrowserClient()
+  const handleTripSelect = (type: boolean) => {
+    setTripType(type)
+  }
 
   useEffect(() => {
     if (!flight_id) return
@@ -48,6 +50,7 @@ export default function EditForm() {
         setLatestArrival(data.latest_time)
         setDropoff(data.max_dropoff)
         setBudget(data.max_price)
+        setOptInUnmatched(!data.matched) // ✅ reflect checkbox state
       }
     }
 
@@ -75,6 +78,7 @@ export default function EditForm() {
         latest_time: latestArrival,
         max_dropoff: dropoff,
         max_price: budget,
+        matched: optInUnmatched ? false : true, // ✅ update matched field
       })
       .eq('flight_id', flight_id)
 
@@ -197,10 +201,21 @@ export default function EditForm() {
             />
           </label>
 
+          {/* ✅ Opt-in Checkbox */}
+          <label className="mb-2 mt-4 block rounded bg-gray-100 p-3">
+            <input
+              type="checkbox"
+              checked={optInUnmatched}
+              onChange={(e) => setOptInUnmatched(e.target.checked)}
+              className="mr-2"
+            />
+            Would you like to opt-in to the unmatched page if P-ickup is unable
+            to match you through our algorithm?
+          </label>
+
           <div className="mt-4 flex justify-between">
             <RedirectButton label="Cancel" route="/questionnaires" />
             <button
-              onClick={handleSubmit}
               type="submit"
               className="mt-4 rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white hover:bg-green-700"
             >
