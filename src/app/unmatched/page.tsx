@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 
 type Tables = Database['public']['Tables']
 type Flight = Tables['Flights']['Row']
-type User = Tables['Users']['Row']
+type User = Tables['Users']['Row'] & { email?: string } // add email override
 
 interface FlightWithUser extends Flight {
   Users: User | null
@@ -35,7 +35,7 @@ export default function UnmatchedPage() {
       const { data, error } = await supabase
         .from('Flights')
         .select(
-          '*, Users:Users!Flights_user_id_fkey(firstname, lastname, phonenumber)',
+          '*, Users:Users!Flights_user_id_fkey(firstname, lastname, email)',
         )
         .eq('matched', false)
 
@@ -108,6 +108,16 @@ export default function UnmatchedPage() {
                   <span className="italic text-red-500">Unknown user</span>
                 )}
               </p>
+
+              <p>
+                <strong>Email:</strong>{' '}
+                {flight.Users ? (
+                  `${flight.Users.email}`
+                ) : (
+                  <span className="italic text-red-500">Email unknown</span>
+                )}
+              </p>
+
               <p>
                 <strong>Flight Date:</strong> {flight.date}
               </p>
@@ -119,14 +129,6 @@ export default function UnmatchedPage() {
               </p>
               <p>
                 <strong>Airport:</strong> {flight.airport}
-              </p>
-              <p>
-                <strong>Phone:</strong>{' '}
-                {flight.Users ? (
-                  `${flight.Users.phonenumber}`
-                ) : (
-                  <span className="italic text-red-500">no phone number</span>
-                )}
               </p>
             </li>
           ))}

@@ -186,7 +186,7 @@ export default function Results() {
               )}
             </div>
 
-            <RedirectButton label="View Unmatched Users" route="/unmatched" />
+            <RedirectButton label="View Unmatched Flights" route="/unmatched" />
 
             {/* Toggle Previous Matches Button */}
             <button
