@@ -14,65 +14,12 @@ interface MatchForm {
 }
 
 export default function Questionnaires() {
-  const supabase = createBrowserClient()
-  const [matchForms, setMatchForms] = useState<MatchForm[]>([]) // Define state type
-  const [message, setMessage] = useState('')
-
-  useEffect(() => {
-    const fetchMatchForms = async () => {
-      const { data, error: authError } = await supabase.auth.getUser()
-
-      if (authError || !data?.user) {
-        setMessage('Error: You must be logged in to view match forms.')
-        return
-      }
-
-      const userId = data.user.id // ✅ Correctly access user ID
-
-      const { data: matchForms, error } = await supabase
-        .from('Flights')
-        .select('flight_id, flight_no, date')
-        .eq('user_id', userId) // ✅ Now using correct user ID
-        .order('date', { ascending: true })
-
-      if (error) {
-        console.error(
-          'Error fetching match forms:',
-          error.message,
-          error.details,
-        )
-        setMessage(`Error fetching match forms: ${error.message}`)
-      } else {
-        setMatchForms(matchForms as MatchForm[]) // ✅ Ensure TypeScript knows the format
-      }
-    }
-
-    fetchMatchForms()
-  }, [])
-
-  const handleDelete = async (flightId: string) => {
-    const { error } = await supabase
-      .from('Flights')
-      .delete()
-      .eq('flight_id', flightId)
-
-    if (error) {
-      console.error('Error deleting match form:', error)
-      setMessage('Error deleting form.')
-    } else {
-      setMatchForms((prevForms) =>
-        prevForms.filter((form) => form.flight_id !== flightId),
-      )
-    }
-  }
-
-  // const router = useRouter()
-  // const createMatch = () => {
-  //   router.push('/matchForms') // This route is for creating a new match
-  // }
-
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
+      {/* Reusable Redirect Button */}
+      <div className="flex min-h-screen w-full items-center justify-center gap-6 bg-gray-100 text-black">
+        <RedirectButton label="Update Profile" route="/profile" />
+        <RedirectButton label="Add New Match" route="/matchForm" />
       {/* Header at the top */}
       <PickupHeader />
 
@@ -84,6 +31,10 @@ export default function Questionnaires() {
         </div>
       </div>
 
+      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
+        <h1 className="mb-4 text-3xl font-bold">
+          This is where we will display Recent Forms!
+        </h1>
       {/* Recent Match Forms */}
       <div className="mt-6 flex w-full flex-col items-center px-4">
         <h1 className="text-2xl font-bold">Recent Match Forms</h1>
@@ -131,6 +82,7 @@ export default function Questionnaires() {
           <p>No match forms found.</p>
         )}
       </div>
+      <PickupFooter />
     </div>
   )
 }
