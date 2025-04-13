@@ -40,10 +40,10 @@ export default function UnmatchedPage() {
         .select(
           '*, Users:Users!Flights_user_id_fkey(firstname, lastname, email)',
         )
-        .eq('matched', false)
+        .eq('opt_in', true) // ✅ Only show users who opted in
 
       if (error) {
-        console.log('Supabase full error object:', error)
+        console.error('Error fetching unmatched flights:', error)
         setError('Error fetching unmatched flights.')
         setLoading(false)
         return
@@ -66,16 +66,19 @@ export default function UnmatchedPage() {
 
     const { error } = await supabase
       .from('Flights')
-      .update({ matched: true })
+      .update({ opt_in: false }) // ✅ Opt out when confirming contact
       .eq('user_id', user.id)
-      .eq('matched', false)
+      .eq('opt_in', true)
 
     if (error) {
-      console.error('Error marking user as matched:', error)
+      console.error('Error opting out:', error)
     }
 
     setShowConfirmation(false)
     setSelectedFlight(null)
+
+    // Optionally remove user's flight from view immediately
+    setFlights((prev) => prev.filter((flight) => flight.user_id !== user.id))
   }
 
   if (loading) return <div className="p-6">Loading...</div>
@@ -94,7 +97,7 @@ export default function UnmatchedPage() {
               key={flight.flight_id}
               className="flex items-start justify-between rounded-lg bg-white p-4 shadow"
             >
-              {/* Left: user and flight info */}
+              {/* Left: User and flight info */}
               <div className="flex-1">
                 <p>
                   <strong>User:</strong>{' '}
@@ -128,7 +131,7 @@ export default function UnmatchedPage() {
                 </p>
               </div>
 
-              {/* Right: Match button */}
+              {/* Right: Send Request Button */}
               <div className="ml-4 mt-2 shrink-0">
                 <button
                   className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
@@ -137,7 +140,7 @@ export default function UnmatchedPage() {
                     setShowConfirmation(true)
                   }}
                 >
-                  Match
+                  Send Request
                 </button>
               </div>
             </li>
@@ -145,12 +148,12 @@ export default function UnmatchedPage() {
         </ul>
       )}
 
-      {/* Confirmation popup */}
+      {/* Confirmation Popup */}
       {showConfirmation && selectedFlight && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="w-[90%] max-w-md rounded bg-white p-6 shadow-lg">
             <h2 className="mb-4 text-lg font-semibold">
-              Match with{' '}
+              Send a match request to{' '}
               {selectedFlight.Users
                 ? `${selectedFlight.Users.firstname} ${selectedFlight.Users.lastname}`
                 : 'this user'}

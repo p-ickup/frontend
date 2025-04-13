@@ -54,7 +54,7 @@ export default function MatchForm() {
         latest_time: latestArrival,
         max_dropoff: dropoff,
         max_price: budget,
-        matched: optInUnmatched ? false : true, // ✅ set matched based on checkbox
+        opt_in: optInUnmatched ? true : false,
       },
     ])
 
@@ -189,7 +189,8 @@ export default function MatchForm() {
               className="mr-2"
             />
             Would you like to opt-in to the unmatched page if P-ickup is unable
-            to match you through our algorithm?
+            to match you through our algorithm? Please note that the unmatched
+            page will display your name, email, and flight information.
           </label>
 
           <div className="mt-4 flex justify-between">
