@@ -56,6 +56,7 @@ export default function PickupHeader() {
       <nav className="flex space-x-4">
         <SimpleRedirectButton label="Questionnaire" route="/questionnaires" />
         <SimpleRedirectButton label="Results" route="/results" />
+        <SimpleRedirectButton label="Feedback" route="/feedback" />
       </nav>
 
       <div className="flex items-center space-x-4">
