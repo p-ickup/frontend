@@ -1,52 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
-import SimpleRedirectButton from './buttons/SimpleRedirectButton'
+import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
 import Image from 'next/image'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-)
+import { useAuth } from '@/hooks/useAuth'
 
 export default function PickupHeader() {
-  const [user, setUser] = useState<any>(null)
-
-  useEffect(() => {
-    // Check auth state
-    const fetchUser = async () => {
-      const { data } = await supabase.auth.getUser()
-      setUser(data?.user)
-    }
-
-    fetchUser()
-
-    // Listen for auth state changes
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user || null)
-      },
-    )
-
-    return () => {
-      listener?.subscription.unsubscribe()
-    }
-  }, [])
-
-  // Login function
-  const handleLogin = async () => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-    })
-    if (error) console.error('Login error:', error)
-  }
-
-  // Logout function
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
-  }
+  const { user, avatarUrl, signInWithGoogle, signOut } = useAuth()
 
   return (
     <header className="flex items-center justify-between bg-gradient-to-r from-teal-500 to-yellow-100 p-2 text-white">
@@ -59,26 +18,33 @@ export default function PickupHeader() {
         <SimpleRedirectButton label="Feedback" route="/feedback" />
       </nav>
 
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center">
         {user ? (
-          <div className="flex items-center space-x-4">
-            <span className="text-sm">{user.email}</span>
-            <button
-              onClick={handleLogout}
-              className="rounded-md border border-white bg-white px-4 py-2 text-sm font-medium text-teal-500 hover:bg-teal-50"
+          <div className="flex items-center gap-2">
+            <div
+              onClick={signOut}
+              className="h-10 w-10 cursor-pointer overflow-hidden rounded-full border-2 border-white"
             >
-              Logout
-            </button>
+              <Image
+                src={avatarUrl || '/images/profileIcon.webp'}
+                alt="Profile"
+                width={40}
+                height={40}
+                className="object-cover"
+              />
+            </div>
           </div>
         ) : (
-          // If the user is not logged in, show the login image and handle login
-          <div onClick={handleLogin} className="cursor-pointer">
+          <div
+            onClick={signInWithGoogle}
+            className="h-10 w-10 cursor-pointer overflow-hidden rounded-full border-2 border-white"
+          >
             <Image
-              src="/images/profileIcon.webp" // Path to your PNG file
-              alt="Login Image"
-              width={100} // Resize as needed
-              height={100} // Resize as needed
-              className="object-contain" // Maintains aspect ratio
+              src="/images/profileIcon.webp"
+              alt="Login"
+              width={40}
+              height={40}
+              className="object-cover"
             />
           </div>
         )}
