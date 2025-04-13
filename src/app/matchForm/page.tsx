@@ -22,7 +22,9 @@ export default function MatchForm() {
   const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
 
-  // handling pop up
+  // handling pop ups
+  const [isBagModalOpen, setIsBagModalOpen] = useState(false)
+
   const [isModalOpen, setIsModalOpen] = useState(false)
   useEffect(() => {
     setIsModalOpen(false)
@@ -44,6 +46,11 @@ export default function MatchForm() {
     if (!flight_no || !numBags || !earliestArrival || !latestArrival) {
       setMessage('Missing information!')
       return
+    }
+
+    if (numBags >= 4 && !isBagModalOpen) {
+      setIsBagModalOpen(true)
+      return // Stop here until user acknowledges the modal
     }
 
     console.log('Submitting flight data:', {
@@ -84,6 +91,43 @@ export default function MatchForm() {
     }
 
     // Success - Show success modal
+    setIsModalOpen(true)
+    setMessage('✅ Flight details submitted successfully!')
+  }
+
+  const continueSubmit = async () => {
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      setMessage('Error: You must be logged in to submit flight details!')
+      return
+    }
+
+    const { data, error } = await supabase.from('Flights').insert([
+      {
+        user_id: user.id,
+        to_airport: tripType ? 1 : 0,
+        airport,
+        flight_no,
+        date: dateOfFlight,
+        bag_no: numBags,
+        earliest_time: earliestArrival,
+        latest_time: latestArrival,
+        max_dropoff: dropoff,
+        max_price: budget,
+        terminal,
+      },
+    ])
+
+    if (error) {
+      console.error('Error inserting flight data:', error)
+      setMessage(`Error: ${error.message}`)
+      return
+    }
+
     setIsModalOpen(true)
     setMessage('✅ Flight details submitted successfully!')
   }
@@ -219,6 +263,28 @@ export default function MatchForm() {
             >
               Match
             </button>
+
+            {/*Handle Bag Pop-up */}
+            {isBagModalOpen && (
+              <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+                <div className="rounded-lg bg-white p-6 text-center shadow-lg">
+                  <h2 className="mb-4 text-xl font-bold">Heads up!</h2>
+                  <p className="mb-4">
+                    You have 4 or more bags. Make sure you are able to handle
+                    this amount of luggage.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setIsBagModalOpen(false)
+                      continueSubmit() // Continue after closing the modal
+                    }}
+                    className="rounded bg-blue-500 px-4 py-2 text-white"
+                  >
+                    Okay, continue
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* SubmitSuccess Modal */}
             <SubmitSuccess
