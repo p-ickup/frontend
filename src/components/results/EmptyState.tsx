@@ -1,4 +1,4 @@
-import RedirectButton from '../RedirectButton'
+import RedirectButton from '@/components/buttons/RedirectButton'
 
 const EmptyState = ({ type }: { type: 'upcoming' | 'previous' }) => {
   return (

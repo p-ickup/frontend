@@ -1,7 +1,7 @@
 'use client'
 
-import PickupHeader from '@/components/PickupHeader'
 import { createBrowserClient } from '@/utils/supabase'
+import Image from 'next/image'
 import { useEffect, useState } from 'react'
 
 export default function Questionnaire() {
@@ -87,6 +87,13 @@ export default function Questionnaire() {
       )
       return
     }
+    // Basic US phone number regex: allows (123) 456-7890, 123-456-7890, 1234567890, etc.
+    const phoneRegex = /^\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}$/
+
+    if (!phoneRegex.test(phonenumber)) {
+      setMessage('Please enter a valid phone number.')
+      return
+    }
 
     let updatedPhotoUrl = photoUrl // Default to existing photo
 
@@ -152,8 +159,6 @@ export default function Questionnaire() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      <PickupHeader />
-
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
         <h1 className="mb-4 text-3xl font-bold">
           {hasProfile ? 'Update Profile' : 'Create Profile'}
@@ -187,6 +192,7 @@ export default function Questionnaire() {
                 value={lastname}
                 onChange={(e) => setLastName(e.target.value)}
                 className="mt-1 w-full rounded border bg-white p-2 text-black"
+                required
               />
             </label>
 
@@ -240,10 +246,12 @@ export default function Questionnaire() {
                 className="mt-1 w-full rounded border bg-white p-2 text-black"
               />
               {photoUrl && (
-                <img
+                <Image
                   src={photoUrl}
                   alt="Profile"
-                  className="mt-2 h-20 w-20 rounded-full"
+                  width={20}
+                  height={20}
+                  className="mt-2 rounded-full"
                 />
               )}
             </label>

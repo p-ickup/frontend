@@ -1,8 +1,8 @@
 'use client'
 
-import PickupHeader from '@/components/PickupHeader'
-import RedirectButton from '@/components/RedirectButton'
-import TripToggle from '@/components/ToWhereToggle'
+import RedirectButton from '@/components/buttons/RedirectButton'
+import SubmitSuccess from '@/components/questionnaires/SubmitSuccess'
+import TripToggle from '@/components/questionnaires/ToWhereToggle'
 
 import { createBrowserClient } from '@/utils/supabase'
 import { useEffect, useState } from 'react'
@@ -11,9 +11,6 @@ export default function MatchForm() {
   const supabase = createBrowserClient()
 
   const [tripType, setTripType] = useState<boolean>(true) // true = "To Airport", false = "To School"
-  const handleTripSelect = (type: boolean) => {
-    setTripType(type)
-  }
   const [airport, setAirport] = useState('')
   const [flight_no, setFlightNumber] = useState('')
   const [dateOfFlight, setDateOfFlight] = useState('')
@@ -22,7 +19,14 @@ export default function MatchForm() {
   const [latestArrival, setLatestArrival] = useState('')
   const [dropoff, setDropoff] = useState(0.5)
   const [budget, setBudget] = useState(50) // New budget default = 50. Can change later
+  const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
+
+  // handling pop up
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  useEffect(() => {
+    setIsModalOpen(false)
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -53,6 +57,7 @@ export default function MatchForm() {
       latestArrival,
       max_dropoff: dropoff,
       budget,
+      terminal,
     })
 
     // Insert data into the Supabase 'Flights' table
@@ -68,21 +73,23 @@ export default function MatchForm() {
         latest_time: latestArrival, // Already in HH:mm format
         max_dropoff: dropoff,
         max_price: budget,
+        terminal,
       },
     ])
 
     if (error) {
       console.error('Error inserting flight data:', error)
       setMessage(`Error: ${error.message}`)
-    } else {
-      setMessage('✅ Flight details submitted successfully!')
+      return // Exit early if there's an error
     }
+
+    // Success - Show success modal
+    setIsModalOpen(true)
+    setMessage('✅ Flight details submitted successfully!')
   }
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      <PickupHeader />
-
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
         <h1 className="mb-4 text-3xl font-bold">Flight Information</h1>
         <p className="mb-6">Enter your flight details below.</p>
@@ -92,21 +99,8 @@ export default function MatchForm() {
           className="w-96 rounded-lg bg-white p-6 shadow-md"
         >
           <h2>Select Trip Type</h2>
-          <TripToggle onSelect={handleTripSelect} />
-          <p className="mt-2">
-            Selected: {tripType ? 'To Airport' : 'To School'}
-          </p>
+          <TripToggle onSelect={setTripType} />
 
-          {/* <label className="mb-2 block">
-            Airport:
-            <input
-              type="text"
-              value={airport}
-              onChange={(e) => setAirport(e.target.value)}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-              required
-            />
-          </label> */}
           <label className="mb-2 block">
             Airport:
             <select
@@ -121,6 +115,17 @@ export default function MatchForm() {
               <option value="LAX">LAX</option>
               <option value="ONT">ONT</option>
             </select>
+          </label>
+
+          <label className="mb-2 block">
+            Terminal:
+            <input
+              type="text"
+              value={terminal}
+              onChange={(e) => setTerminal(e.target.value)}
+              className="mt-1 w-full rounded border bg-white p-2 text-black"
+              required
+            />
           </label>
 
           <label className="mb-2 block">
@@ -214,6 +219,13 @@ export default function MatchForm() {
             >
               Match
             </button>
+
+            {/* SubmitSuccess Modal */}
+            <SubmitSuccess
+              isOpen={isModalOpen}
+              route="/questionnaires"
+              onClose={() => setIsModalOpen(false)}
+            />
           </div>
 
           {message && <p className="mt-4 text-center">{message}</p>}

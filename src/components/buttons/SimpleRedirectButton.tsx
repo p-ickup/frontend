@@ -7,17 +7,13 @@ interface SimpleRedirectButtonProps {
   route: string
 }
 
-const SimpleRedirectButton: React.FC<SimpleRedirectButtonProps> = ({ label, route }) => {
+const SimpleRedirectButton: React.FC<SimpleRedirectButtonProps> = ({
+  label,
+  route,
+}) => {
   const router = useRouter()
 
-  return (
-    <button
-      onClick={() => router.push(route)}
-      
-    >
-      {label}
-    </button>
-  )
+  return <button onClick={() => router.push(route)}>{label}</button>
 }
 
 export default SimpleRedirectButton
