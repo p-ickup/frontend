@@ -3,6 +3,7 @@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useAuth } from '@/hooks/useAuth'
 
 export default function Login({
   searchParams,
@@ -11,25 +12,27 @@ export default function Login({
 }) {
   const supabase = createClientComponentClient()
   const router = useRouter()
-
-  const signInWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`, // Make sure this matches Supabase settings
-      },
-    })
-
-    if (error) {
-      console.error('Google Auth Error:', error.message)
-      alert('Google sign-in failed.')
-    }
-  }
+  const { user, signInWithGoogle } = useAuth()
+  if (user) router.push('/')
 
   return (
-    <div className="flex w-full flex-1 flex-col justify-center gap-2 px-8 sm:max-w-md">
-      <Link href="/" className="absolute left-8 top-8 px-4 py-2 text-sm">
-        Back
+    <div className="mx-96 mt-5 flex flex-col justify-center  gap-2 px-8">
+      <Link href="/" className=" flex gap-4 py-2 text-sm">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M10 19l-7-7m0 0l7-7m-7 7h18"
+          />
+        </svg>
+        Go Back
       </Link>
 
       {/* Sign-In Form for Email/Password */}
@@ -60,7 +63,7 @@ export default function Login({
           type="submit"
           className="mb-2 rounded-md bg-green-700 px-4 py-2 text-white"
         >
-          Sign In
+          Sign In/Register
         </button>
       </form>
 
@@ -92,9 +95,9 @@ export default function Login({
       </button>
 
       {/* Display Messages */}
-      {searchParams?.message && (
+      {/* {searchParams?.message && (
         <p className="mt-4 p-4 text-center">{searchParams.message}</p>
-      )}
+      )} */}
     </div>
   )
 }
