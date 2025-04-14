@@ -63,7 +63,7 @@ export default function Login({
           type="submit"
           className="mb-2 rounded-md bg-green-700 px-4 py-2 text-white"
         >
-          Sign In
+          Sign In/Register
         </button>
       </form>
 
