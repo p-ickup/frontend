@@ -2,6 +2,7 @@
 
 import type { Database } from '@/lib/database.types'
 import { createBrowserClient } from '@/utils/supabase'
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
 type Tables = Database['public']['Tables']
@@ -17,13 +18,14 @@ export default function UnmatchedPage() {
   const [flights, setFlights] = useState<FlightWithUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showConfirmation, setShowConfirmation] = useState(false)
+  const [userId, setUserId] = useState('')
   const [selectedFlight, setSelectedFlight] = useState<FlightWithUser | null>(
     null,
   )
+  const [showConfirmation, setShowConfirmation] = useState(false)
 
   useEffect(() => {
-    const fetchUnmatched = async () => {
+    const fetchData = async () => {
       const {
         data: { user },
         error: authError,
@@ -35,12 +37,15 @@ export default function UnmatchedPage() {
         return
       }
 
+      setUserId(user.id)
+
       const { data, error } = await supabase
         .from('Flights')
         .select(
           '*, Users:Users!Flights_user_id_fkey(firstname, lastname, email)',
         )
-        .eq('opt_in', true) // ✅ Only show users who opted in
+        .eq('opt_in', true)
+        .neq('user_id', user.id)
 
       if (error) {
         console.error('Error fetching unmatched flights:', error)
@@ -53,32 +58,40 @@ export default function UnmatchedPage() {
       setLoading(false)
     }
 
-    fetchUnmatched()
+    fetchData()
   }, [supabase])
 
-  const handleSelfMatch = async () => {
+  const sendMatchRequest = async () => {
+    if (!selectedFlight) return
+
     const {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser()
 
-    if (authError || !user || !selectedFlight) return
+    if (authError || !user) {
+      alert('You must be logged in to send requests.')
+      return
+    }
 
-    const { error } = await supabase
-      .from('Flights')
-      .update({ opt_in: false }) // ✅ Opt out when confirming contact
-      .eq('user_id', user.id)
-      .eq('opt_in', true)
+    const { error } = await supabase.from('MatchRequests').insert([
+      {
+        sender_id: user.id,
+        receiver_id: selectedFlight.user_id,
+        flight_id: selectedFlight.flight_id,
+        status: 'pending',
+      },
+    ])
 
     if (error) {
-      console.error('Error opting out:', error)
+      console.error('Failed to send match request:', error.message)
+      alert('Failed to send request.')
+    } else {
+      alert('Match request sent!')
     }
 
     setShowConfirmation(false)
     setSelectedFlight(null)
-
-    // Optionally remove user's flight from view immediately
-    setFlights((prev) => prev.filter((flight) => flight.user_id !== user.id))
   }
 
   if (loading) return <div className="p-6">Loading...</div>
@@ -86,6 +99,15 @@ export default function UnmatchedPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 text-black">
+      {/* 🔗 Incoming Requests Button */}
+      <div className="mb-6 flex justify-end">
+        <Link href="/MatchRequestsPage">
+          <button className="rounded bg-purple-600 px-4 py-2 text-white hover:bg-purple-700">
+            View Incoming Match Requests
+          </button>
+        </Link>
+      </div>
+
       <h1 className="mb-6 text-2xl font-bold">Unmatched Flights</h1>
 
       {flights.length === 0 ? (
@@ -97,26 +119,17 @@ export default function UnmatchedPage() {
               key={flight.flight_id}
               className="flex items-start justify-between rounded-lg bg-white p-4 shadow"
             >
-              {/* Left: User and flight info */}
               <div className="flex-1">
                 <p>
                   <strong>User:</strong>{' '}
-                  {flight.Users ? (
-                    `${flight.Users.firstname} ${flight.Users.lastname}`
-                  ) : (
-                    <span className="italic text-red-500">Unknown user</span>
-                  )}
+                  {flight.Users
+                    ? `${flight.Users.firstname} ${flight.Users.lastname}`
+                    : 'Unknown user'}
                 </p>
-
                 <p>
                   <strong>Email:</strong>{' '}
-                  {flight.Users ? (
-                    `${flight.Users.email}`
-                  ) : (
-                    <span className="italic text-red-500">Email unknown</span>
-                  )}
+                  {flight.Users?.email || 'Email unknown'}
                 </p>
-
                 <p>
                   <strong>Flight Date:</strong> {flight.date}
                 </p>
@@ -131,7 +144,6 @@ export default function UnmatchedPage() {
                 </p>
               </div>
 
-              {/* Right: Send Request Button */}
               <div className="ml-4 mt-2 shrink-0">
                 <button
                   className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
@@ -159,11 +171,11 @@ export default function UnmatchedPage() {
                 : 'this user'}
             </h2>
             <p className="mb-6">
-              I have contacted{' '}
+              Are you sure you want to send a request to ride with{' '}
               {selectedFlight.Users
                 ? `${selectedFlight.Users.firstname} ${selectedFlight.Users.lastname}`
-                : 'this user'}{' '}
-              and no longer need to be matched through P-ickup.
+                : 'this user'}
+              ?
             </p>
             <div className="flex justify-end space-x-3">
               <button
@@ -173,11 +185,11 @@ export default function UnmatchedPage() {
                   setSelectedFlight(null)
                 }}
               >
-                Close
+                Cancel
               </button>
               <button
-                className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700"
-                onClick={handleSelfMatch}
+                className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                onClick={sendMatchRequest}
               >
                 Confirm
               </button>
