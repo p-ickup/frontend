@@ -48,11 +48,13 @@ export default function Results() {
   const [showPrevious, setShowPrevious] = useState(false)
   const [loading, setLoading] = useState(true)
   const supabase = createBrowserClient()
-  const { user } = useAuth()
+  const { user, isAuthenticated } = useAuth()
 
   useEffect(() => {
     if (user) {
       void fetchMatches()
+    } else {
+      setLoading(false)
     }
   }, [user])
 
@@ -184,6 +186,20 @@ export default function Results() {
       console.error('Error in delete operation:', error)
       throw error
     }
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-screen w-full flex-col bg-gray-50 font-sans text-black">
+        <div className="mx-auto flex w-full max-w-5xl flex-col items-center p-6">
+          <h1 className="mb-8 text-3xl font-bold text-gray-900">
+            Your Matches
+          </h1>
+          <EmptyState type="login" />
+          <RedirectButton label="Back to Home" route="/" />
+        </div>
+      </div>
+    )
   }
 
   return (

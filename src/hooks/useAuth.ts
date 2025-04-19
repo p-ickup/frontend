@@ -70,7 +70,11 @@ export function useAuth() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo:
+          process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL ||
+          (process.env.NODE_ENV === 'production'
+            ? 'https://p-ickup.com/auth/callback'
+            : `${window.location.origin}/auth/callback`),
       },
     })
 
