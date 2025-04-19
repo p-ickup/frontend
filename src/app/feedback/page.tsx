@@ -3,6 +3,7 @@
 import { createBrowserClient } from '@/utils/supabase'
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
+import StarRating from '@/components/feedback/StarRating'
 
 export default function FeedbackForm() {
   const supabase = createBrowserClient()
@@ -15,8 +16,8 @@ export default function FeedbackForm() {
 
   const [rides, setRides] = useState<Ride[]>([])
   const [selectedRide, setSelectedRide] = useState('')
-  const [overall, setOverall] = useState(0)
-  const [convenience, setConvenience] = useState(0)
+  const [overall, setOverall] = useState<number>(0)
+  const [convenience, setConvenience] = useState<number>(0)
   const [comments, setComments] = useState('')
   const [userId, setUserId] = useState('')
 
@@ -102,29 +103,19 @@ export default function FeedbackForm() {
 
           {/* Overall Rating */}
           <label className="mb-2 block font-medium">
-            Overall Rating (1-5):
-            <input
-              type="number"
-              min="1"
-              max="5"
-              value={overall}
-              onChange={(e) => setOverall(Number(e.target.value))}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-              required
+            Overall Rating:
+            <StarRating
+              rating={overall}
+              onChange={(newRating) => setOverall(newRating)}
             />
           </label>
 
           {/* Convenience Rating */}
           <label className="mb-2 block font-medium">
-            Convenience Rating (1-5):
-            <input
-              type="number"
-              min="1"
-              max="5"
-              value={convenience}
-              onChange={(e) => setConvenience(Number(e.target.value))}
-              className="mt-1 w-full rounded border bg-white p-2 text-black"
-              required
+            Convenience Rating:
+            <StarRating
+              rating={convenience}
+              onChange={(newRating) => setConvenience(newRating)}
             />
           </label>
 
