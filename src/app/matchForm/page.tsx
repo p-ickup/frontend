@@ -2,6 +2,7 @@
 
 import RedirectButton from '@/components/buttons/RedirectButton'
 import SubmitSuccess from '@/components/questionnaires/SubmitSuccess'
+import ManyBagsNotice from '@/components/questionnaires/ManyBagsNotice'
 import TripToggle from '@/components/questionnaires/ToWhereToggle'
 
 import { createBrowserClient } from '@/utils/supabase'
@@ -23,7 +24,10 @@ export default function MatchForm() {
   const [message, setMessage] = useState('')
 
   // handling pop ups
-  const [isBagModalOpen, setIsBagModalOpen] = useState(false)
+  const [showManyBagsModal, setShowManyBagsModal] = useState(false)
+  const [pendingSubmit, setPendingSubmit] = useState<React.FormEvent | null>(
+    null,
+  ) // Flag to hold submission until confirmed
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   useEffect(() => {
@@ -48,36 +52,41 @@ export default function MatchForm() {
       return
     }
 
-    if (numBags >= 4 && !isBagModalOpen) {
-      setIsBagModalOpen(true)
-      return // Stop here until user acknowledges the modal
+    if (numBags >= 4) {
+      setPendingSubmit(e)
+      setShowManyBagsModal(true)
+      return
     }
 
-    console.log('Submitting flight data:', {
-      user_id: user.id,
-      to_airport: tripType ? 1 : 0, // Store as 1 (true) or 0 (false)
-      airport,
-      flight_no,
-      dateOfFlight,
-      numBags,
-      earliestArrival,
-      latestArrival,
-      max_dropoff: dropoff,
-      budget,
-      terminal,
-    })
+    await actuallySubmitForm(e)
+  }
 
-    // Insert data into the Supabase 'Flights' table
-    const { data, error } = await supabase.from('Flights').insert([
+  const actuallySubmitForm = async (e: React.FormEvent) => {
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      setMessage('Error: You must be logged in to submit flight details!')
+      return
+    }
+
+    if (!flight_no || !numBags || !earliestArrival || !latestArrival) {
+      setMessage('Missing information!')
+      return
+    }
+
+    const { error } = await supabase.from('Flights').insert([
       {
         user_id: user.id,
-        to_airport: tripType ? 1 : 0, // Store as 1 (true) or 0 (false)
+        to_airport: tripType ? 1 : 0,
         airport,
         flight_no,
         date: dateOfFlight,
         bag_no: numBags,
-        earliest_time: earliestArrival, // Already in HH:mm format
-        latest_time: latestArrival, // Already in HH:mm format
+        earliest_time: earliestArrival,
+        latest_time: latestArrival,
         max_dropoff: dropoff,
         max_price: budget,
         terminal,
@@ -87,10 +96,9 @@ export default function MatchForm() {
     if (error) {
       console.error('Error inserting flight data:', error)
       setMessage(`Error: ${error.message}`)
-      return // Exit early if there's an error
+      return
     }
 
-    // Success - Show success modal
     setIsModalOpen(true)
     setMessage('✅ Flight details submitted successfully!')
   }
@@ -265,27 +273,20 @@ export default function MatchForm() {
             </button>
 
             {/*Handle Bag Pop-up */}
-            {isBagModalOpen && (
-              <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-                <div className="rounded-lg bg-white p-6 text-center shadow-lg">
-                  <h2 className="mb-4 text-xl font-bold">Heads up!</h2>
-                  <p className="mb-4">
-                    You have 4 or more bags. Make sure you are able to handle
-                    this amount of luggage.
-                  </p>
-                  <button
-                    onClick={() => {
-                      setIsBagModalOpen(false)
-                      continueSubmit() // Continue after closing the modal
-                    }}
-                    className="rounded bg-blue-500 px-4 py-2 text-white"
-                  >
-                    Okay, continue
-                  </button>
-                </div>
-              </div>
-            )}
-
+            <ManyBagsNotice
+              open={showManyBagsModal}
+              onConfirm={() => {
+                setShowManyBagsModal(false)
+                if (pendingSubmit) {
+                  actuallySubmitForm(pendingSubmit)
+                  setPendingSubmit(null)
+                }
+              }}
+              onCancel={() => {
+                setShowManyBagsModal(false)
+                setPendingSubmit(null)
+              }}
+            />
             {/* SubmitSuccess Modal */}
             <SubmitSuccess
               isOpen={isModalOpen}
