@@ -130,7 +130,7 @@ export default function Results() {
     }
   }
   return (
-    <div className="flex min-h-screen w-full flex-col bg-gray-50 font-sans text-black">
+    <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-50 font-sans text-black">
       {/* Header at the top */}
 
       <div className="mx-auto flex w-full max-w-5xl flex-col items-center p-6">
@@ -145,10 +145,10 @@ export default function Results() {
             {/* Upcoming Matches Section */}
             <div className="w-full max-w-3xl">
               <h2 className="mb-5 flex items-center gap-2 text-xl font-semibold text-gray-800">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5 text-indigo-600"
+                    className="h-5 w-5 text-teal-600"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"

@@ -99,13 +99,9 @@ export default function Questionnaires() {
 
   // DISPLAY!
   return (
-    <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
+    <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-100 text-black p-16">
       {/* Reusable Redirect Button */}
-      <div className="flex min-h-screen w-full items-center justify-center gap-6 bg-gray-100 text-black">
-        <RedirectButton label="Update Profile" route="/profile" />
-        <RedirectButton label="Add New Match" route="/matchForm" />
-      {/* Header at the top */}
-
+      <div className="flex min-h-[calc(100vh-165px)] w-full items-center justify-center gap-6 bg-gray-100 text-black">
       {/* Buttons Section */}
       <div className="mt-6 flex flex-col items-center gap-4">
         <div className="flex gap-4">
@@ -114,7 +110,7 @@ export default function Questionnaires() {
         </div>
       </div>
 
-      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
+      <div className="flex min-h-[calc(100vh-165px)] w-full flex-col items-center justify-center bg-gray-100 text-black">
         <h1 className="mb-4 text-3xl font-bold">
           This is where we will display Recent Forms!
         </h1>
