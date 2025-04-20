@@ -39,6 +39,12 @@ export type Database = {
           matched: boolean
         }
       }
+      Rides: {
+        Row: {
+          ride_id: number
+          ride_date: string
+        }
+      }
     }
   }
 }

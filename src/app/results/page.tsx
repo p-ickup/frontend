@@ -13,9 +13,15 @@ type Flight = Tables['Flights']['Row']
 type Match = Tables['Matches']['Row']
 
 export interface MatchWithDetails extends Match {
-  Flights: Flight
-  Users: User
+  Flights: Database['public']['Tables']['Flights']['Row']
+  Users: Database['public']['Tables']['Users']['Row']
+  Rides: Database['public']['Tables']['Rides']['Row']
 }
+
+// export interface MatchWithDetails extends Match {
+//   Flights: Flight
+//   Users: User
+// }
 
 interface GroupedMatches {
   upcoming: {
@@ -79,15 +85,16 @@ export default function Results() {
         return
       }
 
-      // Step 2: Get all matches for those rides with user and flight details
+      // Step 2: Get all matches for those rides, including details from the Rides table
       const { data: allMatches, error: matchError } = await supabase
         .from('Matches')
         .select(
           `
-        *,
-        Flights (*),
-        Users (*)
-      `,
+          *,
+          Flights (*),
+          Users (*),
+          Rides (*)
+        `,
         )
         .in(
           'ride_id',
@@ -98,7 +105,7 @@ export default function Results() {
       if (matchError) throw matchError
       if (!allMatches) throw new Error('No matches found')
 
-      // Convert to MatchWithDetails array
+      // Convert to MatchWithDetails array, including Rides
       const matchesWithDetails: MatchWithDetails[] = allMatches.filter(
         (match) => match.user_id !== user.id,
       )
@@ -134,6 +141,83 @@ export default function Results() {
       setLoading(false)
     }
   }
+
+  // const fetchMatches = async () => {
+  //   try {
+  //     setLoading(true)
+
+  //     if (!user) {
+  //       console.error('No authenticated user found')
+  //       return
+  //     }
+
+  //     // Step 1: Find all ride IDs where the user has a match
+  //     const { data: userRideIds, error: rideError } = await supabase
+  //       .from('Matches')
+  //       .select('ride_id')
+  //       .eq('user_id', user.id)
+
+  //     if (rideError) throw rideError
+  //     if (!userRideIds || userRideIds.length === 0) {
+  //       setMatches({ upcoming: {}, previous: {} })
+  //       return
+  //     }
+
+  //     // Step 2: Get all matches for those rides with user and flight details
+  //     const { data: allMatches, error: matchError } = await supabase
+  //       .from('Matches')
+  //       .select(
+  //         `
+  //       *,
+  //       Flights (*),
+  //       Users (*)
+  //     `,
+  //       )
+  //       .in(
+  //         'ride_id',
+  //         userRideIds.map((r) => r.ride_id),
+  //       )
+  //     console.log('All matches:', allMatches)
+
+  //     if (matchError) throw matchError
+  //     if (!allMatches) throw new Error('No matches found')
+
+  //     // Convert to MatchWithDetails array
+  //     const matchesWithDetails: MatchWithDetails[] = allMatches.filter(
+  //       (match) => match.user_id !== user.id,
+  //     )
+
+  //     // Group into upcoming and previous, and then by ride_id
+  //     const now = new Date()
+  //     const grouped = matchesWithDetails.reduce<GroupedMatches>(
+  //       (acc, match) => {
+  //         const matchDate = new Date(match.created_at)
+  //         const rideId = match.ride_id
+
+  //         // Determine if upcoming or previous
+  //         const category = matchDate > now ? 'upcoming' : 'previous'
+
+  //         // Initialize the ride_id array if it doesn't exist
+  //         if (!acc[category][rideId]) {
+  //           acc[category][rideId] = []
+  //         }
+
+  //         // Add the match to the appropriate group
+  //         acc[category][rideId].push(match)
+
+  //         return acc
+  //       },
+  //       { upcoming: {}, previous: {} },
+  //     )
+  //     setMatches(grouped)
+  //     console.log('Grouped matches:', grouped)
+  //   } catch (error) {
+  //     console.error('Error details:', error)
+  //     setMatches({ upcoming: {}, previous: {} })
+  //   } finally {
+  //     setLoading(false)
+  //   }
+  // }
 
   // Function to delete a match
   const deleteMatch = async (rideId: number) => {
