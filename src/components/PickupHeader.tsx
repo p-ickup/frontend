@@ -1,51 +1,27 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
-import SimpleRedirectButton from './buttons/SimpleRedirectButton'
+import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
 import Image from 'next/image'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-)
+import { useAuth } from '@/hooks/useAuth'
+import { useRouter } from 'next/navigation'
 
 export default function PickupHeader() {
-  const [user, setUser] = useState<any>(null)
+  const { user, avatarUrl, signOut } = useAuth()
+  const router = useRouter()
 
-  useEffect(() => {
-    // Check auth state
-    const fetchUser = async () => {
-      const { data } = await supabase.auth.getUser()
-      setUser(data?.user)
+  const handleProfileClick = () => {
+    if (user) {
+      router.push('/profile')
+    } else {
+      router.push('/login')
     }
-
-    fetchUser()
-
-    // Listen for auth state changes
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user || null)
-      },
-    )
-
-    return () => {
-      listener?.subscription.unsubscribe()
-    }
-  }, [])
-
-  // Login function
-  const handleLogin = async () => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-    })
-    if (error) console.error('Login error:', error)
   }
 
-  // Logout function
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
+  const handleSignOut = async () => {
+    const { error } = await signOut()
+    if (!error) {
+      router.refresh()
+    }
   }
 
   return (
@@ -58,26 +34,56 @@ export default function PickupHeader() {
         <SimpleRedirectButton label="Results" route="/results" />
       </nav>
 
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center gap-4">
         {user ? (
-          <div className="flex items-center space-x-4">
-            <span className="text-sm">{user.email}</span>
+          <>
+            <div className="flex items-center gap-2">
+              <div
+                onClick={handleProfileClick}
+                className="h-10 w-10 cursor-pointer overflow-hidden rounded-full border-2 border-white transition-colors hover:border-indigo-300"
+              >
+                <Image
+                  src={avatarUrl || '/images/profileIcon.webp'}
+                  alt="Profile"
+                  width={40}
+                  height={40}
+                  className="object-cover"
+                />
+              </div>
+            </div>
             <button
-              onClick={handleLogout}
-              className="rounded-md border border-white bg-white px-4 py-2 text-sm font-medium text-teal-500 hover:bg-teal-50"
+              onClick={handleSignOut}
+              className="flex items-center gap-1 rounded-lg border border-red-200 bg-white 
+                px-3 py-1.5 text-sm font-medium text-red-500 transition-colors hover:bg-red-50 active:bg-red-100"
             >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                />
+              </svg>
               Logout
             </button>
-          </div>
+          </>
         ) : (
-          // If the user is not logged in, show the login image and handle login
-          <div onClick={handleLogin} className="cursor-pointer">
+          <div
+            onClick={handleProfileClick}
+            className="cursor-pointer overflow-hidden rounded-full border-2 border-white transition-colors hover:border-indigo-300"
+          >
             <Image
-              src="/images/profileIcon.webp" // Path to your PNG file
-              alt="Login Image"
-              width={100} // Resize as needed
-              height={100} // Resize as needed
-              className="object-contain" // Maintains aspect ratio
+              src="/images/profileIcon.webp"
+              alt="Login"
+              width={40}
+              height={40}
+              className="object-cover"
             />
           </div>
         )}
