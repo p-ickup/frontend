@@ -275,10 +275,7 @@ export default function Results() {
                           upcoming={true}
                           onDelete={deleteMatch}
                         />
-                        <CommentSection
-                          comments={matchesForRide[0].Comments}
-                          rideId={parseInt(rideId)}
-                        />
+                        <CommentSection rideId={parseInt(rideId)} />
                       </div>
                     ),
                   )

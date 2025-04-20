@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createBrowserClient } from '@/utils/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import type { Database } from '@/lib/database.types'
@@ -8,23 +8,23 @@ import type { Database } from '@/lib/database.types'
 type Comment = Database['public']['Tables']['Comments']['Row']
 type User = Database['public']['Tables']['Users']['Row']
 
-// Extend Comment to include optional joined user data
 type CommentWithUser = Comment & {
   user?: User
 }
 
-export default function CommentSection({
-  comments,
-  rideId,
-}: {
-  comments: CommentWithUser[]
-  rideId: number
-}) {
+export default function CommentSection({ rideId }: { rideId: number }) {
   const [newComment, setNewComment] = useState('')
-  const [commentList, setCommentList] = useState<CommentWithUser[]>(comments)
+  const [commentList, setCommentList] = useState<CommentWithUser[]>([])
   const supabase = createBrowserClient()
   const { user } = useAuth()
   const [userDetails, setUserDetails] = useState<User | null>(null)
+
+  const bottomRef = useRef<HTMLDivElement | null>(null)
+
+  // Auto-scroll to bottom when comments update
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [commentList])
 
   useEffect(() => {
     if (user?.id) {
@@ -48,28 +48,40 @@ export default function CommentSection({
     }
   }, [user?.id])
 
+  useEffect(() => {
+    const fetchComments = async () => {
+      const { data, error } = await supabase
+        .from('Comments')
+        .select('*, user:Users(user_id, firstname)')
+        .eq('ride_id', rideId)
+        .order('created_at', { ascending: true })
+
+      if (error) {
+        console.error('Error fetching comments:', error)
+      } else {
+        setCommentList(data)
+      }
+    }
+
+    fetchComments()
+  }, [rideId])
+
   const handleAddComment = async () => {
     const trimmed = newComment.trim()
     if (!trimmed || !user || !userDetails) return
 
-    // Optimistic update placeholder with a temporary id
     const optimisticComment: CommentWithUser = {
-      id: -1, // Add a temporary id for optimistic update
+      id: -1,
       ride_id: rideId,
       user_id: user.id,
       comment: trimmed,
       created_at: new Date().toISOString(),
-      user: userDetails, // Using full user details
+      user: userDetails,
     }
 
-    // Update state optimistically
     setCommentList((prev) => [...prev, optimisticComment])
     setNewComment('')
 
-    // const { data: userData, error: userError } = await supabase.auth.getUser();
-    // console.log("Auth user:", userData?.user);
-
-    // console.log("Inserting with userId:", user.id);
     const { data, error } = await supabase
       .from('Comments')
       .insert({
@@ -77,20 +89,26 @@ export default function CommentSection({
         user_id: user.id,
         comment: trimmed,
       })
-      .select('*, user:Users(user_id, firstname)') // You can adjust the select query as needed
+      .select('*, user:Users(user_id, firstname)')
       .single()
 
     if (error || !data) {
       console.error('Error adding comment:', error)
-      // Rollback optimistic update by removing the temporary comment
       setCommentList((prev) =>
         prev.filter((c) => c.id !== optimisticComment.id),
       )
     } else {
-      // Replace temp comment with actual one
-      setCommentList((prev) =>
-        prev.map((c) => (c.id === optimisticComment.id ? data : c)),
-      )
+      const { data: updatedComments, error: refetchError } = await supabase
+        .from('Comments')
+        .select('*, user:Users(user_id, firstname)')
+        .eq('ride_id', rideId)
+        .order('created_at', { ascending: true })
+
+      if (refetchError) {
+        console.error('Error refetching comments:', refetchError)
+      } else {
+        setCommentList(updatedComments)
+      }
     }
   }
 
@@ -112,6 +130,7 @@ export default function CommentSection({
         ) : (
           <p className="text-sm text-gray-500">No messages yet.</p>
         )}
+        <div ref={bottomRef} /> {/* 👈 Auto-scroll target */}
       </div>
       <div className="mt-auto flex border-t border-gray-200 px-3 py-2">
         <input
