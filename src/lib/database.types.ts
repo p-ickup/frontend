@@ -39,6 +39,15 @@ export type Database = {
           matched: boolean
         }
       }
+      Comments: {
+        Row: {
+          id: number
+          created_at: string
+          ride_id: number
+          user_id: string
+          comment: string
+        }
+      }
     }
   }
 }

@@ -1,4 +1,5 @@
 'use client'
+import CommentSection from '@/components/results/CommentSection'
 import RedirectButton from '@/components/buttons/RedirectButton'
 import { useState, useEffect } from 'react'
 import { createBrowserClient } from '@/utils/supabase'
@@ -13,8 +14,9 @@ type Flight = Tables['Flights']['Row']
 type Match = Tables['Matches']['Row']
 
 export interface MatchWithDetails extends Match {
-  Flights: Flight
-  Users: User
+  Flights: Database['public']['Tables']['Flights']['Row']
+  Users: Database['public']['Tables']['Users']['Row']
+  Comments: Database['public']['Tables']['Comments']['Row'][] // Add this line
 }
 
 interface GroupedMatches {
@@ -52,6 +54,7 @@ export default function Results() {
 
   useEffect(() => {
     if (user) {
+      // console.log('Current User ID:', user.id);
       void fetchMatches()
     } else {
       setLoading(false)
@@ -86,13 +89,33 @@ export default function Results() {
           `
         *,
         Flights (*),
-        Users (*)
+        Users (*),
+        Comments (
+          *,
+          Users (
+            firstname
+          )
+        )
       `,
         )
         .in(
           'ride_id',
           userRideIds.map((r) => r.ride_id),
         )
+
+      // const { data: allMatches, error: matchError } = await supabase
+      //   .from('Matches')
+      //   .select(
+      //     `
+      //   *,
+      //   Flights (*),
+      //   Users (*)
+      // `,
+      //   )
+      //   .in(
+      //     'ride_id',
+      //     userRideIds.map((r) => r.ride_id),
+      //   )
       console.log('All matches:', allMatches)
 
       if (matchError) throw matchError
@@ -246,14 +269,30 @@ export default function Results() {
                   // Render a MatchCard for each group of matches with the same ride_id
                   return Object.entries(groupedUpcoming).map(
                     ([rideId, matchesForRide]) => (
-                      <MatchCard
-                        key={rideId}
-                        matches={matchesForRide}
-                        upcoming={true}
-                        onDelete={deleteMatch}
-                      />
+                      <div key={rideId} className="mb-8">
+                        <MatchCard
+                          matches={matchesForRide}
+                          upcoming={true}
+                          onDelete={deleteMatch}
+                        />
+                        <CommentSection
+                          comments={matchesForRide[0].Comments}
+                          rideId={parseInt(rideId)}
+                        />
+                      </div>
                     ),
                   )
+
+                  // return Object.entries(groupedUpcoming).map(
+                  //   ([rideId, matchesForRide]) => (
+                  //     <MatchCard
+                  //       key={rideId}
+                  //       matches={matchesForRide}
+                  //       upcoming={true}
+                  //       onDelete={deleteMatch}
+                  //     />
+                  //   ),
+                  // )
                 })()
               ) : (
                 <EmptyState type="upcoming" />
