@@ -268,7 +268,7 @@ export default function Questionnaire() {
 
             <button
               type="submit"
-              className="w-full rounded bg-blue-600 p-2 text-white hover:bg-blue-700"
+              className="w-full rounded bg-teal-500 p-2 text-white hover:bg-teal-600"
             >
               {hasProfile ? 'Update Profile' : 'Create Profile'}
             </button>
