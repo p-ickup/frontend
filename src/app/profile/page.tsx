@@ -167,11 +167,13 @@ export default function Questionnaire() {
                 <option value="" disabled>
                   Select your school
                 </option>
-                <option value="Pomona">Pomona</option>
-                <option value="Claremont McKenna">Claremont McKenna</option>
-                <option value="Harvey Mudd">Harvey Mudd</option>
-                <option value="Scripps">Scripps</option>
-                <option value="Pitzer">Pitzer</option>
+                <option value="Pomona College">Pomona</option>
+                <option value="Claremont McKenna College">
+                  Claremont McKenna
+                </option>
+                <option value="Harvey Mudd College">Harvey Mudd</option>
+                <option value="Scripps College">Scripps</option>
+                <option value="Pitzer College">Pitzer</option>
               </select>
             </label>
 
