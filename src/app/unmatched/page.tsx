@@ -7,22 +7,30 @@ import { useEffect, useState } from 'react'
 
 type Tables = Database['public']['Tables']
 type Flight = Tables['Flights']['Row']
-type User = Tables['Users']['Row'] & { email?: string }
+type User = Tables['Users']['Row']
 
 interface FlightWithUser extends Flight {
   Users: User | null
 }
 
+interface GroupedMatch {
+  ride_id: number
+  flights: FlightWithUser[]
+}
+
 export default function UnmatchedPage() {
   const supabase = createBrowserClient()
   const [flights, setFlights] = useState<FlightWithUser[]>([])
+  const [groups, setGroups] = useState<GroupedMatch[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [userId, setUserId] = useState('')
   const [selectedFlight, setSelectedFlight] = useState<FlightWithUser | null>(
     null,
   )
+  const [selectedGroup, setSelectedGroup] = useState<GroupedMatch | null>(null)
   const [showConfirmation, setShowConfirmation] = useState(false)
+  const [userEligible, setUserEligible] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -39,31 +47,72 @@ export default function UnmatchedPage() {
 
       setUserId(user.id)
 
-      const { data, error } = await supabase
+      const { data: myStatus, error: myStatusError } = await supabase
         .from('Flights')
-        .select(
-          '*, Users:Users!Flights_user_id_fkey(firstname, lastname, email)',
-        )
+        .select('matched, opt_in')
+        .eq('user_id', user.id)
+        .limit(1)
+        .single()
+
+      if (
+        !myStatusError &&
+        myStatus?.matched === false &&
+        myStatus?.opt_in === true
+      ) {
+        setUserEligible(true)
+      }
+
+      const { data: flightData, error: flightError } = await supabase
+        .from('Flights')
+        .select('*, Users:Users!Flights_user_id_fkey(firstname, lastname)')
         .eq('opt_in', true)
+        .eq('matched', false)
         .neq('user_id', user.id)
 
-      if (error) {
-        console.error('Error fetching unmatched flights:', error)
-        setError('Error fetching unmatched flights.')
+      const { data: matchData, error: matchError } = await supabase
+        .from('Matches')
+        .select(
+          'ride_id, flight_id, flight:Flights(*, Users(firstname, lastname))',
+        )
+
+      if (flightError || matchError) {
+        console.error('Error fetching data:', flightError || matchError)
+        setError('Error fetching flight or match data.')
         setLoading(false)
         return
       }
 
-      setFlights(data || [])
+      setFlights(flightData || [])
+
+      const reduced = (matchData as any[]).reduce(
+        (acc, match) => {
+          const rideId = match.ride_id
+          if (!acc[rideId]) acc[rideId] = { ride_id: rideId, flights: [] }
+          if (match.flight && Array.isArray(match.flight)) {
+            acc[rideId].flights.push(...match.flight)
+          } else if (match.flight) {
+            acc[rideId].flights.push(match.flight)
+          }
+          return acc
+        },
+        {} as Record<number, GroupedMatch>,
+      )
+
+      const grouped = (Object.values(reduced) as GroupedMatch[]).filter(
+        (group) => group.flights.length < 4,
+      )
+
+      setGroups(grouped)
       setLoading(false)
     }
 
     fetchData()
   }, [supabase])
 
-  const sendMatchRequest = async () => {
-    if (!selectedFlight) return
-
+  const sendMatchRequest = async (
+    receiverId: string,
+    receiverFlightId: number,
+  ) => {
     const {
       data: { user },
       error: authError,
@@ -74,11 +123,25 @@ export default function UnmatchedPage() {
       return
     }
 
+    const { data: myFlight, error: myFlightError } = await supabase
+      .from('Flights')
+      .select('flight_id')
+      .eq('user_id', user.id)
+      .eq('matched', false)
+      .limit(1)
+      .single()
+
+    if (myFlightError || !myFlight) {
+      alert('Could not find your unmatched flight.')
+      return
+    }
+
     const { error } = await supabase.from('MatchRequests').insert([
       {
         sender_id: user.id,
-        receiver_id: selectedFlight.user_id,
-        flight_id: selectedFlight.flight_id,
+        receiver_id: receiverId,
+        sender_flight_id: myFlight.flight_id,
+        receiver_flight_id: receiverFlightId,
         status: 'pending',
       },
     ])
@@ -92,6 +155,7 @@ export default function UnmatchedPage() {
 
     setShowConfirmation(false)
     setSelectedFlight(null)
+    setSelectedGroup(null)
   }
 
   if (loading) return <div className="p-6">Loading...</div>
@@ -99,7 +163,6 @@ export default function UnmatchedPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 text-black">
-      {/* 🔗 Incoming Requests Button */}
       <div className="mb-6 flex justify-end">
         <Link href="/MatchRequestsPage">
           <button className="rounded bg-purple-600 px-4 py-2 text-white hover:bg-purple-700">
@@ -108,7 +171,40 @@ export default function UnmatchedPage() {
         </Link>
       </div>
 
-      <h1 className="mb-6 text-2xl font-bold">Unmatched Flights</h1>
+      <h1 className="mb-6 text-2xl font-bold">
+        Match Groups (Under 4 Members)
+      </h1>
+
+      {groups.map((group) => (
+        <div key={group.ride_id} className="mb-6 rounded bg-white p-4 shadow">
+          <h2 className="text-lg font-semibold">
+            Group Ride ID: {group.ride_id}
+          </h2>
+          <ul className="mt-2">
+            {group.flights.map((flight, index) => (
+              <li key={index} className="text-sm text-gray-800">
+                {flight.Users?.firstname} {flight.Users?.lastname} —{' '}
+                {flight.airport} on {flight.date} ({flight.earliest_time} -{' '}
+                {flight.latest_time})
+              </li>
+            ))}
+          </ul>
+          <button
+            className={`mt-3 rounded px-4 py-2 text-white ${userEligible ? 'bg-blue-600 hover:bg-blue-700' : 'cursor-not-allowed bg-gray-300'}`}
+            disabled={!userEligible}
+            onClick={() => {
+              if (userEligible) {
+                setSelectedGroup(group)
+                setShowConfirmation(true)
+              }
+            }}
+          >
+            {userEligible ? 'Request to Join' : 'Already Matched'}
+          </button>
+        </div>
+      ))}
+
+      <h1 className="mb-6 mt-10 text-2xl font-bold">Unmatched Flights</h1>
 
       {flights.length === 0 ? (
         <p>No unmatched flights found.</p>
@@ -127,10 +223,6 @@ export default function UnmatchedPage() {
                     : 'Unknown user'}
                 </p>
                 <p>
-                  <strong>Email:</strong>{' '}
-                  {flight.Users?.email || 'Email unknown'}
-                </p>
-                <p>
                   <strong>Flight Date:</strong> {flight.date}
                 </p>
                 <p>
@@ -146,13 +238,16 @@ export default function UnmatchedPage() {
 
               <div className="ml-4 mt-2 shrink-0">
                 <button
-                  className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                  className={`rounded px-4 py-2 text-white ${userEligible ? 'bg-blue-600 hover:bg-blue-700' : 'cursor-not-allowed bg-gray-300'}`}
+                  disabled={!userEligible}
                   onClick={() => {
-                    setSelectedFlight(flight)
-                    setShowConfirmation(true)
+                    if (userEligible) {
+                      setSelectedFlight(flight)
+                      setShowConfirmation(true)
+                    }
                   }}
                 >
-                  Send Request
+                  {userEligible ? 'Send Request' : 'Already Matched'}
                 </button>
               </div>
             </li>
@@ -160,7 +255,6 @@ export default function UnmatchedPage() {
         </ul>
       )}
 
-      {/* Confirmation Popup */}
       {showConfirmation && selectedFlight && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="w-[90%] max-w-md rounded bg-white p-6 shadow-lg">
@@ -189,7 +283,46 @@ export default function UnmatchedPage() {
               </button>
               <button
                 className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-                onClick={sendMatchRequest}
+                onClick={() =>
+                  sendMatchRequest(
+                    selectedFlight.user_id,
+                    selectedFlight.flight_id,
+                  )
+                }
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showConfirmation && selectedGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-[90%] max-w-md rounded bg-white p-6 shadow-lg">
+            <h2 className="mb-4 text-lg font-semibold">
+              Send a match request to the group (via{' '}
+              {selectedGroup.flights[0].Users?.firstname}{' '}
+              {selectedGroup.flights[0].Users?.lastname})?
+            </h2>
+            <div className="flex justify-end space-x-3">
+              <button
+                className="rounded border px-4 py-2 hover:bg-gray-100"
+                onClick={() => {
+                  setShowConfirmation(false)
+                  setSelectedGroup(null)
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                onClick={() =>
+                  sendMatchRequest(
+                    selectedGroup.flights[0].user_id,
+                    selectedGroup.flights[0].flight_id,
+                  )
+                }
               >
                 Confirm
               </button>

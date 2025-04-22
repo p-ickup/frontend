@@ -3,18 +3,9 @@
 import { createBrowserClient } from '@/utils/supabase'
 import { useEffect, useState } from 'react'
 
-type MatchRequest = {
-  id: string
-  sender_id: string
-  receiver_id: string
-  flight_id: number
-  status: 'pending' | 'accepted' | 'rejected'
-  created_at: string
-}
-
 export default function MatchRequestsPage() {
   const supabase = createBrowserClient()
-  const [requests, setRequests] = useState<MatchRequest[]>([])
+  const [requests, setRequests] = useState<any[]>([])
   const [userId, setUserId] = useState<string>('')
 
   useEffect(() => {
@@ -30,11 +21,17 @@ export default function MatchRequestsPage() {
       }
 
       setUserId(user.id)
-      console.log('Logged-in user ID:', user.id)
 
       const { data, error: fetchError } = await supabase
         .from('MatchRequests')
-        .select('*')
+        .select(
+          `*,
+          sender_flight:Flights!MatchRequests_sender_flight_id_fkey(
+            flight_id, airport, earliest_time, latest_time, date, user_id,
+            Users (firstname, lastname)
+          )
+        `,
+        )
         .eq('receiver_id', user.id)
         .eq('status', 'pending')
 
@@ -43,28 +40,120 @@ export default function MatchRequestsPage() {
         return
       }
 
-      console.log('Raw pending requests for this user:', data)
       setRequests(data || [])
     }
 
     load()
   }, [])
 
-  const updateRequest = async (
-    id: string,
-    newStatus: 'accepted' | 'rejected',
-    senderId: string,
-  ) => {
-    const { error } = await supabase
+  const handleAccept = async (req: any) => {
+    const { id, sender_id, sender_flight_id, receiver_flight_id } = req
+
+    const { error: updateStatusErr } = await supabase
       .from('MatchRequests')
-      .update({ status: newStatus })
+      .update({ status: 'accepted' })
       .eq('id', id)
 
-    if (!error && newStatus === 'accepted') {
+    if (updateStatusErr) {
+      console.error('Failed to update status:', updateStatusErr)
+      return
+    }
+
+    // 🔍 Check if receiver is already matched to a ride_id
+    const { data: existingReceiverMatch, error: receiverMatchErr } =
       await supabase
-        .from('Flights')
-        .update({ matched: true })
-        .in('user_id', [userId, senderId])
+        .from('Matches')
+        .select('ride_id')
+        .eq('user_id', userId)
+        .limit(1)
+        .single()
+
+    const useRideId =
+      !receiverMatchErr && existingReceiverMatch?.ride_id
+        ? existingReceiverMatch.ride_id
+        : (() => {
+            // Otherwise, create new ride_id from max + 1
+            return supabase
+              .from('Matches')
+              .select('ride_id')
+              .order('ride_id', { ascending: false })
+              .limit(1)
+              .then((res) => (res.data?.[0]?.ride_id ?? 0) + 1)
+          })()
+
+    let finalRideId: number
+
+    if (typeof useRideId === 'number') {
+      finalRideId = useRideId
+    } else {
+      finalRideId = await useRideId
+    }
+
+    const created_at = new Date().toISOString()
+
+    // 👇 Insert only sender to that ride
+    const insertRes = await supabase.from('Matches').insert([
+      {
+        ride_id: finalRideId,
+        user_id: sender_id,
+        flight_id: sender_flight_id,
+        created_at,
+      },
+    ])
+
+    if (insertRes.error) {
+      console.error('Error inserting matches:', insertRes.error)
+      return
+    }
+
+    // ✅ Update both flights to matched = true
+    const updateSender = await supabase
+      .from('Flights')
+      .update({ matched: true })
+      .eq('flight_id', sender_flight_id)
+
+    const updateReceiver = await supabase
+      .from('Flights')
+      .update({ matched: true })
+      .eq('flight_id', receiver_flight_id)
+
+    if (updateSender.error || updateReceiver.error) {
+      console.error(
+        'Failed to update matched flags:',
+        updateSender.error,
+        updateReceiver.error,
+      )
+    } else {
+      console.log('Flights updated to matched')
+    }
+
+    // 🗑️ Delete the MatchRequest row
+    const { error: deleteRequestErr } = await supabase
+      .from('MatchRequests')
+      .delete()
+      .eq('id', id)
+
+    if (deleteRequestErr) {
+      console.error(
+        'Failed to delete MatchRequest after match:',
+        deleteRequestErr,
+      )
+    } else {
+      console.log('MatchRequest deleted after match')
+    }
+
+    setRequests((prev) => prev.filter((r) => r.id !== id))
+  }
+
+  const handleReject = async (id: string) => {
+    const { error } = await supabase
+      .from('MatchRequests')
+      .update({ status: 'rejected' })
+      .eq('id', id)
+
+    if (error) {
+      console.error('Failed to reject request:', error)
+      return
     }
 
     setRequests((prev) => prev.filter((r) => r.id !== id))
@@ -80,26 +169,32 @@ export default function MatchRequestsPage() {
         <ul className="space-y-4">
           {requests.map((req) => (
             <li key={req.id} className="rounded bg-white p-4 shadow">
-              <p className="text-lg">
-                <strong>{req.sender_id}</strong> wants to ride with you.
+              <p className="text-lg font-semibold">
+                {req.sender_flight?.Users?.firstname}{' '}
+                {req.sender_flight?.Users?.lastname} wants to ride with you.
               </p>
-              <p className="text-sm text-gray-600">
-                Flight ID: {req.flight_id}
+              <p className="text-sm text-gray-700">
+                Flight Date: {req.sender_flight?.date}
+              </p>
+              <p className="text-sm text-gray-700">
+                Airport: {req.sender_flight?.airport}
+              </p>
+              <p className="text-sm text-gray-700">
+                Earliest: {req.sender_flight?.earliest_time}
+              </p>
+              <p className="text-sm text-gray-700">
+                Latest: {req.sender_flight?.latest_time}
               </p>
               <div className="mt-3 flex gap-3">
                 <button
                   className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700"
-                  onClick={() =>
-                    updateRequest(req.id, 'accepted', req.sender_id)
-                  }
+                  onClick={() => handleAccept(req)}
                 >
                   Accept
                 </button>
                 <button
                   className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
-                  onClick={() =>
-                    updateRequest(req.id, 'rejected', req.sender_id)
-                  }
+                  onClick={() => handleReject(req.id)}
                 >
                   Reject
                 </button>

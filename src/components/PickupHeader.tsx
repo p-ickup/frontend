@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import SimpleRedirectButton from './buttons/SimpleRedirectButton'
 import Image from 'next/image'
+import { useEffect, useState } from 'react'
+import SimpleRedirectButton from './buttons/SimpleRedirectButton'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -56,6 +56,7 @@ export default function PickupHeader() {
       <nav className="flex space-x-4">
         <SimpleRedirectButton label="Questionnaire" route="/questionnaires" />
         <SimpleRedirectButton label="Results" route="/results" />
+        <SimpleRedirectButton label="Unmatched" route="/unmatched" />
       </nav>
 
       <div className="flex items-center space-x-4">
