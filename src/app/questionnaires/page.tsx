@@ -5,6 +5,7 @@ import RedirectButton from '@/components/buttons/RedirectButton'
 import { createBrowserClient } from '@/utils/supabase'
 import Image from 'next/image'
 import ConfirmCancel from '@/components/questionnaires/ConfirmCancel'
+import Footer from '@/components/PickupFooter'
 
 interface MatchForm {
   flight_id: string
@@ -99,9 +100,9 @@ export default function Questionnaires() {
 
   // DISPLAY!
   return (
-    <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-100 text-black p-16">
-      {/* Reusable Redirect Button */}
-      <div className="flex min-h-[calc(100vh-165px)] w-full items-center justify-center gap-6 bg-gray-100 text-black">
+    <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
+      {/* Header at the top */}
+
       {/* Buttons Section */}
       <div className="mt-6 flex flex-col items-center gap-4">
         <div className="flex gap-4">
@@ -110,10 +111,6 @@ export default function Questionnaires() {
         </div>
       </div>
 
-      <div className="flex min-h-[calc(100vh-165px)] w-full flex-col items-center justify-center bg-gray-100 text-black">
-        <h1 className="mb-4 text-3xl font-bold">
-          This is where we will display Recent Forms!
-        </h1>
       {/* Recent Match Forms */}
       <div className="mt-6 flex w-full flex-col items-center px-4">
         <h1 className="text-2xl font-bold">Recent Match Forms</h1>
@@ -207,7 +204,5 @@ export default function Questionnaires() {
         onConfirm={confirmDelete}
       />
     </div>
-  </div>
-  </div>
   )
 }
