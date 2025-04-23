@@ -100,7 +100,7 @@ export default function Questionnaires() {
 
   // DISPLAY!
   return (
-    <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
+    <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-100 text-black">
       {/* Header at the top */}
 
       {/* Buttons Section */}
