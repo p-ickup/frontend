@@ -89,8 +89,8 @@ export default function MatchForm() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
+    <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-100 text-black p-8">
+      <div className="flex w-full flex-col items-center justify-center bg-gray-100 text-black">
         <h1 className="mb-4 text-3xl font-bold">Flight Information</h1>
         <p className="mb-6">Enter your flight details below.</p>
 
