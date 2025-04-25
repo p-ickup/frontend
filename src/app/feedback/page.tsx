@@ -9,24 +9,38 @@ export default function FeedbackForm() {
   const supabase = createBrowserClient()
 
   type Ride = {
-    ride_id: string
+    Matches: {
+      ride_id: string
+    }
     user_id: string
     flight_id: string
+    Flights: {
+      date: string
+    }
   }
 
   const [rides, setRides] = useState<Ride[]>([])
-  const [selectedRide, setSelectedRide] = useState('')
+  const [selectedFlight, setSelectedFlight] = useState('')
   const [overall, setOverall] = useState<number>(0)
   const [convenience, setConvenience] = useState<number>(0)
   const [comments, setComments] = useState('')
   const [userId, setUserId] = useState('')
 
+  const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+
   useEffect(() => {
     // Fetch rides (matches) from Supabase
     const fetchRides = async () => {
-      const { data, error } = await supabase.from('Matches').select('*')
-      if (error) console.error('Error fetching rides:', error)
-      else setRides(data)
+      const { data, error } = await supabase
+        .from('Matches')
+        .select('ride_id, user_id, flight_id, Flights(date)') // join Flights table
+
+      if (error) {
+        console.error('Error fetching rides:', error)
+      } else {
+        setRides(data as unknown as Ride[])
+      }
     }
 
     // Fetch current user
@@ -46,23 +60,54 @@ export default function FeedbackForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const { error } = await supabase.from('Feedback').insert([
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    if (!selectedFlight) {
+      setErrorMessage('Please select a match before submitting.')
+      return
+    }
+
+    if (overall < 1 || convenience < 1) {
+      setErrorMessage(
+        'Please provide a rating for both overall and convenience.',
+      )
+      return
+    }
+
+    // 1. Fetch ride_id from Supabase based on selected flight
+    const { data: matchedRide, error: rideError } = await supabase
+      .from('Matches')
+      .select('ride_id')
+      .eq('flight_id', selectedFlight)
+      .eq('user_id', userId)
+      .single() // ensure you only get one match
+
+    if (!matchedRide || !matchedRide.ride_id) {
+      console.error('Invalid ride data', matchedRide)
+      alert('Error: Could not find a valid ride match.')
+      return
+    }
+    console.log('Matched ride data:', matchedRide)
+
+    // 2. Insert into Feedback using the fetched ride_id
+    const { error: feedbackError } = await supabase.from('Feedback').insert([
       {
         user_id: userId,
-        ride_id: selectedRide,
+        ride_id: matchedRide.ride_id, // from Matches
+        flight_id: selectedFlight,
         overall,
         convenience,
         comments,
       },
     ])
 
-    if (error) {
-      console.error('Error submitting feedback:', error)
-      alert('Error submitting feedback!')
+    if (feedbackError) {
+      console.error('Error submitting feedback:', feedbackError)
+      alert(`Error submitting feedback: ${feedbackError.message}`)
     } else {
       alert('Feedback submitted successfully!')
-      // Optionally, clear form
-      setSelectedRide('')
+      setSelectedFlight('')
       setOverall(0)
       setConvenience(0)
       setComments('')
@@ -76,6 +121,17 @@ export default function FeedbackForm() {
         <p className="mb-6">
           We value your feedback. Please fill out the form below.
         </p>
+        {errorMessage && (
+          <div className="mb-4 w-full rounded border border-red-400 bg-red-100 px-4 py-2 text-red-700">
+            {errorMessage}
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="mb-4 w-full rounded border border-green-400 bg-green-100 px-4 py-2 text-green-700">
+            {successMessage}
+          </div>
+        )}
 
         <form
           onSubmit={handleSubmit}
@@ -85,8 +141,8 @@ export default function FeedbackForm() {
           <label className="mb-2 block font-medium">
             Select Match:
             <select
-              value={selectedRide}
-              onChange={(e) => setSelectedRide(e.target.value)}
+              value={selectedFlight}
+              onChange={(e) => setSelectedFlight(e.target.value)}
               className="mt-1 w-full rounded border bg-white p-2 text-black"
               required
             >
@@ -94,8 +150,9 @@ export default function FeedbackForm() {
               {rides
                 .filter((ride) => ride.user_id === userId)
                 .map((ride) => (
-                  <option key={ride.ride_id} value={ride.ride_id}>
-                    {ride.flight_id}
+                  <option key={ride.flight_id} value={ride.flight_id}>
+                    {ride.flight_id} –{' '}
+                    {new Date(ride.Flights.date).toLocaleDateString()}
                   </option>
                 ))}
             </select>
