@@ -9,13 +9,12 @@ export default function FeedbackForm() {
   const supabase = createBrowserClient()
 
   type Ride = {
-    Matches: {
-      ride_id: string
-    }
     user_id: string
     flight_id: string
     Flights: {
       date: string
+      to_airport: boolean
+      airport: string
     }
   }
 
@@ -34,7 +33,7 @@ export default function FeedbackForm() {
     const fetchRides = async () => {
       const { data, error } = await supabase
         .from('Matches')
-        .select('ride_id, user_id, flight_id, Flights(date)') // join Flights table
+        .select('user_id, flight_id, Flights(date, to_airport, airport)') // join Flights table
 
       if (error) {
         console.error('Error fetching rides:', error)
@@ -75,26 +74,18 @@ export default function FeedbackForm() {
       return
     }
 
-    // 1. Fetch ride_id from Supabase based on selected flight
     const { data: matchedRide, error: rideError } = await supabase
       .from('Matches')
-      .select('ride_id')
+      .select('user_id, flight_id, Flights(date, to_airport, airport)')
       .eq('flight_id', selectedFlight)
       .eq('user_id', userId)
       .single() // ensure you only get one match
 
-    if (!matchedRide || !matchedRide.ride_id) {
-      console.error('Invalid ride data', matchedRide)
-      alert('Error: Could not find a valid ride match.')
-      return
-    }
     console.log('Matched ride data:', matchedRide)
 
-    // 2. Insert into Feedback using the fetched ride_id
     const { error: feedbackError } = await supabase.from('Feedback').insert([
       {
         user_id: userId,
-        ride_id: matchedRide.ride_id, // from Matches
         flight_id: selectedFlight,
         overall,
         convenience,
@@ -148,13 +139,34 @@ export default function FeedbackForm() {
             >
               <option value="">-- Select Match --</option>
               {rides
-                .filter((ride) => ride.user_id === userId)
-                .map((ride) => (
-                  <option key={ride.flight_id} value={ride.flight_id}>
-                    {ride.flight_id} –{' '}
-                    {new Date(ride.Flights.date).toLocaleDateString()}
-                  </option>
-                ))}
+                .filter((ride) => {
+                  const oneYearAgo = new Date()
+                  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
+                  const [year, month, day] = ride.Flights.date
+                    .split('-')
+                    .map(Number)
+                  const flightDate = new Date(year, month - 1, day)
+
+                  return ride.user_id === userId && flightDate >= oneYearAgo
+                })
+                .map((ride) => {
+                  const [year, month, day] = ride.Flights.date
+                    .split('-')
+                    .map(Number)
+                  const flightDate = new Date(year, month - 1, day)
+                  return (
+                    <option key={ride.flight_id} value={ride.flight_id}>
+                      {flightDate.toLocaleDateString('en-US', {
+                        month: '2-digit',
+                        day: '2-digit',
+                      })}{' '}
+                      -{' '}
+                      {ride.Flights.to_airport
+                        ? 'School to ' + ride.Flights.airport
+                        : ride.Flights.airport + ' to School'}
+                    </option>
+                  )
+                })}
             </select>
           </label>
 
