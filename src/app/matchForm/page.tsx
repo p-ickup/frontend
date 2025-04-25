@@ -103,43 +103,6 @@ export default function MatchForm() {
     setMessage('✅ Flight details submitted successfully!')
   }
 
-  const continueSubmit = async () => {
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      setMessage('Error: You must be logged in to submit flight details!')
-      return
-    }
-
-    const { data, error } = await supabase.from('Flights').insert([
-      {
-        user_id: user.id,
-        to_airport: tripType ? 1 : 0,
-        airport,
-        flight_no,
-        date: dateOfFlight,
-        bag_no: numBags,
-        earliest_time: earliestArrival,
-        latest_time: latestArrival,
-        max_dropoff: dropoff,
-        max_price: budget,
-        terminal,
-      },
-    ])
-
-    if (error) {
-      console.error('Error inserting flight data:', error)
-      setMessage(`Error: ${error.message}`)
-      return
-    }
-
-    setIsModalOpen(true)
-    setMessage('✅ Flight details submitted successfully!')
-  }
-
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
       <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
