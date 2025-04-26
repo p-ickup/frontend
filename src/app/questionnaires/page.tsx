@@ -11,6 +11,7 @@ interface MatchForm {
   flight_no: string
   date: string
   matched: boolean
+  opt_in: boolean
 }
 
 export default function Questionnaires() {
@@ -93,7 +94,11 @@ export default function Questionnaires() {
     const formDate = new Date(form.date)
     formDate.setHours(0, 0, 0, 0)
     return (
-      form.matched == false && formDate < threeDaysFromNow && formDate >= today
+      form.opt_in == true &&
+      form.matched == false &&
+      formDate < threeDaysFromNow &&
+      formDate >= today
+      // TODO: do we want form.opt_in to be true? or redirect them no matter what if we didn't match them
     )
   })
 
