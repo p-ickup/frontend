@@ -17,6 +17,42 @@ const getAirportAddress = (airport: string): string => {
   return airports[airport] || ''
 }
 
+// Add this helper function to generate an .ics file
+const createICSFile = (
+  eventTitle: string,
+  description: string,
+  location: string,
+  startTime: Date,
+  endTime: Date,
+) => {
+  const pad = (num: number) => String(num).padStart(2, '0')
+
+  const formatDate = (date: Date) => {
+    return (
+      date.getUTCFullYear().toString() +
+      pad(date.getUTCMonth() + 1) +
+      pad(date.getUTCDate()) +
+      'T' +
+      pad(date.getUTCHours()) +
+      pad(date.getUTCMinutes()) +
+      '00Z'
+    )
+  }
+
+  const start = formatDate(startTime)
+  const end = formatDate(endTime)
+  const content = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:${eventTitle}\nDESCRIPTION:${description}\nLOCATION:${location}\nDTSTART:${start}\nDTEND:${end}\nEND:VEVENT\nEND:VCALENDAR`
+
+  const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${eventTitle.replace(/\s+/g, '_')}.ics`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
   // Use the first match for common information
   const firstMatch = matches[0]
@@ -50,6 +86,51 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
     } finally {
       setIsDeleting(false)
     }
+  }
+
+  const handleReminderClick = () => {
+    const flightTime = new Date(
+      firstMatch.Flights.date + 'T' + firstMatch.Flights.earliest_time,
+    )
+    const reminderTime = new Date(flightTime.getTime() - 60 * 60 * 1000) // 1 hour before
+
+    const pad = (num: number) => String(num).padStart(2, '0')
+    const formatDate = (date: Date) => {
+      return (
+        date.getUTCFullYear().toString() +
+        pad(date.getUTCMonth() + 1) +
+        pad(date.getUTCDate()) +
+        'T' +
+        pad(date.getUTCHours()) +
+        pad(date.getUTCMinutes()) +
+        '00Z'
+      )
+    }
+
+    const start = formatDate(reminderTime)
+    const end = formatDate(new Date(reminderTime.getTime() + 30 * 60 * 1000)) // +30min event
+
+    const content = `BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+SUMMARY:P-ickup Match!
+DESCRIPTION:Reminder to prepare for your carpool to the airport.
+LOCATION:${getAirportAddress(firstMatch.Flights.airport)}
+DTSTART:${start}
+DTEND:${end}
+END:VEVENT
+END:VCALENDAR`
+
+    const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'pickup_reminder.ics'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -134,7 +215,10 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
           </div>
 
           {upcoming && (
-            <button className="mt-1 flex items-center gap-1 self-start text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline">
+            <button
+              onClick={handleReminderClick}
+              className="mt-1 flex items-center gap-1 self-start text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
+            >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 className="h-4 w-4"
