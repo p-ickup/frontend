@@ -6,6 +6,7 @@ import './globals.css'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import ReactQueryProvider from '@/providers/ReactQueryProvider'
 import PickupHeader from '@/components/PickupHeader'
+import PickupFooter from '@/components/PickupFooter'
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -41,6 +42,7 @@ export default function RootLayout({
             <div className="flex min-h-screen flex-col">
               <PickupHeader />
               <div className="flex-1">{children}</div>
+              <PickupFooter />
               <Analytics />
             </div>
             <ReactQueryDevtools initialIsOpen={false} />

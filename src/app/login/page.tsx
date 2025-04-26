@@ -16,8 +16,11 @@ export default function Login({
   if (user) router.push('/')
 
   return (
-    <div className="mx-96 mt-5 flex flex-col justify-center  gap-2 px-8">
-      <Link href="/" className=" flex gap-4 py-2 text-sm">
+    <div className="h-[calc(100vh-165px)] w-auto gap-2 px-8 sm:max-w-md">
+      <Link
+        href="/"
+        className="bg-btn-background hover:bg-btn-background-hover group flex items-center rounded-md px-4 py-2 text-sm text-foreground no-underline"
+      >
         <svg
           xmlns="http://www.w3.org/2000/svg"
           className="h-4 w-4"
