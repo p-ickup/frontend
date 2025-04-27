@@ -163,7 +163,7 @@ export default function Faq() {
         </AccordionBody>
       </Accordion>
       <h2 className="text-lg font-semibold">
-        If you have any other questions, do not hesitate to{' '}
+        If you have any other questions, please{' '}
         <SimpleRedirectButton label="Contact Us." route="/contact" />
       </h2>
     </div>
