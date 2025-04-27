@@ -13,17 +13,31 @@ export default function About() {
   return (
     <div className="min-h-[calc(100vh-165px)] bg-gray-100 p-16 text-black">
       <h1 className="mb-8 text-4xl">About P-ickup</h1>
+      <p className="mb-6">
+        No student should have to spend $100 or more on a solo ride to LAX,
+        especially after already buying a costly plane ticket home. While the
+        Claremont Colleges sometimes provide subsidized shuttles, these services
+        are often limited in timing and availability. That’s where P-ickup comes
+        in!
+      </p>
+      <p className="mb-6">
+        We’re a student-led team dedicated to making travel more affordable and
+        accessible for the 5C community. Our platform connects you with students
+        with similar travel plans so you all can share rides and split costs!
+        Using a simple matching form, you can enter your flight details, airport
+        preferences, and scheduling needs. From there, our system helps you find
+        others headed in the same direction.
+      </p>
+      <p className="mb-6">
+        The idea for P-ickup was born out of personal frustration. After
+        struggling to find affordable airport transportation ourselves, we
+        realized there was a better solution waiting to be built. With the help
+        of our loving and dedicated engineering team, we’ve been working on this
+        platform throughout the year.
+      </p>
       <p>
-        Lorem ipsum dolor sit amet consectetur adipisicing elit. Hic eos
-        praesentium alias corrupti asperiores illum sunt neque voluptatum minus
-        reiciendis aut numquam sed porro nihil error, labore veritatis, nisi ea.
-        Lorem ipsum dolor sit amet consectetur adipisicing elit. Commodi
-        similique repudiandae ducimus vel. Ad, minima corrupti asperiores optio
-        non similique accusantium tempore consequuntur quisquam quo cupiditate
-        aspernatur est a eveniet. Lorem ipsum dolor sit amet consectetur
-        adipisicing elit. Doloribus, quaerat! Maxime harum fuga, consequuntur,
-        officia, dicta voluptatum aliquam neque eaque non necessitatibus nam a
-        vitae tempora aperiam distinctio magnam autem.
+        Whether it’s your first ride or your fiftieth, we hope P-ickup makes
+        your journey a little easier.
       </p>
       <h1 className="mt-8 text-4xl">How it Works</h1>
 
