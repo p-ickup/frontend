@@ -1,6 +1,8 @@
+'use client'
+
 import Image from 'next/image'
 import { MatchWithDetails } from '@/app/results/page'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { createBrowserClient } from '@/utils/supabase'
 
 interface MatchCardProps {
@@ -17,13 +19,12 @@ const getAirportAddress = (airport: string): string => {
   return airports[airport] || ''
 }
 
-// Add this helper function to generate an .ics file
+// Helper function to generate an all-day ICS file with two alarms
 const createICSFile = (
   eventTitle: string,
   description: string,
   location: string,
-  startTime: Date,
-  endTime: Date,
+  startDate: Date,
 ) => {
   const pad = (num: number) => String(num).padStart(2, '0')
 
@@ -31,17 +32,31 @@ const createICSFile = (
     return (
       date.getUTCFullYear().toString() +
       pad(date.getUTCMonth() + 1) +
-      pad(date.getUTCDate()) +
-      'T' +
-      pad(date.getUTCHours()) +
-      pad(date.getUTCMinutes()) +
-      '00Z'
+      pad(date.getUTCDate())
     )
   }
 
-  const start = formatDate(startTime)
-  const end = formatDate(endTime)
-  const content = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:${eventTitle}\nDESCRIPTION:${description}\nLOCATION:${location}\nDTSTART:${start}\nDTEND:${end}\nEND:VEVENT\nEND:VCALENDAR`
+  const start = formatDate(startDate)
+  const endDate = new Date(startDate)
+  endDate.setDate(startDate.getDate() + 1) // End is exclusive
+  const end = formatDate(endDate)
+
+  const content = `BEGIN:VCALENDAR
+VERSION:2.0
+CALSCALE:GREGORIAN
+BEGIN:VEVENT
+SUMMARY:${eventTitle}
+DESCRIPTION:${description}
+LOCATION:${location}
+DTSTART;VALUE=DATE:${start}
+DTEND;VALUE=DATE:${end}
+BEGIN:VALARM
+TRIGGER:-P1D
+ACTION:DISPLAY
+DESCRIPTION:Reminder: Your P-ickup Match is tomorrow!
+END:VALARM
+END:VEVENT
+END:VCALENDAR`
 
   const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -54,7 +69,6 @@ const createICSFile = (
 }
 
 const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
-  // Use the first match for common information
   const firstMatch = matches[0]
   const supabase = createBrowserClient()
   const [isDeleting, setIsDeleting] = useState(false)
@@ -62,11 +76,7 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
   const getProfileUrl = (photoPath: string | null) => {
     if (!photoPath) return '/images/profileIcon.webp'
     if (photoPath.startsWith('/images')) return photoPath
-
-    // Check if photoPath already contains the full URL
-    if (photoPath.includes('supabase.co')) {
-      return photoPath
-    }
+    if (photoPath.includes('supabase.co')) return photoPath
 
     const { data } = supabase.storage
       .from('profile_picture')
@@ -89,48 +99,14 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
   }
 
   const handleReminderClick = () => {
-    const flightTime = new Date(
-      firstMatch.Flights.date + 'T' + firstMatch.Flights.earliest_time,
+    const flightDate = new Date(firstMatch.Flights.date) // Full day event on flight date
+
+    createICSFile(
+      'pickup_reminder',
+      'Reminder to prepare for your P-ickup ride share!',
+      getAirportAddress(firstMatch.Flights.airport),
+      flightDate,
     )
-    const reminderTime = new Date(flightTime.getTime() - 60 * 60 * 1000) // 1 hour before
-
-    const pad = (num: number) => String(num).padStart(2, '0')
-    const formatDate = (date: Date) => {
-      return (
-        date.getUTCFullYear().toString() +
-        pad(date.getUTCMonth() + 1) +
-        pad(date.getUTCDate()) +
-        'T' +
-        pad(date.getUTCHours()) +
-        pad(date.getUTCMinutes()) +
-        '00Z'
-      )
-    }
-
-    const start = formatDate(reminderTime)
-    const end = formatDate(new Date(reminderTime.getTime() + 30 * 60 * 1000)) // +30min event
-
-    const content = `BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-SUMMARY:P-ickup Match!
-DESCRIPTION:Reminder to prepare for your carpool to the airport.
-LOCATION:${getAirportAddress(firstMatch.Flights.airport)}
-DTSTART:${start}
-DTEND:${end}
-END:VEVENT
-END:VCALENDAR`
-
-    const blob = new Blob([content], { type: 'text/calendar;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'pickup_reminder.ics'
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
   }
 
   return (
@@ -264,13 +240,12 @@ END:VCALENDAR`
               </div>
             ))}
           </div>
+
           {upcoming && (
             <button
               onClick={handleDelete}
               disabled={isDeleting}
-              className={`mt-3 flex items-center gap-1 rounded-lg border border-red-200 bg-white 
-              px-4 py-1.5 text-sm font-medium transition-colors
-              ${
+              className={`mt-3 flex items-center gap-1 rounded-lg border border-red-200 bg-white px-4 py-1.5 text-sm font-medium transition-colors ${
                 isDeleting
                   ? 'cursor-not-allowed text-gray-500 opacity-60'
                   : 'text-red-500 hover:bg-red-50 active:bg-red-100'
