@@ -29,7 +29,6 @@ export default function EditForm() {
     setTripType(type)
   }
   const [terminal, setTerminal] = useState('')
-  const [message, setMessage] = useState('')
 
   // handling pop up
   const [isModalOpen, setIsModalOpen] = useState(false)
