@@ -15,16 +15,18 @@ export default function ToWhereToggle({
   return (
     <div className="flex justify-center space-x-4">
       <button
+        type="button" // Prevents unintended form submission
         className={`rounded-lg px-4 py-2 ${
-          isToAirport ? 'bg-blue-600 text-white' : 'bg-gray-200 text-black'
+          isToAirport ? 'bg-teal-600 text-white' : 'bg-gray-200 text-black'
         }`}
         onClick={() => handleSelect(true)}
       >
         To Airport
       </button>
       <button
+        type="button" // Prevents unintended form submission
         className={`rounded-lg px-4 py-2 ${
-          !isToAirport ? 'bg-blue-600 text-white' : 'bg-gray-200 text-black'
+          !isToAirport ? 'bg-teal-600 text-white' : 'bg-gray-200 text-black'
         }`}
         onClick={() => handleSelect(false)}
       >
