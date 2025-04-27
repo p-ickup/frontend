@@ -6,7 +6,7 @@ import RedirectButton from '@/components/buttons/RedirectButton'
 import SubmitSuccess from '@/components/questionnaires/SubmitSuccess'
 import TripToggle from '@/components/questionnaires/ToWhereToggle'
 import { createBrowserClient } from '@/utils/supabase'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function MatchForm() {
   const supabase = createBrowserClient()
@@ -235,9 +235,11 @@ export default function MatchForm() {
           <div className="mt-4 flex justify-between">
             <RedirectButton label="Cancel" route="/questionnaires" />
             <button
-              onClick={handleSubmit}
-              type="button"
+              type="submit"
               className="mt-4 rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white hover:bg-green-700"
+{/*           onClick={handleSubmit}
+              type="button"
+              className="mt-4 rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white hover:bg-green-700" */}
             >
               Match
             </button>
