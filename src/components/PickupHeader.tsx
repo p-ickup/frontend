@@ -6,14 +6,14 @@ import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 
 export default function PickupHeader() {
-  const { user, avatarUrl, signOut } = useAuth()
+  const { user, avatarUrl, signOut, signInWithGoogle } = useAuth()
   const router = useRouter()
 
   const handleProfileClick = () => {
     if (user) {
       router.push('/profile')
     } else {
-      router.push('/login')
+      signInWithGoogle()
     }
   }
 
@@ -25,7 +25,7 @@ export default function PickupHeader() {
   }
 
   return (
-    <header className="flex min-h-[80px] items-center justify-between bg-gradient-to-r from-teal-500 to-yellow-100 p-2 text-white pl-11 pr-10">
+    <header className="flex min-h-[80px] items-center justify-between bg-gradient-to-r from-teal-500 to-yellow-100 p-2 pl-11 pr-10 text-white">
       <h1 className="text-xl font-bold">
         <SimpleRedirectButton label="P-ickup" route="/" />
       </h1>
