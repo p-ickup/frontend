@@ -190,7 +190,7 @@ export default function Results() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex min-h-screen w-full flex-col bg-gray-50 font-sans text-black">
+      <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-50 font-sans text-black">
         <div className="mx-auto flex w-full max-w-5xl flex-col items-center p-6">
           <h1 className="mb-8 text-3xl font-bold text-gray-900">
             Your Matches
@@ -206,7 +206,7 @@ export default function Results() {
     <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-50 font-sans text-black">
       {/* Header at the top */}
 
-      <div className="mx-auto flex w-full max-w-5xl flex-col items-center p-6">
+      <div className="m-8 mx-auto flex w-full max-w-5xl flex-col items-center p-6">
         <h1 className="mb-8 text-3xl font-bold text-gray-900">Your Matches</h1>
 
         {loading ? (

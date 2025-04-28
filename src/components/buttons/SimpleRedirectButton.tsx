@@ -13,7 +13,11 @@ const SimpleRedirectButton: React.FC<SimpleRedirectButtonProps> = ({
 }) => {
   const router = useRouter()
 
-  return <button onClick={() => router.push(route)} className="hover:text-slate-200">{label}</button>
+  return (
+    <button onClick={() => router.push(route)} className="hover:text-yellow-50">
+      {label}
+    </button>
+  )
 }
 
 export default SimpleRedirectButton

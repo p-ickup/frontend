@@ -16,11 +16,8 @@ export default function Login({
   if (user) router.push('/')
 
   return (
-    <div className="h-[calc(100vh-165px)] w-auto gap-2 px-8 sm:max-w-md">
-      <Link
-        href="/"
-        className="bg-btn-background hover:bg-btn-background-hover group flex items-center rounded-md px-4 py-2 text-sm text-foreground no-underline"
-      >
+    <div className="mx-96 mt-5 flex flex-col justify-center gap-2 px-8">
+      <Link href="/" className=" flex gap-4 py-2 text-sm">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           className="h-4 w-4"
@@ -50,7 +47,7 @@ export default function Login({
           type="email"
           placeholder="you@example.com"
           required
-          className="mb-2 border px-4 py-2"
+          className="mb-2 border bg-gray-300 px-4 py-2"
         />
 
         <label htmlFor="password">Password</label>
@@ -59,12 +56,12 @@ export default function Login({
           type="password"
           placeholder="••••••••"
           required
-          className="mb-2 border px-4 py-2"
+          className="mb-2 border bg-gray-300 px-4 py-2"
         />
 
         <button
           type="submit"
-          className="mb-2 rounded-md bg-green-700 px-4 py-2 text-white"
+          className="mb-2 rounded-md bg-teal-400 px-4 py-2 text-white hover:bg-teal-500"
         >
           Sign In/Register
         </button>

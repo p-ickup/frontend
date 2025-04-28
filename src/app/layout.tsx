@@ -27,14 +27,12 @@ export default function RootLayout({
     <html
       lang="en"
       className={GeistSans.className}
-      style={{ colorScheme: 'dark' }}
       suppressHydrationWarning
     >
       <body className="min-h-screen bg-background text-foreground">
         <NextTopLoader showSpinner={false} height={2} color="#2acf80" />
         <ThemeProvider
           attribute="class"
-          defaultTheme="dark"
           enableSystem
           disableTransitionOnChange
         >
