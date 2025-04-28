@@ -18,11 +18,9 @@ export default function Faq() {
       <h1 className="mb-16 flex justify-center text-5xl font-semibold">
         Frequently Asked Questions
       </h1>
-      <p className="m-8 flex">
-        Small blurb about P-ickup Lorem ipsum, dolor sit amet consectetur
-        adipisicing elit. Expedita nobis distinctio maxime saepe quas dolor
-        assumenda velit ab qui ipsum nulla nemo, architecto dolore dignissimos
-        ducimus est eaque culpa? Rem.
+      <p className="m-8 flex justify-center">
+        No one wants to spend $100 on a single Uber ride. We are here to change
+        that.
       </p>
       <Accordion
         open={open === 1}
@@ -121,6 +119,22 @@ export default function Faq() {
         className="mb-8 rounded-lg bg-gray-100 p-5 shadow-md"
       >
         <AccordionHeader onClick={() => handleOpen(7)}>
+          How does the Unmatched page work?
+        </AccordionHeader>
+        <AccordionBody>
+          If you are within 3 days of your upcoming flight and have not been
+          matched, you can check out our unmatched page and try to join other
+          groups! Browse through groups and individuals who are in the same boat
+          as you. Send a join request if you find something that works for you!
+          NOTE: this is only available if you opted in when you filled out your
+          questionnaire for that flight.
+        </AccordionBody>
+      </Accordion>
+      <Accordion
+        open={open === 8}
+        className="mb-8 rounded-lg bg-gray-100 p-5 shadow-md"
+      >
+        <AccordionHeader onClick={() => handleOpen(8)}>
           How exactly am I being matched?
         </AccordionHeader>
         <AccordionBody>
@@ -133,10 +147,10 @@ export default function Faq() {
         </AccordionBody>
       </Accordion>
       <Accordion
-        open={open === 8}
+        open={open === 9}
         className="mb-8 rounded-lg bg-gray-100 p-5 shadow-md"
       >
-        <AccordionHeader onClick={() => handleOpen(8)}>
+        <AccordionHeader onClick={() => handleOpen(9)}>
           What information is shared with other users?
         </AccordionHeader>
         <AccordionBody>
@@ -147,10 +161,10 @@ export default function Faq() {
         </AccordionBody>
       </Accordion>
       <Accordion
-        open={open === 9}
+        open={open === 10}
         className="mb-12 rounded-lg bg-gray-100 p-5 shadow-md"
       >
-        <AccordionHeader onClick={() => handleOpen(9)}>
+        <AccordionHeader onClick={() => handleOpen(10)}>
           What if I didn’t get the price that I was hoping for?
         </AccordionHeader>
         <AccordionBody>

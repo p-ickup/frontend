@@ -40,7 +40,7 @@ export default function About() {
         your journey a little easier.
       </p>
       <h1 className="mt-8 text-4xl">How it Works</h1>
-
+      <h2 className="mt-8">Countdown to Flight:</h2>
       <Stepper
         activeStep={activeStep}
         isLastStep={(value) => setIsLastStep(value)}
