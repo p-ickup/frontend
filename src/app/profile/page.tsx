@@ -26,9 +26,7 @@ export default function Questionnaire() {
       } = await supabase.auth.getUser()
 
       if (authError || !user) {
-        setMessage(
-          'You must be logged in to view this page. Please sign in first.',
-        )
+        setMessage('Error: You must be logged in to fetch data!')
         setLoading(false)
         return
       }
@@ -41,6 +39,7 @@ export default function Questionnaire() {
 
       if (error) {
         setMessage('Please enter your profile information.')
+        console.error('Error fetching user data:', error)
       } else if (data) {
         setFirstName(data.firstname || '')
         setLastName(data.lastname || '')
@@ -75,6 +74,14 @@ export default function Questionnaire() {
       setMessage('You must be logged in to submit your profile.')
       return
     }
+    // Basic US phone number regex: allows (123) 456-7890, 123-456-7890, 1234567890, etc.
+    const phoneRegex = /^\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}$/
+
+    if (!phoneRegex.test(phonenumber)) {
+      setMessage('Please enter a valid phone number.')
+
+      return
+    }
 
     let updatedPhotoUrl = photoUrl
 
@@ -86,6 +93,8 @@ export default function Questionnaire() {
 
       if (error) {
         setMessage('Failed to upload your photo. Please try again.')
+        console.error('Storage Upload Error:', error)
+
         return
       }
 
@@ -112,6 +121,7 @@ export default function Questionnaire() {
     )
 
     if (error) {
+
       setMessage('Something went wrong. Please try again.')
     } else {
       setMessage(hasProfile ? 'Profile updated!' : 'Profile created!')
@@ -153,6 +163,8 @@ export default function Questionnaire() {
                 value={lastname}
                 onChange={(e) => setLastName(e.target.value)}
                 className="mt-1 w-full rounded border p-2"
+                required
+
               />
             </label>
 
@@ -197,12 +209,13 @@ export default function Questionnaire() {
                 className="mt-1 w-full rounded border p-2"
               />
               {photoUrl && (
-                <Image
+                <img
                   src={photoUrl}
                   alt="Profile"
                   width={50}
                   height={50}
                   className="mt-2 rounded-full"
+
                 />
               )}
             </label>
@@ -219,7 +232,7 @@ export default function Questionnaire() {
 
             <button
               type="submit"
-              className="w-full rounded bg-blue-600 p-2 text-white hover:bg-blue-700"
+              className="w-full rounded bg-teal-500 p-2 text-white hover:bg-teal-600"
             >
               {hasProfile ? 'Update Profile' : 'Create Profile'}
             </button>

@@ -5,6 +5,8 @@ import MatchCard from '@/components/results/MatchCard'
 import type { Database } from '@/lib/database.types'
 import { createBrowserClient } from '@/utils/supabase'
 import { useEffect, useState } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+
 
 type Tables = Database['public']['Tables']
 type User = Tables['Users']['Row']
@@ -47,20 +49,24 @@ export default function Results() {
   const [showPrevious, setShowPrevious] = useState(false)
   const [loading, setLoading] = useState(true)
   const supabase = createBrowserClient()
+  const { user, isAuthenticated } = useAuth()
 
   useEffect(() => {
-    void fetchMatches()
-  }, [])
+    if (user) {
+      void fetchMatches()
+    } else {
+      setLoading(false)
+    }
+  }, [user])
 
   const fetchMatches = async () => {
     try {
-      // Get current authenticated user
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-      if (userError) throw userError
-      if (!user) throw new Error('No user found')
+      setLoading(true)
+
+      if (!user) {
+        console.error('No authenticated user found')
+        return
+      }
 
       // Step 1: Find all ride IDs where the user has a match
       const { data: userRideIds, error: rideError } = await supabase
@@ -129,8 +135,76 @@ export default function Results() {
       setLoading(false)
     }
   }
+
+  // Function to delete a match
+  const deleteMatch = async (rideId: number) => {
+    if (!user) {
+      console.error('No authenticated user found')
+      return
+    }
+
+    try {
+      // First, get all matches for this ride
+      const { data: allRideMatches, error: fetchError } = await supabase
+        .from('Matches')
+        .select('*')
+        .eq('ride_id', rideId)
+
+      if (fetchError) {
+        console.error('Error fetching ride matches:', fetchError)
+        throw fetchError
+      }
+
+      // If there are only 2 people in the ride group, delete all matches
+      if (allRideMatches && allRideMatches.length <= 2) {
+        // Delete all matches for this ride_id
+        const { error: deleteAllError } = await supabase
+          .from('Matches')
+          .delete()
+          .eq('ride_id', rideId)
+
+        if (deleteAllError) {
+          console.error('Error deleting all matches:', deleteAllError)
+          throw deleteAllError
+        }
+      } else {
+        // Delete only the user's match
+        const { error: deleteUserError } = await supabase
+          .from('Matches')
+          .delete()
+          .eq('ride_id', rideId)
+          .eq('user_id', user.id)
+
+        if (deleteUserError) {
+          console.error('Error deleting user match:', deleteUserError)
+          throw deleteUserError
+        }
+      }
+
+      // Refresh matches after deleting
+      await fetchMatches()
+    } catch (error) {
+      console.error('Error in delete operation:', error)
+      throw error
+    }
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-screen w-full flex-col bg-gray-50 font-sans text-black">
+        <div className="mx-auto flex w-full max-w-5xl flex-col items-center p-6">
+          <h1 className="mb-8 text-3xl font-bold text-gray-900">
+            Your Matches
+          </h1>
+          <EmptyState type="login" />
+          <RedirectButton label="Back to Home" route="/" />
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex min-h-screen w-full flex-col bg-gray-50 font-sans text-black">
+    <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-50 font-sans text-black">
       {/* Header at the top */}
 
       <div className="mx-auto flex w-full max-w-5xl flex-col items-center p-6">
@@ -145,10 +219,10 @@ export default function Results() {
             {/* Upcoming Matches Section */}
             <div className="w-full max-w-3xl">
               <h2 className="mb-5 flex items-center gap-2 text-xl font-semibold text-gray-800">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5 text-indigo-600"
+                    className="h-5 w-5 text-teal-600"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -177,6 +251,7 @@ export default function Results() {
                         key={rideId}
                         matches={matchesForRide}
                         upcoming={true}
+                        onDelete={deleteMatch}
                       />
                     ),
                   )
