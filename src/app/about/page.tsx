@@ -91,6 +91,9 @@ export default function About() {
             >
               Complete P-ickup questionnaire.
             </Typography>
+            <Typography color="gray" className="mt-1 text-xs italic">
+              * anytime between booking and 3 days before *
+            </Typography>
           </div>
         </Step>
         <Step
