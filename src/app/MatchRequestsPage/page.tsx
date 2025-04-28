@@ -27,7 +27,7 @@ export default function MatchRequestsPage() {
         .select(
           `*,
           sender_flight:Flights!MatchRequests_sender_flight_id_fkey(
-            flight_id, airport, earliest_time, latest_time, date, user_id,
+            flight_id, airport, earliest_time, latest_time, date, user_id, to_airport,
             Users (firstname, lastname)
           )
         `,
@@ -59,7 +59,6 @@ export default function MatchRequestsPage() {
       return
     }
 
-    // 🔍 Check if receiver is already matched to a ride_id
     const { data: existingReceiverMatch, error: receiverMatchErr } =
       await supabase
         .from('Matches')
@@ -72,7 +71,6 @@ export default function MatchRequestsPage() {
       !receiverMatchErr && existingReceiverMatch?.ride_id
         ? existingReceiverMatch.ride_id
         : (() => {
-            // Otherwise, create new ride_id from max + 1
             return supabase
               .from('Matches')
               .select('ride_id')
@@ -91,7 +89,6 @@ export default function MatchRequestsPage() {
 
     const created_at = new Date().toISOString()
 
-    // 👇 Insert only sender to that ride
     const insertRes = await supabase.from('Matches').insert([
       {
         ride_id: finalRideId,
@@ -106,7 +103,6 @@ export default function MatchRequestsPage() {
       return
     }
 
-    // ✅ Update both flights to matched = true
     const updateSender = await supabase
       .from('Flights')
       .update({ matched: true })
@@ -127,7 +123,6 @@ export default function MatchRequestsPage() {
       console.log('Flights updated to matched')
     }
 
-    // 🗑️ Delete the MatchRequest row
     const { error: deleteRequestErr } = await supabase
       .from('MatchRequests')
       .delete()
@@ -146,13 +141,23 @@ export default function MatchRequestsPage() {
   }
 
   const handleReject = async (id: string) => {
-    const { error } = await supabase
+    const { error: updateError } = await supabase
       .from('MatchRequests')
       .update({ status: 'rejected' })
       .eq('id', id)
 
-    if (error) {
-      console.error('Failed to reject request:', error)
+    if (updateError) {
+      console.error('Failed to reject request:', updateError)
+      return
+    }
+
+    const { error: deleteError } = await supabase
+      .from('MatchRequests')
+      .delete()
+      .eq('id', id)
+
+    if (deleteError) {
+      console.error('Failed to delete rejected request:', deleteError)
       return
     }
 
@@ -177,7 +182,10 @@ export default function MatchRequestsPage() {
                 Flight Date: {req.sender_flight?.date}
               </p>
               <p className="text-sm text-gray-700">
-                Airport: {req.sender_flight?.airport}
+                Direction:{' '}
+                {req.sender_flight?.to_airport
+                  ? `School → ${req.sender_flight?.airport}`
+                  : `${req.sender_flight?.airport} → School`}
               </p>
               <p className="text-sm text-gray-700">
                 Earliest: {req.sender_flight?.earliest_time}
