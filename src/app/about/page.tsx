@@ -1,84 +1,146 @@
+'use client'
+import React from 'react'
+import { Stepper, Step, Button, Typography } from '@material-tailwind/react'
+
 export default function About() {
+  const [activeStep, setActiveStep] = React.useState(0)
+  const [isLastStep, setIsLastStep] = React.useState(false)
+  const [isFirstStep, setIsFirstStep] = React.useState(false)
+
+  const handleNext = () => !isLastStep && setActiveStep((cur) => cur + 1)
+  const handlePrev = () => !isFirstStep && setActiveStep((cur) => cur - 1)
+
   return (
     <div className="min-h-[calc(100vh-165px)] bg-gray-100 p-16 text-black">
       <h1 className="mb-8 text-4xl">About P-ickup</h1>
-      <p>
-        Lorem ipsum dolor sit amet consectetur adipisicing elit. Hic eos
-        praesentium alias corrupti asperiores illum sunt neque voluptatum minus
-        reiciendis aut numquam sed porro nihil error, labore veritatis, nisi ea.
-        Lorem ipsum dolor sit amet consectetur adipisicing elit. Commodi
-        similique repudiandae ducimus vel. Ad, minima corrupti asperiores optio
-        non similique accusantium tempore consequuntur quisquam quo cupiditate
-        aspernatur est a eveniet. Lorem ipsum dolor sit amet consectetur
-        adipisicing elit. Doloribus, quaerat! Maxime harum fuga, consequuntur,
-        officia, dicta voluptatum aliquam neque eaque non necessitatibus nam a
-        vitae tempora aperiam distinctio magnam autem.
+      <p className="mb-6">
+        No student should have to spend $100 or more on a solo ride to LAX,
+        especially after already buying a costly plane ticket home. While the
+        Claremont Colleges sometimes provide subsidized shuttles, these services
+        are often limited in timing and availability. That’s where P-ickup comes
+        in!
       </p>
-      <h1 className="mb-8 mt-8 text-4xl">How it Works</h1>
-      <div className="ml-1 border-l-2 border-gray-400">
-        <div className="mb-8 flex items-center">
-          <div className="ml-1 flex h-8 w-8 items-center justify-center rounded-full bg-teal-500 font-bold text-white">
-            1
+      <p className="mb-6">
+        We’re a student-led team dedicated to making travel more affordable and
+        accessible for the 5C community. Our platform connects you with students
+        with similar travel plans so you all can share rides and split costs!
+        Using a simple matching form, you can enter your flight details, airport
+        preferences, and scheduling needs. From there, our system helps you find
+        others headed in the same direction.
+      </p>
+      <p className="mb-6">
+        The idea for P-ickup was born out of personal frustration. After
+        struggling to find affordable airport transportation ourselves, we
+        realized there was a better solution waiting to be built. With the help
+        of our loving and dedicated engineering team, we’ve been working on this
+        platform throughout the year.
+      </p>
+      <p>
+        Whether it’s your first ride or your fiftieth, we hope P-ickup makes
+        your journey a little easier.
+      </p>
+      <h1 className="mt-8 text-4xl">How it Works</h1>
+      <h2 className="mt-8">Countdown to Flight:</h2>
+      <Stepper
+        activeStep={activeStep}
+        isLastStep={(value) => setIsLastStep(value)}
+        isFirstStep={(value) => setIsFirstStep(value)}
+        className="mr-10 p-20"
+        lineClassName="bg-teal-500/50"
+        activeLineClassName="bg-teal-500"
+      >
+        <Step
+          onClick={() => setActiveStep(0)}
+          activeClassName="!bg-teal-500"
+          completedClassName="!bg-teal-300"
+          className="!bg-teal-300 text-white"
+        >
+          1
+          <div className="absolute -bottom-[4.5rem] w-max text-center">
+            <Typography
+              variant="h6"
+              color={activeStep === 0 ? 'blue-gray' : 'gray'}
+            >
+              Months in Advance
+            </Typography>
+            <Typography
+              color={activeStep === 0 ? 'blue-gray' : 'gray'}
+              className="font-normal"
+            >
+              Book your flight.
+            </Typography>
           </div>
-          <div className="ml-4 rounded-lg bg-white p-4 shadow-md hover:bg-slate-50">
-            <h2 className="text-xl font-semibold">Step 1</h2>
-            <p className="text-gray-600">
-              Lorem ipsum ecessitatibus voluptate distinctio vitae molestias
-              animi veritatis similique eos cupiditate, magni, dolore temporibus
-              autem repellat quos ipsum fugiat.
-            </p>
+        </Step>
+        <Step
+          onClick={() => setActiveStep(1)}
+          activeClassName="!bg-teal-500"
+          completedClassName="!bg-teal-300"
+          className="!bg-teal-300 text-white"
+        >
+          2
+          <div className="absolute -bottom-[4.5rem] w-max text-center">
+            <Typography
+              variant="h6"
+              color={activeStep === 1 ? 'blue-gray' : 'gray'}
+            >
+              7 Days
+            </Typography>
+            <Typography
+              color={activeStep === 1 ? 'blue-gray' : 'gray'}
+              className="font-normal"
+            >
+              Complete P-ickup questionnaire.
+            </Typography>
+            <Typography color="gray" className="mt-1 text-xs italic">
+              * anytime between booking and 3 days before *
+            </Typography>
           </div>
-        </div>
-        <div className="mb-8 flex items-center">
-          <div className="ml-1 flex h-8 w-8 items-center justify-center rounded-full bg-teal-500 font-bold text-white">
-            2
+        </Step>
+        <Step
+          onClick={() => setActiveStep(2)}
+          activeClassName="!bg-teal-500"
+          completedClassName="!bg-teal-300"
+          className="!bg-teal-300 text-white"
+        >
+          3
+          <div className="absolute -bottom-[4.5rem] w-max text-center">
+            <Typography
+              variant="h6"
+              color={activeStep === 2 ? 'blue-gray' : 'gray'}
+            >
+              3 Days
+            </Typography>
+            <Typography
+              color={activeStep === 2 ? 'blue-gray' : 'gray'}
+              className="font-normal"
+            >
+              Recieve your match and contact.
+            </Typography>
           </div>
-          <div className="ml-4 rounded-lg bg-white p-4 shadow-md hover:bg-slate-50">
-            <h2 className="text-xl font-semibold">Step 2</h2>
-            <p className="text-gray-600">
-              Lorem ipiti autem laborum illo exercitationem molestiae numquam
-              vel aspernatur ab quam, reiciendis reprehenderit.
-            </p>
+        </Step>
+        <Step
+          onClick={() => setActiveStep(3)}
+          activeClassName="!bg-teal-500"
+          completedClassName="!bg-teal-300"
+          className="!bg-teal-300 text-white"
+        >
+          4
+          <div className="absolute -bottom-[4.5rem] w-max text-center">
+            <Typography
+              variant="h6"
+              color={activeStep === 2 ? 'blue-gray' : 'gray'}
+            >
+              0 Days!
+            </Typography>
+            <Typography
+              color={activeStep === 2 ? 'blue-gray' : 'gray'}
+              className="font-normal"
+            >
+              Get P-icked up! Fill out feedback.
+            </Typography>
           </div>
-        </div>
-        <div className="mb-8 flex items-center">
-          <div className="ml-1 flex h-8 w-8 items-center justify-center rounded-full bg-teal-500 font-bold text-white">
-            3
-          </div>
-          <div className="ml-4 rounded-lg bg-white p-4 shadow-md hover:bg-slate-50">
-            <h2 className="text-xl font-semibold">Step 3</h2>
-            <p className="text-gray-600">
-              Lorem ipsum dolor sit amet conr deleniti. Et modi, explicabo dolor
-              a laborum eaque quam minus non eius illum, animi harum fugit
-              repellendus architecto.
-            </p>
-          </div>
-        </div>
-        <div className="mb-8 flex items-center">
-          <div className="ml-1 flex h-8 w-8 items-center justify-center rounded-full bg-teal-500 font-bold text-white">
-            4
-          </div>
-          <div className="ml-4 rounded-lg bg-white p-4 shadow-md hover:bg-slate-50">
-            <h2 className="text-xl font-semibold">Step 4</h2>
-            <p className="text-gray-600">
-              Lorem ipsum dolor sit amet conil, esse numquam labore ex?aborum
-              numquam?
-            </p>
-          </div>
-        </div>
-        <div className="mb-8 flex items-center">
-          <div className="ml-1 flex h-8 w-8 items-center justify-center rounded-full bg-teal-500 font-bold text-white">
-            5
-          </div>
-          <div className="ml-4 rounded-lg bg-white p-4 shadow-md hover:bg-slate-50">
-            <h2 className="text-xl font-semibold">Step 5</h2>
-            <p className="text-gray-600">
-              Lorem ipsum dolor sit amet consectetur adipisicing elit. Quod quos
-              est commodi aliquid, in aliqu!
-            </p>
-          </div>
-        </div>
-      </div>
+        </Step>
+      </Stepper>
     </div>
   )
 }

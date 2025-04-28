@@ -26,9 +26,18 @@ export default function PickupHeader() {
 
   return (
     <header className="flex min-h-[80px] items-center justify-between bg-gradient-to-r from-teal-500 to-yellow-100 p-2 pl-11 pr-10 text-white">
-      <h1 className="text-xl font-bold">
-        <SimpleRedirectButton label="P-ickup" route="/" />
-      </h1>
+      <div
+        onClick={() => router.push('/')}
+        className="h-25 w-25 border-1 cursor-pointer overflow-hidden rounded-full hover:border-yellow-200"
+      >
+        <Image
+          src={'/favicon.ico'}
+          alt="P-ickup logo"
+          width={65}
+          height={65}
+          className="object-cover"
+        />
+      </div>
       <nav className="flex space-x-4">
         <SimpleRedirectButton label="Questionnaire" route="/questionnaires" />
         <SimpleRedirectButton label="Results" route="/results" />

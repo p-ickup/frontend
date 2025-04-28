@@ -5,7 +5,6 @@ import RedirectButton from '@/components/buttons/RedirectButton'
 import { createBrowserClient } from '@/utils/supabase'
 import Image from 'next/image'
 import ConfirmCancel from '@/components/questionnaires/ConfirmCancel'
-import Footer from '@/components/PickupFooter'
 
 interface MatchForm {
   flight_id: string
@@ -105,109 +104,121 @@ export default function Questionnaires() {
 
   // DISPLAY!
   return (
-    <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-100 text-black">
-      {/* Header at the top */}
+    <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-100 p-16 text-black">
+      {/* Reusable Redirect Button */}
+      <div className="flex min-h-[calc(100vh-165px)] w-full items-center justify-center gap-6 bg-gray-100 text-black">
+        {/* Buttons Section */}
+        <div className="mt-6 flex flex-col items-center gap-4">
+          <div className="flex gap-4">
+            <RedirectButton label="Update Profile" route="/profile" />
+            <RedirectButton label="Add New Match" route="/matchForm" />
+          </div>
+        </div>
 
-      {/* Buttons Section */}
-      <div className="mt-6 flex flex-col items-center gap-4">
-        <div className="flex gap-4">
-          <RedirectButton label="Update Profile" route="/profile" />
-          <RedirectButton label="Add New Match" route="/matchForm" />
+        <div className="flex min-h-[calc(100vh-165px)] w-full flex-col items-center justify-center bg-gray-100 text-black">
+          <h1 className="mb-4 text-3xl font-bold">
+            This is where we will display Recent Forms!
+          </h1>
+          {/* Recent Match Forms */}
+          <div className="mt-6 flex w-full flex-col items-center px-4">
+            <h1 className="text-2xl font-bold">Recent Match Forms</h1>
+
+            {message && <p className="mb-4 text-red-500">{message}</p>}
+
+            {/* Show forms within 3 days that havent been matched, redirect to Unmatched page*/}
+            {noneditableUnmatched.length > 0 ? (
+              <ul className="w-96 rounded-lg bg-white p-4 shadow-md">
+                {noneditableUnmatched.map((form) => (
+                  <li
+                    key={form.flight_id}
+                    className="relative mb-4 border-b pb-2"
+                  >
+                    <h1 className="text-lg">
+                      <strong>‼️‼️We were unable to match you😕:</strong>{' '}
+                    </h1>
+                    <p>
+                      <strong>Flight Number:</strong> {form.flight_no}
+                    </p>
+                    <p>
+                      <strong>Date: </strong>
+                      <span className="text-lg">
+                        {new Date(form.date).toLocaleDateString('en-US')}
+                      </span>
+                    </p>
+
+                    {/* Button container */}
+                    <div className="mt-[-20px] flex items-center justify-end gap-x-4">
+                      <RedirectButton
+                        label="Find others who need a ride!"
+                        route={`/results`} //TODO: direct to the Unmatched page
+                        color="bg-teal-400"
+                        size="px-4 py-2 text-lg"
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p> </p>
+            )}
+
+            <p> ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</p>
+
+            {/* Show forms that can still be edited (3+ days prior to ride share) */}
+            {editableUnmatched.length > 0 ? (
+              <ul className="w-96 rounded-lg bg-white p-4 shadow-md">
+                {editableUnmatched.map((form) => (
+                  <li
+                    key={form.flight_id}
+                    className="relative mb-4 border-b pb-2"
+                  >
+                    <p>
+                      <strong>Flight Number:</strong> {form.flight_no}
+                    </p>
+                    <p>
+                      <strong>Date: </strong>
+                      <span className="text-lg">
+                        {new Date(form.date).toLocaleDateString('en-US')}
+                      </span>
+                    </p>
+
+                    {/* Button container */}
+                    <div className="mt-[-20px] flex items-center justify-end gap-x-4">
+                      <RedirectButton
+                        label="Edit"
+                        route={`/editForm/${form.flight_id}`}
+                        color="bg-yellow-400"
+                        size="px-4 py-2 text-lg"
+                      />
+                      <button
+                        onClick={() => handleDelete(form.flight_id)}
+                        className="flex items-center justify-center rounded-lg p-2 hover:bg-red-600"
+                      >
+                        <Image
+                          src="/images/trashIcon.webp"
+                          alt="Cancel Pending Match Form"
+                          width={30}
+                          height={30}
+                          className="object-contain"
+                        />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No match forms found.</p>
+            )}
+          </div>
+
+          {/* ConfirmCancel Modal */}
+          <ConfirmCancel
+            isOpen={modalFlightId !== null}
+            onClose={() => setModalFlightId(null)}
+            onConfirm={confirmDelete}
+          />
         </div>
       </div>
-
-      {/* Recent Match Forms */}
-      <div className="mt-6 flex w-full flex-col items-center px-4">
-        <h1 className="text-2xl font-bold">Recent Match Forms</h1>
-
-        {message && <p className="mb-4 text-red-500">{message}</p>}
-
-        {/* Show forms within 3 days that havent been matched, redirect to Unmatched page*/}
-        {noneditableUnmatched.length > 0 ? (
-          <ul className="w-96 rounded-lg bg-white p-4 shadow-md">
-            {noneditableUnmatched.map((form) => (
-              <li key={form.flight_id} className="relative mb-4 border-b pb-2">
-                <h1 className="text-lg">
-                  <strong>‼️‼️We were unable to match you😕:</strong>{' '}
-                </h1>
-                <p>
-                  <strong>Flight Number:</strong> {form.flight_no}
-                </p>
-                <p>
-                  <strong>Date: </strong>
-                  <span className="text-lg">
-                    {new Date(form.date).toLocaleDateString('en-US')}
-                  </span>
-                </p>
-
-                {/* Button container */}
-                <div className="mt-[-20px] flex items-center justify-end gap-x-4">
-                  <RedirectButton
-                    label="Find others who need a ride!"
-                    route={`/results`} //TODO: direct to the Unmatched page
-                    color="bg-teal-400"
-                    size="px-4 py-2 text-lg"
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p> </p>
-        )}
-
-        <p> ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</p>
-
-        {/* Show forms that can still be edited (3+ days prior to ride share) */}
-        {editableUnmatched.length > 0 ? (
-          <ul className="w-96 rounded-lg bg-white p-4 shadow-md">
-            {editableUnmatched.map((form) => (
-              <li key={form.flight_id} className="relative mb-4 border-b pb-2">
-                <p>
-                  <strong>Flight Number:</strong> {form.flight_no}
-                </p>
-                <p>
-                  <strong>Date: </strong>
-                  <span className="text-lg">
-                    {new Date(form.date).toLocaleDateString('en-US')}
-                  </span>
-                </p>
-
-                {/* Button container */}
-                <div className="mt-[-20px] flex items-center justify-end gap-x-4">
-                  <RedirectButton
-                    label="Edit"
-                    route={`/editForm/${form.flight_id}`}
-                    color="bg-yellow-400"
-                    size="px-4 py-2 text-lg"
-                  />
-                  <button
-                    onClick={() => handleDelete(form.flight_id)}
-                    className="flex items-center justify-center rounded-lg p-2 hover:bg-red-600"
-                  >
-                    <Image
-                      src="/images/trashIcon.webp"
-                      alt="Cancel Pending Match Form"
-                      width={30}
-                      height={30}
-                      className="object-contain"
-                    />
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>No match forms found.</p>
-        )}
-      </div>
-
-      {/* ConfirmCancel Modal */}
-      <ConfirmCancel
-        isOpen={modalFlightId !== null}
-        onClose={() => setModalFlightId(null)}
-        onConfirm={confirmDelete}
-      />
     </div>
   )
 }

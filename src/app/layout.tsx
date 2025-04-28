@@ -24,20 +24,10 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html
-      lang="en"
-      className={GeistSans.className}
-      style={{ colorScheme: 'dark' }}
-      suppressHydrationWarning
-    >
+    <html lang="en" className={GeistSans.className} suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground">
         <NextTopLoader showSpinner={false} height={2} color="#2acf80" />
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
+        <ThemeProvider attribute="class" enableSystem disableTransitionOnChange>
           <ReactQueryProvider>
             <div className="flex min-h-screen flex-col">
               <PickupHeader />
