@@ -100,7 +100,9 @@ export default function UnmatchedPage() {
       return
     }
 
-    setFlights(flightData || [])
+    setFlights(
+      (flightData || []).filter((flight) => isWithinNext3Days(flight.date)),
+    )
 
     const reduced = (matchData as any[]).reduce(
       (acc, match) => {
@@ -118,7 +120,10 @@ export default function UnmatchedPage() {
 
     const grouped = (Object.values(reduced) as GroupedMatch[]).filter(
       (group) => {
-        return group.flights.length < 4
+        return (
+          group.flights.length < 4 &&
+          group.flights.every((flight) => isWithinNext3Days(flight.date))
+        )
       },
     )
 
@@ -326,6 +331,17 @@ export default function UnmatchedPage() {
       )}
     </div>
   )
+}
+
+function isWithinNext3Days(flightDateStr: string) {
+  const today = new Date()
+  const flightDate = new Date(flightDateStr)
+
+  // Calculate the difference in days
+  const diffTime = flightDate.getTime() - today.getTime()
+  const diffDays = diffTime / (1000 * 60 * 60 * 24)
+
+  return diffDays >= 1 && diffDays <= 3
 }
 
 function ConfirmationModal({
