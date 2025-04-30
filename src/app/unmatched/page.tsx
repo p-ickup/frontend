@@ -60,6 +60,8 @@ export default function UnmatchedPage() {
       .eq('matched', false)
       .eq('opt_in', true)
 
+    console.log('Fetched unmatched flights:', myFlightsData)
+
     if (myFlightsData) {
       setMyFlights(myFlightsData)
       const hasUnmatchedOptInFlight = myFlightsData.length > 0
@@ -100,8 +102,16 @@ export default function UnmatchedPage() {
       return
     }
 
+    // setFlights(
+    //   (flightData || []).filter((flight) => isWithinNext3Days(flight.date) ),
+    // )
+
     setFlights(
-      (flightData || []).filter((flight) => isWithinNext3Days(flight.date)),
+      (flightData || []).filter((flight) => {
+        const within3Days = isWithinNext3Days(flight.date)
+        // console.log(`Flight ${flight.flight_id} on ${flight.date} is within 3 days?`, within3Days)
+        return within3Days
+      }),
     )
 
     const reduced = (matchData as any[]).reduce(
@@ -303,9 +313,9 @@ export default function UnmatchedPage() {
         <ConfirmationModal
           title={
             selectedGroup
-              ? `Send a match request to the group (via ${selectedGroup.flights[0].Users?.firstname} ${selectedGroup.flights[0].Users?.lastname})?`
+              ? `Send a match request to the group (via ${selectedGroup.flights[0].Users?.firstname} ${selectedGroup.flights[0].Users?.lastname})? Choose one of your flights.`
               : selectedFlight
-                ? `Send a match request to ${selectedFlight.Users ? `${selectedFlight.Users.firstname} ${selectedFlight.Users.lastname}` : 'this user'}?`
+                ? `Send a match request to ${selectedFlight.Users ? `${selectedFlight.Users.firstname} ${selectedFlight.Users.lastname}` : 'this user'}? Choose one of your flights.`
                 : ''
           }
           onConfirm={() => {
@@ -337,11 +347,24 @@ function isWithinNext3Days(flightDateStr: string) {
   const today = new Date()
   const flightDate = new Date(flightDateStr)
 
-  // Calculate the difference in days
-  const diffTime = flightDate.getTime() - today.getTime()
+  // Normalize both to start of day (ignore time)
+  const startOfToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  )
+  const startOfFlightDay = new Date(
+    flightDate.getFullYear(),
+    flightDate.getMonth(),
+    flightDate.getDate(),
+  )
+
+  const diffTime = startOfFlightDay.getTime() - startOfToday.getTime()
   const diffDays = diffTime / (1000 * 60 * 60 * 24)
 
-  return diffDays >= 1 && diffDays <= 3
+  console.log(`Flight on ${flightDateStr}: ${diffDays} days away`)
+
+  return diffDays >= 0 && diffDays <= 3
 }
 
 function ConfirmationModal({
