@@ -11,6 +11,7 @@ interface MatchForm {
   flight_no: string
   date: string
   matched: boolean
+  opt_in: boolean
 }
 
 export default function Questionnaires() {
@@ -136,7 +137,7 @@ export default function Questionnaires() {
                 <div className="mt-[-20px] flex items-center justify-end gap-x-4">
                   <RedirectButton
                     label="Find others who need a ride!"
-                    route={`/results`} //TODO: direct to the Unmatched page
+                    route={`/unmatched`} //TODO: direct to the Unmatched page
                     color="bg-teal-400"
                     size="px-4 py-2 text-lg"
                   />

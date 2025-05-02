@@ -49,6 +49,18 @@ export type Database = {
           comment: string
         }
       }
+      
+      Feedback: {
+        Row: {
+          feedback_id: number
+          user_id: string
+          created_at: string
+          ride_id: string
+          overall: number
+          convenience: number
+          comments: string
+        }
+      }
       MatchRequests: {
         Row: {
           id: string

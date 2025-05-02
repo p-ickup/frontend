@@ -52,6 +52,7 @@ export default function PickupHeader() {
         <SimpleRedirectButton label="Questionnaire" route="/questionnaires" />
         <SimpleRedirectButton label="Results" route="/results" />
         <SimpleRedirectButton label="Unmatched" route="/unmatched" />
+        <SimpleRedirectButton label="Feedback" route="/feedback" />
       </nav>
 
       <div className="flex items-center gap-4">
