@@ -7,7 +7,6 @@ import { createBrowserClient } from '@/utils/supabase'
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 
-
 type Tables = Database['public']['Tables']
 type User = Tables['Users']['Row']
 type Flight = Tables['Flights']['Row']

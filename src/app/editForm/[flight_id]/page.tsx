@@ -36,7 +36,6 @@ export default function EditForm() {
     setIsModalOpen(false)
   }, [])
 
-
   useEffect(() => {
     if (!flight_id) return
 

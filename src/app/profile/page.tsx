@@ -121,7 +121,6 @@ export default function Questionnaire() {
     )
 
     if (error) {
-
       setMessage('Something went wrong. Please try again.')
     } else {
       setMessage(hasProfile ? 'Profile updated!' : 'Profile created!')
@@ -164,7 +163,6 @@ export default function Questionnaire() {
                 onChange={(e) => setLastName(e.target.value)}
                 className="mt-1 w-full rounded border p-2"
                 required
-
               />
             </label>
 
@@ -215,7 +213,6 @@ export default function Questionnaire() {
                   width={50}
                   height={50}
                   className="mt-2 rounded-full"
-
                 />
               )}
             </label>

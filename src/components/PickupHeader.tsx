@@ -16,14 +16,14 @@ import { useRouter } from 'next/navigation'
 // >>>>>>> main
 
 export default function PickupHeader() {
-  const { user, avatarUrl, signOut } = useAuth()
+  const { user, avatarUrl, signOut, signInWithGoogle } = useAuth()
   const router = useRouter()
 
   const handleProfileClick = () => {
     if (user) {
       router.push('/profile')
     } else {
-      router.push('/login')
+      signInWithGoogle()
     }
   }
 
