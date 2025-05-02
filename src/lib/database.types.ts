@@ -39,6 +39,17 @@ export type Database = {
           matched: boolean
         }
       }
+
+      Comments: {
+        Row: {
+          id: number
+          created_at: string
+          ride_id: number
+          user_id: string
+          comment: string
+        }
+      }
+      
       Feedback: {
         Row: {
           feedback_id: number
@@ -59,6 +70,7 @@ export type Database = {
           receiver_flight_id: number
           status: 'pending' | 'accepted' | 'rejected'
           created_at: string
+
         }
       }
     }
