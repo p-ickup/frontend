@@ -1,9 +1,19 @@
 'use client'
 
-import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
+// <<<<<<< unmatchedpage-yunju&josh
+import { createClient } from '@supabase/supabase-js'
 import Image from 'next/image'
+import { useEffect, useState } from 'react'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+)
+// where old main starts
+import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
+// >>>>>>> main
 
 export default function PickupHeader() {
   const { user, avatarUrl, signOut, signInWithGoogle } = useAuth()
@@ -26,12 +36,22 @@ export default function PickupHeader() {
 
   return (
     <header className="flex min-h-[80px] items-center justify-between bg-gradient-to-r from-teal-500 to-yellow-100 p-2 pl-11 pr-10 text-white">
-      <h1 className="text-xl font-bold">
-        <SimpleRedirectButton label="P-ickup" route="/" />
-      </h1>
+      <div
+        onClick={() => router.push('/')}
+        className="h-25 w-25 border-1 cursor-pointer overflow-hidden rounded-full hover:border-yellow-200"
+      >
+        <Image
+          src={'/favicon.ico'}
+          alt="P-ickup logo"
+          width={65}
+          height={65}
+          className="object-cover"
+        />
+      </div>
       <nav className="flex space-x-4">
         <SimpleRedirectButton label="Questionnaire" route="/questionnaires" />
         <SimpleRedirectButton label="Results" route="/results" />
+        <SimpleRedirectButton label="Unmatched" route="/unmatched" />
       </nav>
 
       <div className="flex items-center gap-4">
