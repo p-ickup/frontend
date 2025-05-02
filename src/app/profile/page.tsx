@@ -10,16 +10,14 @@ export default function Questionnaire() {
   const [firstname, setFirstName] = useState('')
   const [lastname, setLastName] = useState('')
   const [school, setSchool] = useState('')
-  // const [email, setEmail] = useState('')
   const [phonenumber, setPhoneNumber] = useState('')
   const [photo, setPhoto] = useState<File | null>(null)
-  const [photoUrl, setPhotoUrl] = useState('') // Store existing photo URL
+  const [photoUrl, setPhotoUrl] = useState('')
   const [instagram, setInstagram] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(true)
-  const [hasProfile, setHasProfile] = useState(false) // Check if profile exists in table
+  const [hasProfile, setHasProfile] = useState(false)
 
-  // Fetch user data on mount
   useEffect(() => {
     const fetchUserData = async () => {
       const {
@@ -33,9 +31,6 @@ export default function Questionnaire() {
         return
       }
 
-      console.log('Fetching data for user:', user.id)
-
-      // Get user profile from Supabase
       const { data, error } = await supabase
         .from('Users')
         .select('*')
@@ -43,19 +38,15 @@ export default function Questionnaire() {
         .single()
 
       if (error) {
+        setMessage('Please enter your profile information.')
         console.error('Error fetching user data:', error)
-        setMessage(`Error fetching data: ${error.message}`)
       } else if (data) {
-        console.log('User profile data:', data)
-
-        // Pre-fill form fields
         setFirstName(data.firstname || '')
         setLastName(data.lastname || '')
         setSchool(data.school || '')
-        // setEmail(data.email || '')
         setPhoneNumber(data.phonenumber || '')
-        setInstagram(data.instagram || '') // Instagram optional
-        setPhotoUrl(data.photo_url || '') // Store existing photo URL
+        setInstagram(data.instagram || '')
+        setPhotoUrl(data.photo_url || '')
         setHasProfile(true)
       }
 
@@ -80,7 +71,7 @@ export default function Questionnaire() {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      setMessage('Error: You must be logged in to submit data!')
+      setMessage('You must be logged in to submit your profile.')
       return
     }
     // Basic US phone number regex: allows (123) 456-7890, 123-456-7890, 1234567890, etc.
@@ -88,10 +79,11 @@ export default function Questionnaire() {
 
     if (!phoneRegex.test(phonenumber)) {
       setMessage('Please enter a valid phone number.')
+
       return
     }
 
-    let updatedPhotoUrl = photoUrl // Default to existing photo
+    let updatedPhotoUrl = photoUrl
 
     if (photo) {
       const fileName = `${Date.now()}-${photo.name}`
@@ -100,8 +92,9 @@ export default function Questionnaire() {
         .upload(fileName, photo)
 
       if (error) {
+        setMessage('Failed to upload your photo. Please try again.')
         console.error('Storage Upload Error:', error)
-        setMessage(`Error uploading image: ${error.message}`)
+
         return
       }
 
@@ -111,20 +104,11 @@ export default function Questionnaire() {
       updatedPhotoUrl = urlData.publicUrl || ''
     }
 
-    console.log('Submitting Data:', {
-      user_id: user.id,
-      firstname,
-      lastname,
-      school,
-      phonenumber,
-      photo_url: updatedPhotoUrl,
-      instagram: instagram || null, // If empty insert null since insta is optional
-    })
-
     const { data, error } = await supabase.from('Users').upsert(
       [
         {
           user_id: user.id,
+          email: user.email, // ✅ Automatically pulled from Supabase Auth
           firstname,
           lastname,
           school,
@@ -137,27 +121,21 @@ export default function Questionnaire() {
     )
 
     if (error) {
-      setMessage(`Error: ${error.message}`)
+      setMessage('Something went wrong. Please try again.')
     } else {
-      setMessage(
-        hasProfile
-          ? '✅ Profile updated successfully!'
-          : '✅ Profile created successfully!',
-      )
+      setMessage(hasProfile ? 'Profile updated!' : 'Profile created!')
       setHasProfile(true)
-      setPhotoUrl(updatedPhotoUrl) // Ensure UI updates with new photo
+      setPhotoUrl(updatedPhotoUrl)
     }
   }
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
+      <div className="flex min-h-screen w-full flex-col items-center justify-center">
         <h1 className="mb-4 text-3xl font-bold">
           {hasProfile ? 'Update Profile' : 'Create Profile'}
         </h1>
-        <p className="mb-6">
-          Please fill out your personal information and preferences below.
-        </p>
+        <p className="mb-6">Please fill out your personal information below.</p>
 
         {loading ? (
           <p>Loading...</p>
@@ -172,7 +150,7 @@ export default function Questionnaire() {
                 type="text"
                 value={firstname}
                 onChange={(e) => setFirstName(e.target.value)}
-                className="mt-1 w-full rounded border bg-white p-2 text-black"
+                className="mt-1 w-full rounded border p-2"
                 required
               />
             </label>
@@ -183,7 +161,7 @@ export default function Questionnaire() {
                 type="text"
                 value={lastname}
                 onChange={(e) => setLastName(e.target.value)}
-                className="mt-1 w-full rounded border bg-white p-2 text-black"
+                className="mt-1 w-full rounded border p-2"
                 required
               />
             </label>
@@ -193,30 +171,21 @@ export default function Questionnaire() {
               <select
                 value={school}
                 onChange={(e) => setSchool(e.target.value)}
-                className="mt-1 w-full rounded border bg-white p-2 text-black"
+                className="mt-1 w-full rounded border p-2"
                 required
               >
                 <option value="" disabled>
                   Select your school
                 </option>
-                <option value="Pomona">Pomona</option>
-                <option value="Claremont McKenna">Claremont McKenna</option>
-                <option value="Harvey Mudd">Harvey Mudd</option>
-                <option value="Scripps">Scripps</option>
-                <option value="Pitzer">Pitzer</option>
+                <option value="Pomona">Pomona College</option>
+                <option value="Claremont McKenna">
+                  Claremont McKenna College
+                </option>
+                <option value="Harvey Mudd">Harvey Mudd College</option>
+                <option value="Scripps">Scripps College</option>
+                <option value="Pitzer">Pitzer College</option>
               </select>
             </label>
-
-            {/* <label className="mb-2 block">
-              Email:
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 w-full rounded border bg-white p-2 text-black"
-                required
-              />
-            </label> */}
 
             <label className="mb-2 block">
               Phone Number:
@@ -224,7 +193,7 @@ export default function Questionnaire() {
                 type="text"
                 value={phonenumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
-                className="mt-1 w-full rounded border bg-white p-2 text-black"
+                className="mt-1 w-full rounded border p-2"
                 required
               />
             </label>
@@ -235,13 +204,15 @@ export default function Questionnaire() {
                 type="file"
                 accept="image/*"
                 onChange={handlePhotoChange}
-                className="mt-1 w-full rounded border bg-white p-2 text-black"
+                className="mt-1 w-full rounded border p-2"
               />
               {photoUrl && (
                 <img
                   src={photoUrl}
                   alt="Profile"
-                  className="mt-2 h-20 w-20 rounded-full"
+                  width={50}
+                  height={50}
+                  className="mt-2 rounded-full"
                 />
               )}
             </label>
@@ -252,7 +223,7 @@ export default function Questionnaire() {
                 type="text"
                 value={instagram}
                 onChange={(e) => setInstagram(e.target.value)}
-                className="mt-1 w-full rounded border bg-white p-2 text-black"
+                className="mt-1 w-full rounded border p-2"
               />
             </label>
 
