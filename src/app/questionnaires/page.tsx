@@ -94,11 +94,7 @@ export default function Questionnaires() {
     const formDate = new Date(form.date)
     formDate.setHours(0, 0, 0, 0)
     return (
-      form.opt_in == true &&
-      form.matched == false &&
-      formDate < threeDaysFromNow &&
-      formDate >= today
-      // TODO: do we want form.opt_in to be true? or redirect them no matter what if we didn't match them
+      form.matched == false && formDate < threeDaysFromNow && formDate >= today
     )
   })
 
@@ -141,7 +137,7 @@ export default function Questionnaires() {
                 <div className="mt-[-20px] flex items-center justify-end gap-x-4">
                   <RedirectButton
                     label="Find others who need a ride!"
-                    route={`/results`} //TODO: direct to the Unmatched page
+                    route={`/unmatched`} //TODO: direct to the Unmatched page
                     color="bg-teal-400"
                     size="px-4 py-2 text-lg"
                   />
