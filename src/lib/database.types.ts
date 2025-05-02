@@ -39,6 +39,17 @@ export type Database = {
           matched: boolean
         }
       }
+      MatchRequests: {
+        Row: {
+          id: string
+          sender_id: string
+          receiver_id: string
+          sender_flight_id: number
+          receiver_flight_id: number
+          status: 'pending' | 'accepted' | 'rejected'
+          created_at: string
+        }
+      }
     }
   }
 }

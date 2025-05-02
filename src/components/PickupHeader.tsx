@@ -1,9 +1,19 @@
 'use client'
 
-import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
+// <<<<<<< unmatchedpage-yunju&josh
+import { createClient } from '@supabase/supabase-js'
 import Image from 'next/image'
+import { useEffect, useState } from 'react'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+)
+// where old main starts
+import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
+// >>>>>>> main
 
 export default function PickupHeader() {
   const { user, avatarUrl, signOut } = useAuth()
@@ -41,6 +51,7 @@ export default function PickupHeader() {
       <nav className="flex space-x-4">
         <SimpleRedirectButton label="Questionnaire" route="/questionnaires" />
         <SimpleRedirectButton label="Results" route="/results" />
+        <SimpleRedirectButton label="Unmatched" route="/unmatched" />
       </nav>
 
       <div className="flex items-center gap-4">

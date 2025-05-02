@@ -1,16 +1,21 @@
 'use client'
 
 import RedirectButton from '@/components/buttons/RedirectButton'
+
+//import TripToggle from '@/components/ToWhereToggle'
 import SubmitSuccess from '@/components/questionnaires/SubmitSuccess'
 import TripToggle from '@/components/questionnaires/ToWhereToggle'
-
 import { createBrowserClient } from '@/utils/supabase'
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function MatchForm() {
   const supabase = createBrowserClient()
 
-  const [tripType, setTripType] = useState<boolean>(true) // true = "To Airport", false = "To School"
+
+  const [tripType, setTripType] = useState<boolean>(true)
+  const handleTripSelect = (type: boolean) => {
+    setTripType(type)
+  }
   const [airport, setAirport] = useState('')
   const [flight_no, setFlightNumber] = useState('')
   const [dateOfFlight, setDateOfFlight] = useState('')
@@ -18,7 +23,8 @@ export default function MatchForm() {
   const [earliestArrival, setEarliestArrival] = useState('')
   const [latestArrival, setLatestArrival] = useState('')
   const [dropoff, setDropoff] = useState(0.5)
-  const [budget, setBudget] = useState(50) // New budget default = 50. Can change later
+  const [budget, setBudget] = useState(50)
+  const [optInUnmatched, setOptInUnmatched] = useState(false)
   const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
 
@@ -46,6 +52,8 @@ export default function MatchForm() {
       return
     }
 
+    //const { error } = await supabase.from('Flights').insert([
+
     console.log('Submitting flight data:', {
       user_id: user.id,
       to_airport: tripType ? 1 : 0, // Store as 1 (true) or 0 (false)
@@ -64,15 +72,16 @@ export default function MatchForm() {
     const { data, error } = await supabase.from('Flights').insert([
       {
         user_id: user.id,
-        to_airport: tripType ? 1 : 0, // Store as 1 (true) or 0 (false)
+        to_airport: tripType ? 1 : 0,
         airport,
         flight_no,
         date: dateOfFlight,
         bag_no: numBags,
-        earliest_time: earliestArrival, // Already in HH:mm format
-        latest_time: latestArrival, // Already in HH:mm format
+        earliest_time: earliestArrival,
+        latest_time: latestArrival,
         max_dropoff: dropoff,
         max_price: budget,
+        opt_in: optInUnmatched ? true : false,
         terminal,
       },
     ])
@@ -164,7 +173,7 @@ export default function MatchForm() {
           <label className="mb-2 block">
             Earliest Arrival Time (PST):
             <input
-              type="time" // Only allows hour:minute input
+              type="time"
               value={earliestArrival}
               onChange={(e) => setEarliestArrival(e.target.value)}
               className="mt-1 w-full rounded border bg-white p-2 text-black"
@@ -175,7 +184,7 @@ export default function MatchForm() {
           <label className="mb-2 block">
             Latest Arrival Time (PST):
             <input
-              type="time" // Only allows hour:minute input
+              type="time"
               value={latestArrival}
               onChange={(e) => setLatestArrival(e.target.value)}
               className="mt-1 w-full rounded border bg-white p-2 text-black"
@@ -210,12 +219,27 @@ export default function MatchForm() {
             />
           </label>
 
+          {/* ✅ Opt-in checkbox */}
+          <label className="mb-2 mt-4 block rounded bg-gray-100 p-3">
+            <input
+              type="checkbox"
+              checked={optInUnmatched}
+              onChange={(e) => setOptInUnmatched(e.target.checked)}
+              className="mr-2"
+            />
+            Would you like to opt-in to the unmatched page if P-ickup is unable
+            to match you through our algorithm? Please note that the unmatched
+            page will display your name, email, and flight information.
+          </label>
+
           <div className="mt-4 flex justify-between">
             <RedirectButton label="Cancel" route="/questionnaires" />
             <button
-              onClick={handleSubmit}
-              type="button"
+              type="submit"
               className="mt-4 rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white hover:bg-green-700"
+              // onClick={handleSubmit}
+              // type="button"
+              // className="mt-4 rounded-lg bg-green-600 px-6 py-3 text-lg font-semibold text-white hover:bg-green-700"
             >
               Match
             </button>
