@@ -17,7 +17,7 @@ export default function ToWhereToggle({
       <button
         type="button" // Prevents unintended form submission
         className={`rounded-lg px-4 py-2 ${
-          isToAirport ? 'bg-blue-600 text-white' : 'bg-gray-200 text-black'
+          isToAirport ? 'bg-teal-400 text-white' : 'bg-gray-200 text-black'
         }`}
         onClick={() => handleSelect(true)}
       >
@@ -26,7 +26,7 @@ export default function ToWhereToggle({
       <button
         type="button" // Prevents unintended form submission
         className={`rounded-lg px-4 py-2 ${
-          !isToAirport ? 'bg-blue-600 text-white' : 'bg-gray-200 text-black'
+          !isToAirport ? 'bg-teal-400 text-white' : 'bg-gray-200 text-black'
         }`}
         onClick={() => handleSelect(false)}
       >

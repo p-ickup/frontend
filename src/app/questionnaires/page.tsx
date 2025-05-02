@@ -99,9 +99,7 @@ export default function Questionnaires() {
 
   // DISPLAY!
   return (
-    <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      {/* Header at the top */}
-
+    <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-100 text-black">
       {/* Buttons Section */}
       <div className="mt-6 flex flex-col items-center gap-4">
         <div className="flex gap-4">
@@ -111,7 +109,7 @@ export default function Questionnaires() {
       </div>
 
       {/* Recent Match Forms */}
-      <div className="mt-6 flex w-full flex-col items-center px-4">
+      <div className="mt-6 flex w-full flex-col items-center px-4 pb-8">
         <h1 className="text-2xl font-bold">Recent Match Forms</h1>
 
         {message && <p className="mb-4 text-red-500">{message}</p>}
