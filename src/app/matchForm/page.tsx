@@ -4,6 +4,7 @@ import RedirectButton from '@/components/buttons/RedirectButton'
 
 //import TripToggle from '@/components/ToWhereToggle'
 import SubmitSuccess from '@/components/questionnaires/SubmitSuccess'
+import ManyBagsNotice from '@/components/questionnaires/ManyBagsNotice'
 import TripToggle from '@/components/questionnaires/ToWhereToggle'
 import { createBrowserClient } from '@/utils/supabase'
 import { useState, useEffect } from 'react'
@@ -27,7 +28,12 @@ export default function MatchForm() {
   const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
 
-  // handling pop up
+  // handling pop ups
+  const [showManyBagsModal, setShowManyBagsModal] = useState(false)
+  const [pendingSubmit, setPendingSubmit] = useState<React.FormEvent | null>(
+    null,
+  ) // Flag to hold submission until confirmed
+
   const [isModalOpen, setIsModalOpen] = useState(false)
   useEffect(() => {
     setIsModalOpen(false)
@@ -53,22 +59,32 @@ export default function MatchForm() {
 
     //const { error } = await supabase.from('Flights').insert([
 
-    console.log('Submitting flight data:', {
-      user_id: user.id,
-      to_airport: tripType ? 1 : 0, // Store as 1 (true) or 0 (false)
-      airport,
-      flight_no,
-      dateOfFlight,
-      numBags,
-      earliestArrival,
-      latestArrival,
-      max_dropoff: dropoff,
-      budget,
-      terminal,
-    })
+    if (numBags >= 4) {
+      setPendingSubmit(e)
+      setShowManyBagsModal(true)
+      return
+    }
 
-    // Insert data into the Supabase 'Flights' table
-    const { data, error } = await supabase.from('Flights').insert([
+    await actuallySubmitForm(e)
+  }
+
+  const actuallySubmitForm = async (e: React.FormEvent) => {
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      setMessage('Error: You must be logged in to submit flight details!')
+      return
+    }
+
+    if (!flight_no || !numBags || !earliestArrival || !latestArrival) {
+      setMessage('Missing information!')
+      return
+    }
+
+    const { error } = await supabase.from('Flights').insert([
       {
         user_id: user.id,
         to_airport: tripType ? 1 : 0,
@@ -88,10 +104,9 @@ export default function MatchForm() {
     if (error) {
       console.error('Error inserting flight data:', error)
       setMessage(`Error: ${error.message}`)
-      return // Exit early if there's an error
+      return
     }
 
-    // Success - Show success modal
     setIsModalOpen(true)
     setMessage('✅ Flight details submitted successfully!')
   }
@@ -243,6 +258,21 @@ export default function MatchForm() {
               Match
             </button>
 
+            {/*Handle Bag Pop-up */}
+            <ManyBagsNotice
+              open={showManyBagsModal}
+              onConfirm={() => {
+                setShowManyBagsModal(false)
+                if (pendingSubmit) {
+                  actuallySubmitForm(pendingSubmit)
+                  setPendingSubmit(null)
+                }
+              }}
+              onCancel={() => {
+                setShowManyBagsModal(false)
+                setPendingSubmit(null)
+              }}
+            />
             {/* SubmitSuccess Modal */}
             <SubmitSuccess
               isOpen={isModalOpen}
