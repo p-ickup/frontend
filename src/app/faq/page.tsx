@@ -19,8 +19,8 @@ export default function Faq() {
         Frequently Asked Questions
       </h1>
       <p className="m-8 flex justify-center">
-        No one wants to spend $100 on a single Uber ride. We are here to change
-        that.
+        Why pay $100 for a ride to the airport? We help you split the cost and
+        share the journey.
       </p>
       <Accordion
         open={open === 1}

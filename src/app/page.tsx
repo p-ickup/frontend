@@ -15,8 +15,8 @@ export default async function Index() {
       <div className="flex flex-col items-center gap-6 bg-gradient-to-r from-teal-100/50 to-yellow-100/50 p-20 text-black">
         <h1 className="text-3xl font-bold">Welcome to P-ickup</h1>
         <p>
-          No one wants to spend $100 on a single Uber ride. We are here to
-          change that.
+          Why pay $100 for a ride to the airport? We help you split the cost and
+          share the journey.
         </p>
 
         {/* Conditional Redirect Button based on auth state */}
