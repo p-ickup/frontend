@@ -241,7 +241,9 @@ export default function Questionnaire() {
             className="w-96 rounded-lg bg-white p-6 shadow-md"
           >
             <label className="mb-2 block">
-              First Name:
+              <span className="font-bold after:ml-1 after:text-red-600 after:content-['*']">
+                First Name
+              </span>
               <input
                 type="text"
                 value={firstname}
@@ -252,7 +254,9 @@ export default function Questionnaire() {
             </label>
 
             <label className="mb-2 block">
-              Last Name:
+              <span className="font-bold after:ml-1 after:text-red-600 after:content-['*']">
+                Last Name
+              </span>
               <input
                 type="text"
                 value={lastname}
@@ -263,7 +267,9 @@ export default function Questionnaire() {
             </label>
 
             <label className="mb-2 block">
-              School:
+              <span className="font-bold after:ml-1 after:text-red-600 after:content-['*']">
+                School
+              </span>
               <select
                 value={school}
                 onChange={(e) => setSchool(e.target.value)}
@@ -284,7 +290,9 @@ export default function Questionnaire() {
             </label>
 
             <label className="mb-2 block">
-              Phone Number:
+              <span className="font-bold after:ml-1 after:text-red-600 after:content-['*']">
+                Phone Number
+              </span>
               <input
                 type="text"
                 value={phonenumber}
@@ -295,7 +303,13 @@ export default function Questionnaire() {
             </label>
 
             <label className="mb-2 block">
-              Profile Picture{!hasGooglePhoto && '(required)'}:
+              <span
+                className={`font-bold after:ml-1 after:text-red-600 ${
+                  !hasGooglePhoto ? "after:content-['*']" : ''
+                }`}
+              >
+                Profile Picture
+              </span>
               <input
                 type="file"
                 accept={ALLOWED_IMAGE_TYPES.join(',')}
@@ -333,8 +347,8 @@ export default function Questionnaire() {
               )}
             </label>
 
-            <label className="mb-2 block">
-              Instagram (optional):
+            <label className="mb-2 block font-bold">
+              Instagram
               <input
                 type="text"
                 value={instagram}
