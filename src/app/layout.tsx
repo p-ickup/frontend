@@ -14,7 +14,7 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata = {
   metadataBase: new URL(defaultUrl),
-  title: 'P-ickup',
+  title: 'PICKUP',
   description: 'Your AI powered RideShare App',
 }
 

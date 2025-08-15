@@ -8,6 +8,8 @@ import ManyBagsNotice from '@/components/questionnaires/ManyBagsNotice'
 import TripToggle from '@/components/questionnaires/ToWhereToggle'
 import { createBrowserClient } from '@/utils/supabase'
 import { useState, useEffect } from 'react'
+import { validateUserProfile } from '@/utils/profileValidation'
+import Link from 'next/link'
 
 export default function MatchForm() {
   const supabase = createBrowserClient()
@@ -42,13 +44,10 @@ export default function MatchForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      setMessage('Error: You must be logged in to submit flight details!')
+    // Validate user has complete profile
+    const profileValidation = await validateUserProfile()
+    if (!profileValidation.isValid) {
+      setMessage(`${profileValidation.message}`)
       return
     }
 
@@ -56,8 +55,6 @@ export default function MatchForm() {
       setMessage('Missing information!')
       return
     }
-
-    //const { error } = await supabase.from('Flights').insert([
 
     if (numBags >= 4) {
       setPendingSubmit(e)
@@ -241,7 +238,7 @@ export default function MatchForm() {
               onChange={(e) => setOptInUnmatched(e.target.checked)}
               className="mr-2"
             />
-            Would you like to opt-in to the unmatched page if P-ickup is unable
+            Would you like to opt-in to the unmatched page if PICKUP is unable
             to match you through our algorithm? Please note that the unmatched
             page will display your name, email, and flight information.
           </label>
@@ -281,7 +278,19 @@ export default function MatchForm() {
             />
           </div>
 
-          {message && <p className="mt-4 text-center">{message}</p>}
+          {message && (
+            <div className="mt-4 text-center">
+              <p className="mb-2">{message}</p>
+              {
+                <Link
+                  href="/profile"
+                  className="inline-block rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                >
+                  Go to Profile
+                </Link>
+              }
+            </div>
+          )}
         </form>
       </div>
     </div>

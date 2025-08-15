@@ -1,4 +1,4 @@
-# P-ickup
+# PICKUP
 
 A modern web application built with Next.js and Supabase for managing pickup activities and questionnaires, powered by machine learning for intelligent ride matching and scheduling.
 

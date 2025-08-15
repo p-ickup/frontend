@@ -12,12 +12,12 @@ export default function About() {
 
   return (
     <div className="min-h-[calc(100vh-165px)] bg-gray-100 p-16 text-black">
-      <h1 className="mb-8 text-4xl">About P-ickup</h1>
+      <h1 className="mb-8 text-4xl">About PICKUP</h1>
       <p className="mb-6">
         No student should have to spend $100 or more on a solo ride to LAX,
         especially after already buying a costly plane ticket home. While the
         Claremont Colleges sometimes provide subsidized shuttles, these services
-        are often limited in timing and availability. That’s where P-ickup comes
+        are often limited in timing and availability. That’s where PICKUP comes
         in!
       </p>
       <p className="mb-6">
@@ -29,15 +29,15 @@ export default function About() {
         others headed in the same direction.
       </p>
       <p className="mb-6">
-        The idea for P-ickup was born out of personal frustration. After
+        The idea for PICKUP was born out of personal frustration. After
         struggling to find affordable airport transportation ourselves, we
         realized there was a better solution waiting to be built. With the help
         of our loving and dedicated engineering team, we’ve been working on this
         platform throughout the year.
       </p>
       <p>
-        Whether it’s your first ride or your fiftieth, we hope P-ickup makes
-        your journey a little easier.
+        Whether it’s your first ride or your fiftieth, we hope PICKUP makes your
+        journey a little easier.
       </p>
       <h1 className="mt-8 text-4xl">How it Works</h1>
       <h2 className="mt-8">Countdown to Flight:</h2>
@@ -89,7 +89,7 @@ export default function About() {
               color={activeStep === 1 ? 'blue-gray' : 'gray'}
               className="font-normal"
             >
-              Complete P-ickup questionnaire.
+              Complete PICKUP questionnaire.
             </Typography>
             <Typography color="gray" className="mt-1 text-xs italic">
               * anytime between booking and 3 days before *
@@ -136,7 +136,7 @@ export default function About() {
               color={activeStep === 2 ? 'blue-gray' : 'gray'}
               className="font-normal"
             >
-              Get P-icked up! Fill out feedback.
+              Get PICKed UP! Fill out feedback.
             </Typography>
           </div>
         </Step>

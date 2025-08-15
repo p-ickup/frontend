@@ -9,7 +9,7 @@ export default function Index() {
   return (
     <div className="flex min-h-[calc(100vh-165px)] w-full items-center justify-center bg-gray-100">
       <div className="flex flex-col items-center gap-6 bg-gradient-to-r from-teal-100/50 to-yellow-100/50 p-20 text-black">
-        <h1 className="text-3xl font-bold">Welcome to P-ickup</h1>
+        <h1 className="text-3xl font-bold">Welcome to PICKUP</h1>
         <p>
           Why pay $100 for a ride to the airport? We help you split the cost and
           share the journey.

@@ -18,6 +18,12 @@ import { useRouter } from 'next/navigation'
 export default function PickupHeader() {
   const { user, avatarUrl, signOut, signInWithGoogle } = useAuth()
   const router = useRouter()
+  const [avatarKey, setAvatarKey] = useState(0)
+
+  // Force re-render when avatarUrl changes
+  useEffect(() => {
+    setAvatarKey((prev) => prev + 1)
+  }, [avatarUrl])
 
   const handleProfileClick = () => {
     if (user) {
@@ -42,7 +48,7 @@ export default function PickupHeader() {
       >
         <Image
           src={'/favicon.ico'}
-          alt="P-ickup logo"
+          alt="PICKUP logo"
           width={65}
           height={65}
           className="object-cover"
@@ -64,6 +70,7 @@ export default function PickupHeader() {
                 className="h-10 w-10 cursor-pointer overflow-hidden rounded-full border-2 border-white transition-colors hover:border-indigo-300"
               >
                 <Image
+                  key={avatarKey}
                   src={avatarUrl || '/images/profileIcon.webp'}
                   alt="Profile"
                   width={40}

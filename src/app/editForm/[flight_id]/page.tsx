@@ -231,7 +231,7 @@ export default function EditForm() {
               onChange={(e) => setOptInUnmatched(e.target.checked)}
               className="mr-2"
             />
-            Would you like to opt-in to the unmatched page if P-ickup is unable
+            Would you like to opt-in to the unmatched page if PICKUP is unable
             to match you through our algorithm?
           </label>
 
