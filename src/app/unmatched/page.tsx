@@ -1,5 +1,6 @@
 'use client'
 
+import RedirectButton from '@/components/buttons/RedirectButton'
 import type { Database } from '@/lib/database.types'
 import { createBrowserClient } from '@/utils/supabase'
 import Link from 'next/link'
@@ -196,11 +197,10 @@ export default function UnmatchedPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-6 text-black">
       <div className="mb-6 flex justify-end">
-        <Link href="/MatchRequestsPage">
-          <button className="rounded bg-purple-600 px-4 py-2 text-white hover:bg-purple-700">
-            View Incoming Match Requests
-          </button>
-        </Link>
+        <RedirectButton
+          label="View Incoming Match Requests"
+          route="/MatchRequestsPage"
+        />
       </div>
 
       <h1 className="mb-6 text-2xl font-bold">Groups Available to Join</h1>

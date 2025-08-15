@@ -53,7 +53,7 @@ DTEND;VALUE=DATE:${end}
 BEGIN:VALARM
 TRIGGER:-P1D
 ACTION:DISPLAY
-DESCRIPTION:Reminder: Your P-ickup Match is tomorrow!
+DESCRIPTION:Reminder: Your PICKUP Match is tomorrow!
 END:VALARM
 END:VEVENT
 END:VCALENDAR`
@@ -72,17 +72,26 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
   const firstMatch = matches[0]
   const supabase = createBrowserClient()
   const [isDeleting, setIsDeleting] = useState(false)
+  const [urlCache, setUrlCache] = useState<Record<string, string>>({})
 
   const getProfileUrl = (photoPath: string | null) => {
     if (!photoPath) return '/images/profileIcon.webp'
     if (photoPath.startsWith('/images')) return photoPath
     if (photoPath.includes('supabase.co')) return photoPath
 
+    // Check cache first
+    if (urlCache[photoPath]) {
+      return urlCache[photoPath]
+    }
+
+    // Generate URL and cache it
     const { data } = supabase.storage
       .from('profile_picture')
       .getPublicUrl(photoPath)
 
-    return data?.publicUrl || '/images/profileIcon.webp'
+    const publicUrl = data?.publicUrl || '/images/profileIcon.webp'
+    setUrlCache((prev) => ({ ...prev, [photoPath]: publicUrl }))
+    return publicUrl
   }
 
   const handleDelete = async () => {
@@ -103,7 +112,7 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
 
     createICSFile(
       'pickup_reminder',
-      'Reminder to prepare for your P-ickup ride share!',
+      'Reminder to prepare for your PICKUP ride share!',
       getAirportAddress(firstMatch.Flights.airport),
       flightDate,
     )

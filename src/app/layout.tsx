@@ -14,8 +14,12 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata = {
   metadataBase: new URL(defaultUrl),
-  title: 'P-ickup',
+  title: 'PICKUP',
   description: 'Your AI powered RideShare App',
+  icons: {
+    icon: [{ url: '/favicon.ico?v=2', sizes: 'any' }],
+    shortcut: '/favicon.ico?v=2',
+  },
 }
 
 export default function RootLayout({
