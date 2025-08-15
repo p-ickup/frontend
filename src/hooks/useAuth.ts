@@ -121,7 +121,7 @@ export function useAuth() {
         redirectTo:
           process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL ||
           (process.env.NODE_ENV === 'production'
-            ? 'https://PICKUP.com/auth/callback'
+            ? 'https://p-ickup.com/auth/callback'
             : `${window.location.origin}/auth/callback`),
       },
     })
