@@ -47,8 +47,8 @@ export default function PickupHeader() {
         className="h-25 w-25 border-1 cursor-pointer overflow-hidden rounded-full hover:border-yellow-200"
       >
         <Image
-          src={'/favicon.ico'}
-          alt="PICKUP logo"
+          src="/favicon.ico"
+          alt="P-ickup logo"
           width={65}
           height={65}
           className="object-cover"
