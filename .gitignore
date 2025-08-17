@@ -39,3 +39,12 @@ yarn-error.log*
 
 # swc
 .swc.env.local
+
+# pnpm
+.pnpm-store/
+node_modules/.cache/
+pnpm-debug.log*
+
+# temporary files that can cause corruption
+*.tmp
+*.temp

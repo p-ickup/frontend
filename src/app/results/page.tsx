@@ -225,6 +225,14 @@ export default function Results() {
     )
   }
 
+  if (loading)
+    return (
+      <div className="flex items-center justify-center bg-blue-50 p-4">
+        <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-teal-500"></div>
+        <span className="ml-2 text-teal-600">Loading Matches...</span>
+      </div>
+    )
+
   return (
     <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-50 font-sans text-black">
       {/* Header at the top */}
@@ -232,19 +240,99 @@ export default function Results() {
       <div className="m-8 mx-auto flex w-full max-w-5xl flex-col items-center p-6">
         <h1 className="mb-8 text-3xl font-bold text-gray-900">Your Matches</h1>
 
-        {loading ? (
-          <div className="flex items-center justify-center">
-            <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-gray-900"></div>
+        <>
+          {/* Upcoming Matches Section */}
+          <div className="w-full max-w-3xl">
+            <h2 className="mb-5 flex items-center gap-2 text-xl font-semibold text-gray-800">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 text-teal-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </span>
+              Upcoming Matches
+            </h2>
+            {Object.keys(matches.upcoming).length > 0 ? (
+              (() => {
+                // Group the upcoming matches by ride_id
+                const groupedUpcoming = groupMatchesByRideId(
+                  Object.values(matches.upcoming).flat(),
+                )
+
+                // Render a MatchCard for each group of matches with the same ride_id
+                return Object.entries(groupedUpcoming).map(
+                  ([rideId, matchesForRide]) => (
+                    <div key={rideId} className="mb-8">
+                      <MatchCard
+                        matches={matchesForRide}
+                        upcoming={true}
+                        onDelete={deleteMatch}
+                      />
+                      <CommentSection rideId={parseInt(rideId)} />
+                    </div>
+                  ),
+                )
+
+                // return Object.entries(groupedUpcoming).map(
+                //   ([rideId, matchesForRide]) => (
+                //     <MatchCard
+                //       key={rideId}
+                //       matches={matchesForRide}
+                //       upcoming={true}
+                //       onDelete={deleteMatch}
+                //     />
+                //   ),
+                // )
+              })()
+            ) : (
+              <EmptyState type="upcoming" />
+            )}
           </div>
-        ) : (
-          <>
-            {/* Upcoming Matches Section */}
-            <div className="w-full max-w-3xl">
+
+          <RedirectButton label="View Unmatched Flights" route="/unmatched" />
+
+          {/* Toggle Previous Matches Button */}
+          <button
+            onClick={() => setShowPrevious(!showPrevious)}
+            className="mt-8 flex items-center gap-2 rounded-lg border border-gray-200 bg-white 
+                px-4 py-2 font-medium shadow-sm transition-colors hover:bg-gray-100 active:bg-gray-200"
+          >
+            {showPrevious ? 'Hide' : 'Show'} Previous Matches
+            <svg
+              className={`h-5 w-5 transform transition-transform ${
+                showPrevious ? 'rotate-180' : ''
+              }`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+
+          {/* Previous Matches Section */}
+          {showPrevious && (
+            <div className="mt-6 w-full max-w-3xl">
               <h2 className="mb-5 flex items-center gap-2 text-xl font-semibold text-gray-800">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5 text-teal-600"
+                    className="h-5 w-5 text-gray-600"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -257,118 +345,32 @@ export default function Results() {
                     />
                   </svg>
                 </span>
-                Upcoming Matches
+                Previous Matches
               </h2>
-              {Object.keys(matches.upcoming).length > 0 ? (
+              {Object.keys(matches.previous).length > 0 ? (
                 (() => {
-                  // Group the upcoming matches by ride_id
-                  const groupedUpcoming = groupMatchesByRideId(
-                    Object.values(matches.upcoming).flat(),
+                  // Group the previous matches by ride_id
+                  const groupedPrevious = groupMatchesByRideId(
+                    Object.values(matches.previous).flat(),
                   )
 
                   // Render a MatchCard for each group of matches with the same ride_id
-                  return Object.entries(groupedUpcoming).map(
+                  return Object.entries(groupedPrevious).map(
                     ([rideId, matchesForRide]) => (
-                      <div key={rideId} className="mb-8">
-                        <MatchCard
-                          matches={matchesForRide}
-                          upcoming={true}
-                          onDelete={deleteMatch}
-                        />
-                        <CommentSection rideId={parseInt(rideId)} />
-                      </div>
+                      <MatchCard
+                        key={rideId}
+                        matches={matchesForRide}
+                        upcoming={false}
+                      />
                     ),
                   )
-
-                  // return Object.entries(groupedUpcoming).map(
-                  //   ([rideId, matchesForRide]) => (
-                  //     <MatchCard
-                  //       key={rideId}
-                  //       matches={matchesForRide}
-                  //       upcoming={true}
-                  //       onDelete={deleteMatch}
-                  //     />
-                  //   ),
-                  // )
                 })()
               ) : (
-                <EmptyState type="upcoming" />
+                <EmptyState type="previous" />
               )}
             </div>
-
-            <RedirectButton label="View Unmatched Flights" route="/unmatched" />
-
-            {/* Toggle Previous Matches Button */}
-            <button
-              onClick={() => setShowPrevious(!showPrevious)}
-              className="mt-8 flex items-center gap-2 rounded-lg border border-gray-200 bg-white 
-                px-4 py-2 font-medium shadow-sm transition-colors hover:bg-gray-100 active:bg-gray-200"
-            >
-              {showPrevious ? 'Hide' : 'Show'} Previous Matches
-              <svg
-                className={`h-5 w-5 transform transition-transform ${
-                  showPrevious ? 'rotate-180' : ''
-                }`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-            </button>
-
-            {/* Previous Matches Section */}
-            {showPrevious && (
-              <div className="mt-6 w-full max-w-3xl">
-                <h2 className="mb-5 flex items-center gap-2 text-xl font-semibold text-gray-800">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-5 w-5 text-gray-600"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                  </span>
-                  Previous Matches
-                </h2>
-                {Object.keys(matches.previous).length > 0 ? (
-                  (() => {
-                    // Group the previous matches by ride_id
-                    const groupedPrevious = groupMatchesByRideId(
-                      Object.values(matches.previous).flat(),
-                    )
-
-                    // Render a MatchCard for each group of matches with the same ride_id
-                    return Object.entries(groupedPrevious).map(
-                      ([rideId, matchesForRide]) => (
-                        <MatchCard
-                          key={rideId}
-                          matches={matchesForRide}
-                          upcoming={false}
-                        />
-                      ),
-                    )
-                  })()
-                ) : (
-                  <EmptyState type="previous" />
-                )}
-              </div>
-            )}
-          </>
-        )}
+          )}
+        </>
 
         <RedirectButton label="Back to Home" route="/" />
       </div>

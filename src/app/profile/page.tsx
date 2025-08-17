@@ -229,12 +229,17 @@ export default function Questionnaire() {
     <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
       <div className="flex min-h-screen w-full flex-col items-center justify-center">
         <h1 className="mb-4 text-3xl font-bold">
-          {hasProfile ? 'Update Profile' : 'Create Profile'}
+          {loading ? '' : hasProfile ? 'Update Profile' : 'Create Profile'}
         </h1>
-        <p className="mb-6">Please fill out your personal information below.</p>
+        <p className="mb-6">
+          {loading ? '' : 'Please fill out your personal information below.'}
+        </p>
 
         {loading ? (
-          <p>Loading...</p>
+          <div className="flex items-center justify-center bg-blue-50 p-4">
+            <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-teal-500"></div>
+            <span className="ml-2 text-teal-600">Loading Profile...</span>
+          </div>
         ) : (
           <form
             onSubmit={handleSubmit}
@@ -361,7 +366,11 @@ export default function Questionnaire() {
               type="submit"
               className="w-full rounded bg-teal-500 p-2 text-white hover:bg-teal-600"
             >
-              {hasProfile ? 'Update Profile' : 'Create Profile'}
+              {loading
+                ? 'Loading...'
+                : hasProfile
+                  ? 'Update Profile'
+                  : 'Create Profile'}
             </button>
 
             {message && <p className="mt-4 text-center">{message}</p>}

@@ -28,6 +28,7 @@ export type Database = {
           user_id: string
           flight_no: string
           bag_no: number
+          bag_no_large: number
           max_price: number
           max_dropoff: number
           airport: string
@@ -37,6 +38,12 @@ export type Database = {
           to_airport: boolean
           terminal: string
           matched: boolean
+          airline_iata: string
+          last_status: string
+          last_dep_estimated_utc: string
+          last_arr_estimated_utc: string
+          last_notified_at: string
+          last_notified_delay_min: number
         }
       }
 
@@ -49,7 +56,7 @@ export type Database = {
           comment: string
         }
       }
-      
+
       Feedback: {
         Row: {
           feedback_id: number
@@ -70,7 +77,6 @@ export type Database = {
           receiver_flight_id: number
           status: 'pending' | 'accepted' | 'rejected'
           created_at: string
-
         }
       }
     }

@@ -30,7 +30,7 @@ export default function ToWhereToggle({
         }`}
         onClick={() => handleSelect(false)}
       >
-        To School
+        From Airport
       </button>
     </div>
   )
