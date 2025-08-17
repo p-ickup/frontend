@@ -191,7 +191,13 @@ export default function UnmatchedPage() {
     setSelectedMyFlightId(null)
   }
 
-  if (loading) return <div className="p-6">Loading...</div>
+  if (loading)
+    return (
+      <div className="flex items-center justify-center bg-blue-50 p-4">
+        <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-teal-500"></div>
+        <span className="ml-2 text-teal-600">Loading Unmatched Flights...</span>
+      </div>
+    )
   if (error) return <div className="p-6 text-red-600">{error}</div>
 
   return (

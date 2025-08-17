@@ -7,6 +7,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import ReactQueryProvider from '@/providers/ReactQueryProvider'
 import PickupHeader from '@/components/PickupHeader'
 import PickupFooter from '@/components/PickupFooter'
+import { TooltipProvider } from '@/components/ui/tooltip'
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -33,13 +34,15 @@ export default function RootLayout({
         <NextTopLoader showSpinner={false} height={2} color="#2acf80" />
         <ThemeProvider attribute="class" enableSystem disableTransitionOnChange>
           <ReactQueryProvider>
-            <div className="flex min-h-screen flex-col">
-              <PickupHeader />
-              <div className="flex-1">{children}</div>
-              <PickupFooter />
-              <Analytics />
-            </div>
-            <ReactQueryDevtools initialIsOpen={false} />
+            <TooltipProvider>
+              <div className="flex min-h-screen flex-col">
+                <PickupHeader />
+                <div className="flex-1">{children}</div>
+                <PickupFooter />
+                <Analytics />
+              </div>
+              <ReactQueryDevtools initialIsOpen={false} />
+            </TooltipProvider>
           </ReactQueryProvider>
         </ThemeProvider>
       </body>

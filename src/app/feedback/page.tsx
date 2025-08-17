@@ -106,9 +106,9 @@ export default function FeedbackForm() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-gray-100 text-black">
-        <h2 className="mb-4 text-3xl font-bold">Leave Feedback</h2>
+    <div className="flex h-full flex-grow flex-col text-black">
+      <div className="flex flex-col items-center pt-12">
+        <h2 className="mb-4 text-center text-3xl font-bold">Leave Feedback</h2>
         <p className="mb-6">
           We value your feedback. Please fill out the form below.
         </p>
@@ -126,7 +126,7 @@ export default function FeedbackForm() {
 
         <form
           onSubmit={handleSubmit}
-          className="w-96 rounded-lg bg-white p-6 shadow-md"
+          className="w-96 rounded-lg bg-gray-100 p-6 shadow-md"
         >
           {/* Ride Selection */}
           <label className="mb-2 block font-medium">
