@@ -50,7 +50,7 @@ export default function Results() {
   const [showPrevious, setShowPrevious] = useState(false)
   const [loading, setLoading] = useState(true)
   const supabase = createBrowserClient()
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, signInWithGoogle } = useAuth()
 
   useEffect(() => {
     if (user) {
@@ -218,7 +218,7 @@ export default function Results() {
           <h1 className="mb-8 text-3xl font-bold text-gray-900">
             Your Matches
           </h1>
-          <EmptyState type="login" />
+          <EmptyState type="login" onLogin={signInWithGoogle} />
           <RedirectButton label="Back to Home" route="/" />
         </div>
       </div>

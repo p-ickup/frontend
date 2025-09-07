@@ -1,50 +1,51 @@
 'use client'
 
 import { createBrowserClient } from '@/utils/supabase'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import EmptyState from '@/components/results/EmptyState'
+import RedirectButton from '@/components/buttons/RedirectButton'
 
 export default function MatchRequestsPage() {
   const supabase = createBrowserClient()
+  const { user, isAuthenticated, isLoading, signInWithGoogle } = useAuth()
   const [requests, setRequests] = useState<any[]>([])
   const [userId, setUserId] = useState<string>('')
 
-  useEffect(() => {
-    const load = async () => {
-      const {
-        data: { user },
-        error,
-      } = await supabase.auth.getUser()
-
-      if (error || !user) {
-        console.error('User not authenticated')
-        return
-      }
-
-      setUserId(user.id)
-
-      const { data, error: fetchError } = await supabase
-        .from('MatchRequests')
-        .select(
-          `*,
-          sender_flight:Flights!MatchRequests_sender_flight_id_fkey(
-            flight_id, airport, earliest_time, latest_time, date, user_id, to_airport,
-            Users (firstname, lastname)
-          )
-        `,
-        )
-        .eq('receiver_id', user.id)
-        .eq('status', 'pending')
-
-      if (fetchError) {
-        console.error('Error fetching match requests:', fetchError)
-        return
-      }
-
-      setRequests(data || [])
+  const load = useCallback(async () => {
+    if (!user) {
+      console.error('User not authenticated')
+      return
     }
 
-    load()
-  }, [])
+    setUserId(user.id)
+
+    const { data, error: fetchError } = await supabase
+      .from('MatchRequests')
+      .select(
+        `*,
+        sender_flight:Flights!MatchRequests_sender_flight_id_fkey(
+          flight_id, airport, earliest_time, latest_time, date, user_id, to_airport,
+          Users (firstname, lastname)
+        )
+      `,
+      )
+      .eq('receiver_id', user.id)
+      .eq('status', 'pending')
+
+    if (fetchError) {
+      console.error('Error fetching match requests:', fetchError)
+      return
+    }
+
+    setRequests(data || [])
+  }, [user, supabase])
+
+  useEffect(() => {
+    if (user) {
+      void load()
+    }
+  }, [user, load])
 
   const handleAccept = async (req: any) => {
     const { id, sender_id, sender_flight_id, receiver_flight_id } = req
@@ -162,6 +163,28 @@ export default function MatchRequestsPage() {
     }
 
     setRequests((prev) => prev.filter((r) => r.id !== id))
+  }
+
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6 text-black">
+        <h1 className="mb-6 text-2xl font-bold">Incoming Match Requests</h1>
+        <div className="flex items-center justify-center py-10">
+          <div className="text-gray-500">Loading...</div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show login prompt for unauthenticated users
+  if (!isAuthenticated || !user) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6 text-black">
+        <h1 className="mb-6 text-2xl font-bold">Incoming Match Requests</h1>
+        <EmptyState type="login" onLogin={signInWithGoogle} />
+      </div>
+    )
   }
 
   return (

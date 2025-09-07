@@ -1,6 +1,11 @@
 import RedirectButton from '@/components/buttons/RedirectButton'
 
-const EmptyState = ({ type }: { type: 'upcoming' | 'previous' | 'login' }) => {
+interface EmptyStateProps {
+  type: 'upcoming' | 'previous' | 'login'
+  onLogin?: () => void
+}
+
+const EmptyState = ({ type, onLogin }: EmptyStateProps) => {
   return (
     <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
       <div className="mb-4 rounded-full bg-gray-100 p-3">
@@ -37,9 +42,7 @@ const EmptyState = ({ type }: { type: 'upcoming' | 'previous' | 'login' }) => {
         )}
       </div>
       <h3 className="mb-2 text-lg font-medium text-gray-900">
-        {type === 'login'
-          ? 'Please log in to view your matches'
-          : `No ${type} matches found`}
+        {type === 'login' ? 'Please Log In' : `No ${type} matches found`}
       </h3>
       <p className="mb-6 text-sm text-gray-500">
         {type === 'upcoming'
@@ -51,7 +54,17 @@ const EmptyState = ({ type }: { type: 'upcoming' | 'previous' | 'login' }) => {
       {type === 'upcoming' && (
         <RedirectButton label="Find a Match" route="/questionnaires" />
       )}
-      {type === 'login' && <RedirectButton label="Log In" route="/login" />}
+      {type === 'login' &&
+        (onLogin ? (
+          <button
+            onClick={onLogin}
+            className="mt-4 rounded-lg bg-teal-500 px-6 py-3 text-lg font-semibold text-white hover:bg-opacity-80"
+          >
+            Log in
+          </button>
+        ) : (
+          <RedirectButton label="Log in" route="/login" />
+        ))}
     </div>
   )
 }
