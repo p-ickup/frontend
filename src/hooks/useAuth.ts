@@ -115,14 +115,15 @@ export function useAuth() {
 
   // Login with Google
   const signInWithGoogle = async () => {
+    // Use the current domain for the callback URL
+    const callbackUrl =
+      process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL ||
+      `${window.location.origin}/auth/callback`
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo:
-          process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL ||
-          (process.env.NODE_ENV === 'production'
-            ? 'https://p-ickup.com/auth/callback'
-            : `${window.location.origin}/auth/callback`),
+        redirectTo: callbackUrl,
       },
     })
 
