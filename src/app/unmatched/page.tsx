@@ -5,6 +5,8 @@ import type { Database } from '@/lib/database.types'
 import { createBrowserClient } from '@/utils/supabase'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '@/hooks/useAuth'
+import EmptyState from '@/components/results/EmptyState'
 
 type Tables = Database['public']['Tables']
 type Flight = Tables['Flights']['Row']
@@ -21,6 +23,12 @@ interface GroupedMatch {
 
 export default function UnmatchedPage() {
   const supabase = createBrowserClient()
+  const {
+    user,
+    isAuthenticated,
+    isLoading: authLoading,
+    signInWithGoogle,
+  } = useAuth()
   const [flights, setFlights] = useState<FlightWithUser[]>([])
   const [groups, setGroups] = useState<GroupedMatch[]>([])
   const [loading, setLoading] = useState(true)
@@ -41,13 +49,7 @@ export default function UnmatchedPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      setError('You must be logged in to view this page.')
+    if (!user) {
       setLoading(false)
       return
     }
@@ -140,11 +142,15 @@ export default function UnmatchedPage() {
 
     setGroups(grouped)
     setLoading(false)
-  }, [supabase])
+  }, [supabase, user])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    if (user) {
+      void fetchData()
+    } else {
+      setLoading(false)
+    }
+  }, [user, fetchData])
 
   const sendMatchRequest = async (
     receiverId: string,
@@ -189,6 +195,36 @@ export default function UnmatchedPage() {
     setSelectedFlight(null)
     setSelectedGroup(null)
     setSelectedMyFlightId(null)
+  }
+
+  // Show loading state while checking authentication
+  if (authLoading) {
+    return (
+      <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-50 font-sans text-black">
+        <div className="mx-auto flex w-full max-w-5xl flex-col items-center p-6">
+          <h1 className="mb-8 text-3xl font-bold text-gray-900">
+            Unmatched Flights
+          </h1>
+          <div className="flex items-center justify-center py-10">
+            <div className="text-gray-500">Loading...</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-50 font-sans text-black">
+        <div className="mx-auto flex w-full max-w-5xl flex-col items-center p-6">
+          <h1 className="mb-8 text-3xl font-bold text-gray-900">
+            Unmatched Flights
+          </h1>
+          <EmptyState type="login" onLogin={signInWithGoogle} />
+          <RedirectButton label="Back to Home" route="/" />
+        </div>
+      </div>
+    )
   }
 
   if (loading)

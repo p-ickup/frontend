@@ -33,7 +33,7 @@ A modern web application built with Next.js and Supabase for managing pickup act
 1. Clone the repository
 2. Install dependencies:
    ```bash
-   npm install
+   pnpm install
    ```
 3. Set up environment variables:
    Create a `.env.local` file with the following variables:
@@ -46,7 +46,7 @@ A modern web application built with Next.js and Supabase for managing pickup act
    ```
 4. Run the development server:
    ```bash
-   npm run dev
+   pnpm dev
    ```
 5. Open [http://localhost:3000](http://localhost:3000) in your browser
 

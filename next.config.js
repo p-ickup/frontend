@@ -20,6 +20,15 @@ const nextConfig = {
       },
     ],
   },
+  // Allow cross-origin requests from common development IPs
+  allowedDevOrigins: [
+    '192.168.0.0/16', // Common home network range
+    '10.0.0.0/8', // Common private network range
+    '172.0.0.0/8', // All 172.x.x.x addresses (covers your IP)
+    ...(process.env.ALLOWED_DEV_ORIGINS
+      ? process.env.ALLOWED_DEV_ORIGINS.split(',')
+      : []),
+  ],
 }
 
 module.exports = withBundleAnalyzer(nextConfig)

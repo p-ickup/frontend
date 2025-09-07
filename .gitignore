@@ -45,6 +45,10 @@ yarn-error.log*
 node_modules/.cache/
 pnpm-debug.log*
 
+# npm (prevent accidental npm usage)
+package-lock.json
+package-lock*.json
+
 # temporary files that can cause corruption
 *.tmp
 *.temp

@@ -6,6 +6,8 @@ import { createBrowserClient } from '@/utils/supabase'
 import Image from 'next/image'
 import ConfirmCancel from '@/components/questionnaires/ConfirmCancel'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useAuth } from '@/hooks/useAuth'
+import EmptyState from '@/components/results/EmptyState'
 
 interface MatchForm {
   flight_id: string
@@ -18,6 +20,7 @@ interface MatchForm {
 
 export default function Questionnaires() {
   const supabase = createBrowserClient()
+  const { user, isAuthenticated, signInWithGoogle } = useAuth()
   const [matchForms, setMatchForms] = useState<MatchForm[]>([])
   const [message, setMessage] = useState('')
   const [modalFlightId, setModalFlightId] = useState<string | null>(null)
@@ -52,16 +55,23 @@ export default function Questionnaires() {
   }
 
   useEffect(() => {
-    const fetchMatchForms = async () => {
-      const { data, error: authError } = await supabase.auth.getUser()
+    if (user) {
+      void fetchMatchForms()
+    } else {
+      setLoading(false)
+    }
+  }, [user])
+
+  const fetchMatchForms = async () => {
+    try {
       setLoading(true)
 
-      if (authError || !data?.user) {
-        setMessage('Error: You must be logged in to view match forms.')
+      if (!user) {
+        console.error('No authenticated user found')
         return
       }
 
-      const userId = data.user.id
+      const userId = user.id
 
       const { data: matchForms, error } = await supabase
         .from('Flights')
@@ -77,13 +87,15 @@ export default function Questionnaires() {
         )
         setMessage(`Error fetching match forms: ${error.message}`)
       } else {
-        setLoading(false)
         setMatchForms(matchForms as MatchForm[])
       }
+    } catch (error) {
+      console.error('Error in fetchMatchForms:', error)
+      setMessage('Error loading match forms')
+    } finally {
+      setLoading(false)
     }
-
-    fetchMatchForms()
-  }, [])
+  }
 
   const handleDelete = (flightId: string) => {
     setModalFlightId(flightId) // ✅ Set the specific flight ID
@@ -130,6 +142,20 @@ export default function Questionnaires() {
       form.matched == false && formDate < threeDaysFromNow && formDate >= today
     )
   })
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-50 font-sans text-black">
+        <div className="mx-auto flex w-full max-w-5xl flex-col items-center p-6">
+          <h1 className="mb-8 text-3xl font-bold text-gray-900">
+            Your Match Forms
+          </h1>
+          <EmptyState type="login" onLogin={signInWithGoogle} />
+          <RedirectButton label="Back to Home" route="/" />
+        </div>
+      </div>
+    )
+  }
 
   if (loading)
     return (
