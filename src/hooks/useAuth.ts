@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@/utils/supabase'
 import { User } from '@supabase/supabase-js'
 
 interface AuthState {
@@ -16,7 +16,7 @@ export function useAuth() {
   })
   const customAvatarCheckedRef = useRef(false)
 
-  const supabase = createClientComponentClient()
+  const supabase = createBrowserClient()
 
   // Extract avatar URL from user data (synchronous for initial auth)
   const extractAvatarUrl = (userData: User | null) => {
@@ -120,6 +120,10 @@ export function useAuth() {
       process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL ||
       `${window.location.origin}/auth/callback`
 
+    // console.log('useAuth: signInWithGoogle called from:', window.location.origin)
+    // console.log('useAuth: callbackUrl will be:', callbackUrl)
+    // console.log('useAuth: NEXT_PUBLIC_AUTH_CALLBACK_URL:', process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL)
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -132,6 +136,7 @@ export function useAuth() {
       return { error }
     }
 
+    // console.log('useAuth: OAuth redirect initiated successfully')
     return { success: true }
   }
 
