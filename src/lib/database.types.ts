@@ -29,6 +29,7 @@ export type Database = {
           flight_no: string
           bag_no: number
           bag_no_large: number
+          bag_no_personal: number
           max_price: number
           max_dropoff: number
           airport: string

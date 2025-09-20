@@ -145,13 +145,47 @@ export default function Questionnaires() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-50 font-sans text-black">
-        <div className="mx-auto flex w-full max-w-5xl flex-col items-center p-6">
-          <h1 className="mb-8 text-3xl font-bold text-gray-900">
-            Your Match Forms
-          </h1>
-          <EmptyState type="login" onLogin={signInWithGoogle} />
-          <RedirectButton label="Back to Home" route="/" />
+      <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+        {/* Background decoration */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+          <div className="animate-float absolute left-1/4 top-20 h-16 w-16 rotate-12 rounded-2xl bg-gradient-to-br from-teal-400/20 to-teal-600/20"></div>
+          <div
+            className="animate-float absolute right-1/3 top-40 h-12 w-12 rounded-full bg-gradient-to-br from-blue-400/20 to-blue-600/20"
+            style={{ animationDelay: '1s' }}
+          ></div>
+        </div>
+
+        <div className="relative flex min-h-screen w-full flex-col items-center justify-center p-6">
+          <div className="mx-auto flex w-full max-w-2xl flex-col items-center text-center">
+            <div className="mb-8 inline-flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-r from-teal-500 to-yellow-100 shadow-lg">
+              <svg
+                className="h-10 w-10 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            </div>
+            <h1 className="mb-6 text-4xl font-bold text-gray-900">
+              Your Match Forms
+            </h1>
+            <p className="mb-8 text-xl text-gray-600">
+              Sign in to view and manage your flight match requests
+            </p>
+            <div className="rounded-2xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
+              <EmptyState type="login" onLogin={signInWithGoogle} />
+              <div className="mt-6">
+                <RedirectButton label="Back to Home" route="/" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -159,110 +193,259 @@ export default function Questionnaires() {
 
   if (loading)
     return (
-      <div className="flex items-center justify-center bg-blue-50 p-4">
-        <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-teal-500"></div>
-        <span className="ml-2 text-teal-600">Loading Match Forms...</span>
+      <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+        </div>
+        <div className="relative flex min-h-screen items-center justify-center p-4">
+          <div className="flex items-center space-x-4 rounded-2xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-200 border-t-teal-500"></div>
+            <span className="text-lg font-medium text-gray-700">
+              Loading Match Forms...
+            </span>
+          </div>
+        </div>
       </div>
     )
 
   // DISPLAY!
   return (
-    <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-100 text-black">
-      {/* Buttons Section */}
-      <div className="mt-6 flex flex-col items-center gap-4">
-        <div className="flex gap-4">
-          <RedirectButton label="Update Profile" route="/profile" />
-          <RedirectButton label="Request Match" route="/matchForm" />
-        </div>
+    <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+      {/* Background decoration */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+        <div className="animate-float absolute left-1/4 top-20 h-16 w-16 rotate-12 rounded-2xl bg-gradient-to-br from-teal-400/20 to-teal-600/20"></div>
+        <div
+          className="animate-float absolute right-1/3 top-40 h-12 w-12 rounded-full bg-gradient-to-br from-blue-400/20 to-blue-600/20"
+          style={{ animationDelay: '1s' }}
+        ></div>
+        <div
+          className="animate-float absolute bottom-40 left-1/3 h-20 w-20 rotate-45 rounded-3xl bg-gradient-to-br from-indigo-400/20 to-indigo-600/20"
+          style={{ animationDelay: '2s' }}
+        ></div>
       </div>
 
-      {/* Recent Match Forms */}
-      <div className="mt-6 flex w-full flex-col items-center px-4 pb-8">
-        <h1 className="text-2xl font-bold">Recent Match Forms</h1>
+      <div className="relative flex min-h-screen w-full flex-col">
+        {/* Header Section */}
+        <div className="relative px-6 pb-6 pt-8">
+          <div className="mx-auto max-w-4xl text-center">
+            <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-r from-teal-500 to-yellow-100 shadow-lg">
+              <svg
+                className="h-8 w-8 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            </div>
+            <h1 className="mb-4 text-4xl font-bold text-gray-900">
+              Your Match Forms
+            </h1>
+            <p className="text-xl text-gray-600">
+              Manage your flight requests and find travel companions
+            </p>
+          </div>
+        </div>
 
-        {message && <p className="mb-4 text-red-500">{message}</p>}
+        {/* Action Buttons */}
+        <div className="relative mb-8 flex flex-col items-center gap-4">
+          <div className="flex flex-wrap justify-center gap-4">
+            <RedirectButton label="Update Profile" route="/profile" />
+            <RedirectButton label="Request Match" route="/matchForm" />
+          </div>
+        </div>
 
-        {/* Show forms within 3 days that havent been matched, redirect to Unmatched page*/}
-        {noneditableUnmatched.length > 0 ? (
-          <ul className="w-96 rounded-lg bg-white p-4 shadow-md">
-            {noneditableUnmatched.map((form) => (
-              <li key={form.flight_id} className="relative mb-4 border-b pb-2">
-                <h1 className="text-lg">
-                  <strong>‼️‼️We were unable to match you😕:</strong>{' '}
-                </h1>
-                <p>
-                  <strong>Flight Number:</strong> {form.airline_iata}{' '}
-                  {form.flight_no}
-                </p>
-                <p>
-                  <strong>Date: </strong>
-                  <span className="text-lg">{formatDate(form.date)}</span>
-                </p>
+        {/* Content Section */}
+        <div className="relative flex-1 px-6 pb-8">
+          <div className="mx-auto max-w-4xl">
+            <div className="mb-8 text-center">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Recent Match Forms
+              </h2>
+            </div>
 
-                {/* Button container */}
-                <div className="mt-[-20px] flex items-center justify-end gap-x-4">
-                  <RedirectButton
-                    label="Find others who need a ride!"
-                    route={`/unmatched`} //TODO: direct to the Unmatched page
-                    color="bg-teal-400"
-                    size="px-4 py-2 text-lg"
-                  />
+            {message && (
+              <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-center">
+                <p className="font-medium text-red-600">{message}</p>
+              </div>
+            )}
+
+            {/* Unmatched Forms Section */}
+            {noneditableUnmatched.length > 0 && (
+              <div className="mb-8">
+                <div className="mb-4 text-center">
+                  <h3 className="text-xl font-semibold text-gray-800">
+                    ⚠️ Unmatched Flights
+                  </h3>
+                  <p className="text-gray-600">
+                    We couldn&apos;t find matches for these flights
+                  </p>
                 </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p> </p>
-        )}
-
-        <p> ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</p>
-
-        <ScrollArea className="h-[50vh]">
-          {/* Show forms that can still be edited (3+ days prior to ride share) */}
-          {editableUnmatched.length > 0 ? (
-            <ul className="w-96 rounded-lg bg-white p-4 shadow-md">
-              {editableUnmatched.map((form) => (
-                <li
-                  key={form.flight_id}
-                  className="relative mb-4 border-b pb-2"
-                >
-                  <p>
-                    <strong>Flight Number:</strong> {form.airline_iata}{' '}
-                    {form.flight_no}
-                  </p>
-                  <p>
-                    <strong>Date: </strong>
-                    <span className="text-lg">{formatDate(form.date)}</span>
-                  </p>
-
-                  {/* Button container */}
-                  <div className="mt-[-20px] flex items-center justify-end gap-x-4">
-                    <RedirectButton
-                      label="Edit"
-                      route={`/editForm/${form.flight_id}`}
-                      color="bg-teal-600"
-                      size="px-4 py-2 text-lg"
-                    />
-                    <button
-                      onClick={() => handleDelete(form.flight_id)}
-                      className="flex items-center justify-center rounded-lg p-2 hover:bg-red-600"
+                <div className="space-y-4">
+                  {noneditableUnmatched.map((form) => (
+                    <div
+                      key={form.flight_id}
+                      className="group relative rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-red-50 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 hover:shadow-xl"
                     >
-                      <Image
-                        src="/images/trashIcon.webp"
-                        alt="Cancel Pending Match Form"
-                        width={30}
-                        height={30}
-                        className="object-contain"
-                      />
-                    </button>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="mb-3 flex items-center space-x-2">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100">
+                              <svg
+                                className="h-4 w-4 text-orange-600"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                                />
+                              </svg>
+                            </div>
+                            <h4 className="text-lg font-semibold text-gray-800">
+                              No Match Found
+                            </h4>
+                          </div>
+                          <div className="space-y-2 text-gray-700">
+                            <p>
+                              <span className="font-medium">Flight:</span>{' '}
+                              {form.airline_iata} {form.flight_no}
+                            </p>
+                            <p>
+                              <span className="font-medium">Date:</span>{' '}
+                              {formatDate(form.date)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="ml-4">
+                          <RedirectButton
+                            label="Find Others"
+                            route="/unmatched"
+                            color="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+                            size="px-6 py-2 text-sm font-medium"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Editable Forms Section */}
+            <div className="mb-8">
+              <div className="mb-4 text-center">
+                <h3 className="text-xl font-semibold text-gray-800">
+                  📝 Editable Forms
+                </h3>
+                <p className="text-gray-600">
+                  Forms you can still modify (3+ days before flight)
+                </p>
+              </div>
+
+              {editableUnmatched.length > 0 ? (
+                <ScrollArea className="h-[50vh]">
+                  <div className="space-y-4 pr-4">
+                    {editableUnmatched.map((form) => (
+                      <div
+                        key={form.flight_id}
+                        className="group relative rounded-2xl border border-gray-200 bg-white/80 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="mb-3 flex items-center space-x-2">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100">
+                                <svg
+                                  className="h-4 w-4 text-teal-600"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                  />
+                                </svg>
+                              </div>
+                              <h4 className="text-lg font-semibold text-gray-800">
+                                Flight Request
+                              </h4>
+                            </div>
+                            <div className="space-y-2 text-gray-700">
+                              <p>
+                                <span className="font-medium">Flight:</span>{' '}
+                                {form.airline_iata} {form.flight_no}
+                              </p>
+                              <p>
+                                <span className="font-medium">Date:</span>{' '}
+                                {formatDate(form.date)}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="ml-4 flex items-center space-x-2">
+                            <RedirectButton
+                              label="Edit"
+                              route={`/editForm/${form.flight_id}`}
+                              color="bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700"
+                              size="px-4 py-2 text-sm font-medium"
+                            />
+                            <button
+                              onClick={() => handleDelete(form.flight_id)}
+                              className="flex items-center justify-center rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                            >
+                              <Image
+                                src="/images/trashIcon.webp"
+                                alt="Delete Form"
+                                width={20}
+                                height={20}
+                                className="object-contain"
+                              />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>No match forms found.</p>
-          )}
-        </ScrollArea>
+                </ScrollArea>
+              ) : (
+                <div className="rounded-2xl bg-white/80 p-8 text-center shadow-lg backdrop-blur-sm">
+                  <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+                    <svg
+                      className="h-8 w-8 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                  </div>
+                  <h3 className="mb-2 text-lg font-semibold text-gray-800">
+                    No Forms Yet
+                  </h3>
+                  <p className="text-gray-600">
+                    Create your first flight request to get started!
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* ConfirmCancel Modal */}

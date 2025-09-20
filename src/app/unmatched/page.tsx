@@ -200,13 +200,16 @@ export default function UnmatchedPage() {
   // Show loading state while checking authentication
   if (authLoading) {
     return (
-      <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-50 font-sans text-black">
-        <div className="mx-auto flex w-full max-w-5xl flex-col items-center p-6">
-          <h1 className="mb-8 text-3xl font-bold text-gray-900">
-            Unmatched Flights
-          </h1>
-          <div className="flex items-center justify-center py-10">
-            <div className="text-gray-500">Loading...</div>
+      <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+        </div>
+        <div className="relative flex min-h-screen items-center justify-center p-4">
+          <div className="flex items-center space-x-4 rounded-2xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-200 border-t-teal-500"></div>
+            <span className="text-lg font-medium text-gray-700">
+              Loading...
+            </span>
           </div>
         </div>
       </div>
@@ -215,13 +218,47 @@ export default function UnmatchedPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex min-h-[calc(100vh-165px)] w-full flex-col bg-gray-50 font-sans text-black">
-        <div className="mx-auto flex w-full max-w-5xl flex-col items-center p-6">
-          <h1 className="mb-8 text-3xl font-bold text-gray-900">
-            Unmatched Flights
-          </h1>
-          <EmptyState type="login" onLogin={signInWithGoogle} />
-          <RedirectButton label="Back to Home" route="/" />
+      <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+        {/* Background decoration */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+          <div className="animate-float absolute left-1/4 top-20 h-16 w-16 rotate-12 rounded-2xl bg-gradient-to-br from-teal-400/20 to-teal-600/20"></div>
+          <div
+            className="animate-float absolute right-1/3 top-40 h-12 w-12 rounded-full bg-gradient-to-br from-blue-400/20 to-blue-600/20"
+            style={{ animationDelay: '1s' }}
+          ></div>
+        </div>
+
+        <div className="relative flex min-h-screen w-full flex-col items-center justify-center p-6">
+          <div className="mx-auto flex w-full max-w-2xl flex-col items-center text-center">
+            <div className="mb-8 inline-flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-r from-teal-500 to-yellow-100 shadow-lg">
+              <svg
+                className="h-10 w-10 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                />
+              </svg>
+            </div>
+            <h1 className="mb-6 text-4xl font-bold text-gray-900">
+              Unmatched Flights
+            </h1>
+            <p className="mb-8 text-xl text-gray-600">
+              Sign in to find other travelers who need rides
+            </p>
+            <div className="rounded-2xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
+              <EmptyState type="login" onLogin={signInWithGoogle} />
+              <div className="mt-6">
+                <RedirectButton label="Back to Home" route="/" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -229,127 +266,308 @@ export default function UnmatchedPage() {
 
   if (loading)
     return (
-      <div className="flex items-center justify-center bg-blue-50 p-4">
-        <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-teal-500"></div>
-        <span className="ml-2 text-teal-600">Loading Unmatched Flights...</span>
+      <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+        </div>
+        <div className="relative flex min-h-screen items-center justify-center p-4">
+          <div className="flex items-center space-x-4 rounded-2xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-200 border-t-teal-500"></div>
+            <span className="text-lg font-medium text-gray-700">
+              Loading Unmatched Flights...
+            </span>
+          </div>
+        </div>
       </div>
     )
-  if (error) return <div className="p-6 text-red-600">{error}</div>
+  if (error)
+    return (
+      <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+        <div className="flex min-h-screen items-center justify-center p-6">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+            <p className="font-medium text-red-600">{error}</p>
+          </div>
+        </div>
+      </div>
+    )
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 text-black">
-      <div className="mb-6 flex justify-end">
-        <RedirectButton
-          label="View Incoming Match Requests"
-          route="/MatchRequestsPage"
-        />
+    <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+      {/* Background decoration */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+        <div className="animate-float absolute left-1/4 top-20 h-16 w-16 rotate-12 rounded-2xl bg-gradient-to-br from-teal-400/20 to-teal-600/20"></div>
+        <div
+          className="animate-float absolute right-1/3 top-40 h-12 w-12 rounded-full bg-gradient-to-br from-blue-400/20 to-blue-600/20"
+          style={{ animationDelay: '1s' }}
+        ></div>
+        <div
+          className="animate-float absolute bottom-40 left-1/3 h-20 w-20 rotate-45 rounded-3xl bg-gradient-to-br from-indigo-400/20 to-indigo-600/20"
+          style={{ animationDelay: '2s' }}
+        ></div>
       </div>
 
-      <h1 className="mb-6 text-2xl font-bold">Groups Available to Join</h1>
-
-      {groups.map((group) => {
-        const firstFlight = group.flights[0]
-        const direction = firstFlight?.to_airport
-          ? `School → ${firstFlight.airport}`
-          : `${firstFlight.airport} → School`
-
-        const isPending = pendingRequests.includes(firstFlight.flight_id)
-        const isUserInGroup = group.flights.some(
-          (flight) => flight.user_id === userId,
-        )
-
-        return (
-          <div key={group.ride_id} className="mb-6 rounded bg-white p-4 shadow">
-            <h2 className="text-lg font-semibold">
-              {direction} — {firstFlight?.date}
-            </h2>
-            <ul className="mt-2">
-              {group.flights.map((flight, index) => (
-                <li key={index} className="text-sm text-gray-800">
-                  {flight.Users?.firstname} {flight.Users?.lastname} — (
-                  {flight.earliest_time} - {flight.latest_time})
-                </li>
-              ))}
-            </ul>
-            <button
-              className={`mt-3 rounded px-4 py-2 text-white ${
-                userEligible && !isPending && !isUserInGroup
-                  ? 'bg-blue-600 hover:bg-blue-700'
-                  : 'cursor-not-allowed bg-gray-300'
-              }`}
-              disabled={!userEligible || isPending || isUserInGroup}
-              onClick={() => {
-                if (userEligible && !isPending && !isUserInGroup) {
-                  setSelectedGroup(group)
-                  setShowConfirmation(true)
-                }
-              }}
-            >
-              {isUserInGroup
-                ? 'Already in Group'
-                : userEligible && !isPending
-                  ? 'Request to Join'
-                  : 'Request Pending'}
-            </button>
+      <div className="relative flex min-h-screen w-full flex-col">
+        {/* Header Section */}
+        <div className="relative px-6 pb-6 pt-8">
+          <div className="mx-auto max-w-6xl">
+            <div className="mb-6 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-r from-teal-500 to-yellow-100 shadow-lg">
+                  <svg
+                    className="h-8 w-8 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-4xl font-bold text-gray-900">
+                    Unmatched Flights
+                  </h1>
+                  <p className="text-xl text-gray-600">
+                    Find other travelers who need rides
+                  </p>
+                </div>
+              </div>
+              <RedirectButton
+                label="View Incoming Requests"
+                route="/MatchRequestsPage"
+                color="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                size="px-6 py-3 text-lg font-medium"
+              />
+            </div>
           </div>
-        )
-      })}
+        </div>
 
-      <h1 className="mb-6 mt-10 text-2xl font-bold">Unmatched Flights</h1>
+        {/* Content Section */}
+        <div className="relative flex-1 px-6 pb-8">
+          <div className="mx-auto max-w-6xl">
+            <div className="mb-8">
+              <h2 className="mb-6 text-2xl font-bold text-gray-900">
+                Groups Available to Join
+              </h2>
 
-      {flights.length === 0 ? (
-        <p>No unmatched flights found.</p>
-      ) : (
-        <ul className="space-y-4">
-          {flights.map((flight) => (
-            <li
-              key={flight.flight_id}
-              className="flex items-start justify-between rounded-lg bg-white p-4 shadow"
-            >
-              <div className="flex-1">
-                <p>
-                  <strong>User:</strong>{' '}
-                  {flight.Users
-                    ? `${flight.Users.firstname} ${flight.Users.lastname}`
-                    : 'Unknown user'}
-                </p>
-                <p>
-                  <strong>Flight Date:</strong> {flight.date}
-                </p>
-                <p>
-                  <strong>Earliest Time:</strong> {flight.earliest_time}
-                </p>
-                <p>
-                  <strong>Latest Time:</strong> {flight.latest_time}
-                </p>
-                <p>
-                  <strong>Direction:</strong>{' '}
-                  {flight.to_airport
-                    ? `School → ${flight.airport}`
-                    : `${flight.airport} → School`}
-                </p>
+              <div className="space-y-4">
+                {groups.map((group) => {
+                  const firstFlight = group.flights[0]
+                  const direction = firstFlight?.to_airport
+                    ? `School → ${firstFlight.airport}`
+                    : `${firstFlight.airport} → School`
+
+                  const isPending = pendingRequests.includes(
+                    firstFlight.flight_id,
+                  )
+                  const isUserInGroup = group.flights.some(
+                    (flight) => flight.user_id === userId,
+                  )
+
+                  return (
+                    <div
+                      key={group.ride_id}
+                      className="group relative rounded-2xl border border-gray-200 bg-white/80 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="mb-4 flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-blue-100 to-blue-200">
+                              <svg
+                                className="h-5 w-5 text-blue-600"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                                />
+                              </svg>
+                            </div>
+                            <div>
+                              <h3 className="text-xl font-bold text-gray-900">
+                                {direction}
+                              </h3>
+                              <p className="text-gray-600">
+                                {firstFlight?.date}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <h4 className="font-semibold text-gray-800">
+                              Group Members:
+                            </h4>
+                            <ul className="space-y-1">
+                              {group.flights.map((flight, index) => (
+                                <li
+                                  key={index}
+                                  className="flex items-center gap-2 text-sm text-gray-700"
+                                >
+                                  <div className="h-2 w-2 rounded-full bg-teal-500"></div>
+                                  {flight.Users?.firstname}{' '}
+                                  {flight.Users?.lastname} —{' '}
+                                  {flight.earliest_time} - {flight.latest_time}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                        <div className="ml-4">
+                          <button
+                            className={`rounded-xl px-6 py-3 font-semibold text-white transition-all duration-200 ${
+                              userEligible && !isPending && !isUserInGroup
+                                ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:scale-105 hover:from-blue-600 hover:to-blue-700'
+                                : 'cursor-not-allowed bg-gray-300'
+                            }`}
+                            disabled={
+                              !userEligible || isPending || isUserInGroup
+                            }
+                            onClick={() => {
+                              if (
+                                userEligible &&
+                                !isPending &&
+                                !isUserInGroup
+                              ) {
+                                setSelectedGroup(group)
+                                setShowConfirmation(true)
+                              }
+                            }}
+                          >
+                            {isUserInGroup
+                              ? 'Already in Group'
+                              : userEligible && !isPending
+                                ? 'Request to Join'
+                                : 'Request Pending'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
+            </div>
 
-              <div className="ml-4 mt-2 shrink-0">
-                <button
-                  className={`rounded px-4 py-2 text-white ${userEligible ? 'bg-blue-600 hover:bg-blue-700' : 'cursor-not-allowed bg-gray-300'}`}
-                  disabled={!userEligible}
-                  onClick={() => {
-                    if (userEligible) {
-                      setSelectedFlight(flight)
-                      setShowConfirmation(true)
-                    }
-                  }}
-                >
-                  {userEligible
-                    ? 'Send Request'
-                    : 'All Your Flights Are Matched'}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+            <div className="mb-8">
+              <h2 className="mb-6 text-2xl font-bold text-gray-900">
+                Individual Flights
+              </h2>
+
+              {flights.length === 0 ? (
+                <div className="rounded-2xl bg-white/80 p-8 text-center shadow-lg backdrop-blur-sm">
+                  <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+                    <svg
+                      className="h-8 w-8 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                      />
+                    </svg>
+                  </div>
+                  <h3 className="mb-2 text-lg font-semibold text-gray-800">
+                    No Individual Flights
+                  </h3>
+                  <p className="text-gray-600">
+                    All available flights are already in groups
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {flights.map((flight) => (
+                    <div
+                      key={flight.flight_id}
+                      className="group relative rounded-2xl border border-gray-200 bg-white/80 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="mb-4 flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-orange-100 to-orange-200">
+                              <svg
+                                className="h-5 w-5 text-orange-600"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                                />
+                              </svg>
+                            </div>
+                            <div>
+                              <h3 className="text-xl font-bold text-gray-900">
+                                {flight.Users
+                                  ? `${flight.Users.firstname} ${flight.Users.lastname}`
+                                  : 'Unknown user'}
+                              </h3>
+                              <p className="text-gray-600">
+                                {flight.to_airport
+                                  ? `School → ${flight.airport}`
+                                  : `${flight.airport} → School`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="font-semibold text-gray-700">
+                                Date:
+                              </span>
+                              <p className="text-gray-600">{flight.date}</p>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-gray-700">
+                                Time:
+                              </span>
+                              <p className="text-gray-600">
+                                {flight.earliest_time} - {flight.latest_time}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="ml-4">
+                          <button
+                            className={`rounded-xl px-6 py-3 font-semibold text-white transition-all duration-200 ${
+                              userEligible
+                                ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:scale-105 hover:from-orange-600 hover:to-orange-700'
+                                : 'cursor-not-allowed bg-gray-300'
+                            }`}
+                            disabled={!userEligible}
+                            onClick={() => {
+                              if (userEligible) {
+                                setSelectedFlight(flight)
+                                setShowConfirmation(true)
+                              }
+                            }}
+                          >
+                            {userEligible
+                              ? 'Send Request'
+                              : 'All Your Flights Are Matched'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
       {showConfirmation && (selectedFlight || selectedGroup) && (
         <ConfirmationModal
@@ -425,16 +643,19 @@ function ConfirmationModal({
   setSelectedMyFlightId: (id: number) => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="w-[90%] max-w-md rounded bg-white p-6 shadow-lg">
-        <h2 className="mb-4 text-lg font-semibold">{title}</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+        </div>
 
         {/* Flight selection */}
-        <div className="mb-4 space-y-2">
+        <div className="mb-6 space-y-3">
+          <h3 className="font-semibold text-gray-700">Select your flight:</h3>
           {myFlights.map((flight) => (
             <label
               key={flight.flight_id}
-              className="flex items-center space-x-2"
+              className="flex cursor-pointer items-center space-x-3 rounded-xl border border-gray-200 p-3 transition-all duration-200 hover:bg-gray-50"
             >
               <input
                 type="radio"
@@ -442,27 +663,31 @@ function ConfirmationModal({
                 value={flight.flight_id}
                 checked={selectedMyFlightId === flight.flight_id}
                 onChange={() => setSelectedMyFlightId(flight.flight_id)}
+                className="h-4 w-4 text-teal-600 focus:ring-teal-500"
               />
-              <span className="text-sm">
-                {flight.date} — {flight.airport} ({flight.earliest_time} -{' '}
-                {flight.latest_time})
-              </span>
+              <div className="flex-1">
+                <div className="font-medium text-gray-900">{flight.date}</div>
+                <div className="text-sm text-gray-600">
+                  {flight.airport} ({flight.earliest_time} -{' '}
+                  {flight.latest_time})
+                </div>
+              </div>
             </label>
           ))}
         </div>
 
         <div className="flex justify-end space-x-3">
           <button
-            className="rounded border px-4 py-2 hover:bg-gray-100"
+            className="rounded-xl border border-gray-300 px-6 py-3 font-medium text-gray-700 transition-all duration-200 hover:border-gray-400 hover:bg-gray-50"
             onClick={onCancel}
           >
             Cancel
           </button>
           <button
-            className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+            className="rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 px-6 py-3 font-semibold text-white transition-all duration-200 hover:scale-105 hover:from-teal-600 hover:to-teal-700"
             onClick={onConfirm}
           >
-            Confirm
+            Send Request
           </button>
         </div>
       </div>

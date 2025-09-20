@@ -11,7 +11,6 @@ import {
   validateAirlineCode,
   validateFlightNumber,
 } from '@/utils/flightValidation'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Tooltip,
   TooltipContent,
@@ -22,7 +21,7 @@ import {
 export interface FlightFormProps {
   mode: 'create' | 'edit'
   flightId?: string // Required for edit mode
-  title: string
+  // title: string
   submitButtonText: string
   successMessage: string
   successRedirectRoute: string
@@ -35,8 +34,9 @@ export interface FlightData {
   airline_iata: string
   flight_no: string
   dateOfFlight: string
-  numSmallBags: number
-  numLargeBags: number
+  bag_no_personal: number
+  bag_no: number
+  bag_no_large: number
   earliestArrival: string
   latestArrival: string
   dropoff: number
@@ -48,7 +48,7 @@ export interface FlightData {
 export default function FlightForm({
   mode,
   flightId,
-  title,
+  // title,
   submitButtonText,
   successMessage,
   successRedirectRoute,
@@ -63,8 +63,9 @@ export default function FlightForm({
   const [airline_iata, setAirlineIata] = useState('')
   const [flightValidationError, setFlightValidationError] = useState('')
   const [dateOfFlight, setDateOfFlight] = useState('')
-  const [numSmallBags, setNumSmallBags] = useState(0)
-  const [numLargeBags, setNumLargeBags] = useState(0)
+  const [bag_no_personal, setBagNoPersonal] = useState(0)
+  const [bag_no, setBagNo] = useState(0)
+  const [bag_no_large, setBagNoLarge] = useState(0)
   const [earliestArrival, setEarliestArrival] = useState('')
   const [latestArrival, setLatestArrival] = useState('')
   const [dropoff, setDropoff] = useState(0.5)
@@ -76,8 +77,21 @@ export default function FlightForm({
   const [isLoading, setIsLoading] = useState(false)
 
   // Click tooltip hooks
-  const smallBagsTooltip = useClickTooltip()
-  const largeBagsTooltip = useClickTooltip()
+  const personalItemsTooltip = useClickTooltip()
+  const carryOnBagsTooltip = useClickTooltip()
+  const checkedLuggageTooltip = useClickTooltip()
+  const timeRangeTooltip = useClickTooltip()
+  const dropoffRadiusTooltip = useClickTooltip()
+
+  // Mobile info modal state
+  const [showMobileInfo, setShowMobileInfo] = useState(false)
+  const [mobileInfoContent, setMobileInfoContent] = useState('')
+
+  // Handle mobile info display
+  const showMobileInfoModal = (content: string) => {
+    setMobileInfoContent(content)
+    setShowMobileInfo(true)
+  }
 
   // Modal states
   const [showManyBagsModal, setShowManyBagsModal] = useState(false)
@@ -107,7 +121,7 @@ export default function FlightForm({
         const { data, error } = await supabase
           .from('Flights')
           .select(
-            'flight_id, flight_no, airline_iata, date, matched, to_airport, airport, bag_no, bag_no_large, earliest_time, latest_time, max_dropoff, max_price, terminal',
+            'flight_id, flight_no, airline_iata, date, matched, to_airport, airport, bag_no_personal, bag_no, bag_no_large, earliest_time, latest_time, max_dropoff, max_price, terminal',
           )
           .eq('flight_id', flightId)
           .single()
@@ -121,8 +135,9 @@ export default function FlightForm({
           setAirlineIata(data.airline_iata)
           setFlightNumber(String(data.flight_no))
           setDateOfFlight(data.date)
-          setNumSmallBags(data.bag_no)
-          setNumLargeBags(data.bag_no_large)
+          setBagNoPersonal(data.bag_no_personal || 0)
+          setBagNo(data.bag_no || 0)
+          setBagNoLarge(data.bag_no_large || 0)
           setEarliestArrival(data.earliest_time)
           setLatestArrival(data.latest_time)
           setDropoff(data.max_dropoff)
@@ -199,13 +214,13 @@ export default function FlightForm({
       return
     }
 
-    if (numSmallBags + numLargeBags >= 4) {
+    if (bag_no_personal + bag_no + bag_no_large >= 4) {
       setPendingSubmit(e)
       setShowManyBagsModal(true)
       return
     }
 
-    if (numSmallBags < 0 || numLargeBags < 0) {
+    if (bag_no_personal < 0 || bag_no < 0 || bag_no_large < 0) {
       setMessage('Please enter a valid number of bags')
       return
     }
@@ -235,8 +250,9 @@ export default function FlightForm({
       flight_no: flight_no,
       airline_iata: airline_iata,
       date: dateOfFlight,
-      bag_no: numSmallBags,
-      bag_no_large: numLargeBags,
+      bag_no_personal: bag_no_personal,
+      bag_no: bag_no,
+      bag_no_large: bag_no_large,
       earliest_time: earliestArrival,
       latest_time: latestArrival,
       max_dropoff: dropoff,
@@ -279,25 +295,23 @@ export default function FlightForm({
   }
 
   return (
-    <div className="flex w-full flex-col items-center bg-gray-100 text-black">
-      <h1 className="mb-4 text-3xl font-bold">{title}</h1>
-      <p className="mb-4">
-        Enter your flight details below. All fields are required.
-      </p>
+    <div className="flex w-full flex-col items-center text-black">
+      {/* <h1 className="mb-4 text-3xl font-bold">{title}</h1> */}
+      <p className="mb-4">All fields are required.</p>
       {!isProfileComplete && (
         <div className="mb-6">
           <RedirectButton label="Complete Profile First" route="/profile" />
         </div>
       )}
 
-      <div className="w-96 rounded-lg bg-white shadow-md">
+      <div className="w-full max-w-6xl md:rounded-lg md:bg-white md:shadow-md">
         {isLoading && (
           <div className="flex items-center justify-center bg-blue-50 p-4">
             <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-teal-500"></div>
             <span className="ml-2 text-teal-600">Loading flight data...</span>
           </div>
         )}
-        <ScrollArea className="h-[50vh] px-6 py-6">
+        <div className="px-2 py-4 md:px-8 md:py-8">
           <form id="flight-form" onSubmit={handleSubmit} className="space-y-4">
             <div className="mb-2 flex gap-2">
               <label className="flex flex-1 flex-col">
@@ -316,7 +330,7 @@ export default function FlightForm({
                   required
                 >
                   <option value="" disabled>
-                    <span className="font-bold">Select</span>
+                    Select
                   </option>
                   <option value="LAX">LAX</option>
                   <option value="ONT">ONT</option>
@@ -402,29 +416,58 @@ export default function FlightForm({
                       ? "Time Range You're Able to Leave to the Airport (PST):"
                       : "Time Range You're Able to Leave from the Airport (PST):"}
                   </span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
-                        <svg
-                          className="h-3 w-3 text-blue-600"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>
-                        The wider the range, the more likely you are to get
-                        matched with others
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
+                  {/* Desktop tooltip */}
+                  <div className="hidden md:block">
+                    <Tooltip {...timeRangeTooltip}>
+                      <TooltipTrigger asChild>
+                        <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                          <svg
+                            className="h-3 w-3 text-blue-600"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs">
+                        <p>
+                          The wider the range, the more likely you are to get
+                          matched with others. You must be available for the
+                          entire range.
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  {/* Mobile info button */}
+                  <div className="block md:hidden">
+                    <button
+                      type="button"
+                      className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        showMobileInfoModal(
+                          'Time Range: The wider the range, the more likely you are to get matched with others. You must be available for the entire range.',
+                        )
+                      }}
+                    >
+                      <svg
+                        className="h-3 w-3 text-blue-600"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 <div className="mt-1 flex items-center gap-3">
                   <input
@@ -446,82 +489,48 @@ export default function FlightForm({
               </label>
             </div>
 
-            <div className="mb-2 flex gap-2">
-              <label className="flex flex-1 flex-col">
+            <div className="mb-2 flex gap-2 md:grid md:grid-cols-3 md:gap-4">
+              <label className="flex flex-1 flex-col md:flex-col">
                 <div className="flex items-center gap-1">
-                  <span className="font-bold">Small Bags:</span>
-                  <Tooltip {...smallBagsTooltip}>
-                    <TooltipTrigger asChild>
-                      <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
-                        <svg
-                          className="h-3 w-3 text-blue-600"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Backpacks, purses, and similar items</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <input
-                  type="number"
-                  value={numSmallBags}
-                  onChange={(e) => setNumSmallBags(Number(e.target.value))}
-                  className="mt-1 w-full rounded border bg-white p-2 text-black"
-                  required
-                />
-              </label>
-              <label className="flex flex-1 flex-col">
-                <div className="flex items-center gap-1">
-                  <span className="font-bold">Large Bags:</span>
-                  <Tooltip {...largeBagsTooltip}>
-                    <TooltipTrigger asChild>
-                      <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
-                        <svg
-                          className="h-3 w-3 text-blue-600"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>
-                        Anything larger than a small bag (suitcases, checked
-                        luggage, etc.)
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <input
-                  type="number"
-                  value={numLargeBags}
-                  onChange={(e) => setNumLargeBags(Number(e.target.value))}
-                  className="mt-1 w-full rounded border bg-white p-2 text-black"
-                  required
-                />
-              </label>
-            </div>
-
-            <label className="mb-2 block">
-              <div className="flex items-center gap-1">
-                <span>Furthest pickup/dropoff radius:</span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                  <span className="font-bold">Personal Item:</span>
+                  {/* Desktop tooltip */}
+                  <div className="hidden md:block">
+                    <Tooltip {...personalItemsTooltip}>
+                      <TooltipTrigger asChild>
+                        <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                          <svg
+                            className="h-3 w-3 text-blue-600"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs">
+                        <p>
+                          purse, backpack, laptop bag (fit under the seat in
+                          front of you)
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  {/* Mobile info button */}
+                  <div className="block md:hidden">
+                    <button
+                      type="button"
+                      className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        showMobileInfoModal(
+                          'Personal Item: purse, backpack, laptop bag (fit under the seat in front of you)',
+                        )
+                      }}
+                    >
                       <svg
                         className="h-3 w-3 text-blue-600"
                         fill="currentColor"
@@ -533,37 +542,225 @@ export default function FlightForm({
                           clipRule="evenodd"
                         />
                       </svg>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Only applies to pickup/dropoff at campus</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <strong>{dropoff} mi</strong>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.25"
-                value={dropoff}
-                onChange={(e) => setDropoff(Number(e.target.value))}
-                className="mt-1 w-full"
-              />
-            </label>
+                    </button>
+                  </div>
+                </div>
+                <input
+                  type="number"
+                  value={bag_no_personal}
+                  onChange={(e) => setBagNoPersonal(Number(e.target.value))}
+                  className="mt-1 w-full rounded border bg-white p-2 text-black"
+                  required
+                />
+              </label>
+              <label className="flex flex-1 flex-col">
+                <div className="flex items-center gap-1">
+                  <span className="font-bold">Carry-on Sized:</span>
+                  {/* Desktop tooltip */}
+                  <div className="hidden md:block">
+                    <Tooltip {...carryOnBagsTooltip}>
+                      <TooltipTrigger asChild>
+                        <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                          <svg
+                            className="h-3 w-3 text-blue-600"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs">
+                        <p>
+                          small suitcases, mid-size backpacks (fit in overhead
+                          bins)
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  {/* Mobile info button */}
+                  <div className="block md:hidden">
+                    <button
+                      type="button"
+                      className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        showMobileInfoModal(
+                          'Carry-on Sized: small suitcases, mid-size backpacks (fit in overhead bins)',
+                        )
+                      }}
+                    >
+                      <svg
+                        className="h-3 w-3 text-blue-600"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <input
+                  type="number"
+                  value={bag_no}
+                  onChange={(e) => setBagNo(Number(e.target.value))}
+                  className="mt-1 w-full rounded border bg-white p-2 text-black"
+                  required
+                />
+              </label>
+              <label className="flex flex-1 flex-col">
+                <div className="flex items-center gap-1">
+                  <span className="font-bold">Checked Luggage:</span>
+                  {/* Desktop tooltip */}
+                  <div className="hidden md:block">
+                    <Tooltip {...checkedLuggageTooltip}>
+                      <TooltipTrigger asChild>
+                        <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                          <svg
+                            className="h-3 w-3 text-blue-600"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs">
+                        <p>
+                          large suitcases or similar; log as multiple items if
+                          larger than 30&quot; x 20&quot; x 12&quot;
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  {/* Mobile info button */}
+                  <div className="block md:hidden">
+                    <button
+                      type="button"
+                      className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        showMobileInfoModal(
+                          'Checked Luggage: large suitcases or similar; log as multiple items if larger than 30" x 20" x 12"',
+                        )
+                      }}
+                    >
+                      <svg
+                        className="h-3 w-3 text-blue-600"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <input
+                  type="number"
+                  value={bag_no_large}
+                  onChange={(e) => setBagNoLarge(Number(e.target.value))}
+                  className="mt-1 w-full rounded border bg-white p-2 text-black"
+                  required
+                />
+              </label>
+            </div>
 
-            <label className="mb-2 block">
-              Budget: <strong>${budget}</strong>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="5"
-                value={budget}
-                onChange={(e) => setBudget(Number(e.target.value))}
-                className="mt-1 w-full"
-              />
-            </label>
+            <div className="mb-2 flex flex-col gap-4 md:grid md:grid-cols-2">
+              <label className="flex flex-col">
+                <div className="flex items-center gap-1">
+                  <span>Furthest pickup/dropoff radius:</span>
+                  {/* Desktop tooltip */}
+                  <div className="hidden md:block">
+                    <Tooltip {...dropoffRadiusTooltip}>
+                      <TooltipTrigger asChild>
+                        <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                          <svg
+                            className="h-3 w-3 text-blue-600"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs">
+                        <p>Only applies to pickup/dropoff at campus</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  {/* Mobile info button */}
+                  <div className="block md:hidden">
+                    <button
+                      type="button"
+                      className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        showMobileInfoModal(
+                          'Pickup/Dropoff Radius: Only applies to pickup/dropoff at campus',
+                        )
+                      }}
+                    >
+                      <svg
+                        className="h-3 w-3 text-blue-600"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <strong>{dropoff} mi</strong>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.25"
+                  value={dropoff}
+                  onChange={(e) => setDropoff(Number(e.target.value))}
+                  className="mt-1 w-full"
+                />
+              </label>
+
+              <label className="flex flex-col">
+                <span>
+                  Budget: <strong>${budget}</strong>
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={budget}
+                  onChange={(e) => setBudget(Number(e.target.value))}
+                  className="mt-1 w-full"
+                />
+              </label>
+            </div>
 
             {/* Opt-in checkbox */}
             <label className="mb-2 mt-4 block rounded bg-gray-100 p-3">
@@ -581,7 +778,7 @@ export default function FlightForm({
               ride with.
             </label>
           </form>
-        </ScrollArea>
+        </div>
 
         {/* Fixed bottom section outside of scroll area */}
         <div className="border-t bg-white p-6">
@@ -629,6 +826,50 @@ export default function FlightForm({
           route={successRedirectRoute}
           onClose={() => setIsModalOpen(false)}
         />
+
+        {/* Mobile Info Modal */}
+        {showMobileInfo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-800">
+                  More Info
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowMobileInfo(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <p className="leading-relaxed text-gray-700">
+                {mobileInfoContent}
+              </p>
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowMobileInfo(false)}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
