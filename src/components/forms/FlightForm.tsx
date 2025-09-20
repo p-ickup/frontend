@@ -39,8 +39,8 @@ export interface FlightData {
   bag_no_large: number
   earliestArrival: string
   latestArrival: string
-  dropoff: number
-  budget: number
+  // dropoff: number
+  // budget: number
   optInUnmatched: boolean
   terminal: string
 }
@@ -68,8 +68,8 @@ export default function FlightForm({
   const [bag_no_large, setBagNoLarge] = useState(0)
   const [earliestArrival, setEarliestArrival] = useState('')
   const [latestArrival, setLatestArrival] = useState('')
-  const [dropoff, setDropoff] = useState(0.5)
-  const [budget, setBudget] = useState(50)
+  // const [dropoff, setDropoff] = useState(0.5)
+  // const [budget, setBudget] = useState(50)
   const [optInUnmatched, setOptInUnmatched] = useState(false)
   const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
@@ -81,7 +81,7 @@ export default function FlightForm({
   const carryOnBagsTooltip = useClickTooltip()
   const checkedLuggageTooltip = useClickTooltip()
   const timeRangeTooltip = useClickTooltip()
-  const dropoffRadiusTooltip = useClickTooltip()
+  // const dropoffRadiusTooltip = useClickTooltip()
 
   // Mobile info modal state
   const [showMobileInfo, setShowMobileInfo] = useState(false)
@@ -121,7 +121,7 @@ export default function FlightForm({
         const { data, error } = await supabase
           .from('Flights')
           .select(
-            'flight_id, flight_no, airline_iata, date, matched, to_airport, airport, bag_no_personal, bag_no, bag_no_large, earliest_time, latest_time, max_dropoff, max_price, terminal',
+            'flight_id, flight_no, airline_iata, date, matched, to_airport, airport, bag_no_personal, bag_no, bag_no_large, earliest_time, latest_time, terminal',
           )
           .eq('flight_id', flightId)
           .single()
@@ -140,8 +140,8 @@ export default function FlightForm({
           setBagNoLarge(data.bag_no_large || 0)
           setEarliestArrival(data.earliest_time)
           setLatestArrival(data.latest_time)
-          setDropoff(data.max_dropoff)
-          setBudget(data.max_price)
+          // setDropoff(data.max_dropoff)
+          // setBudget(data.max_price)
           setOptInUnmatched(!data.matched)
           setTerminal(data.terminal)
         }
@@ -255,8 +255,8 @@ export default function FlightForm({
       bag_no_large: bag_no_large,
       earliest_time: earliestArrival,
       latest_time: latestArrival,
-      max_dropoff: dropoff,
-      max_price: budget,
+      // max_dropoff: dropoff,
+      // max_price: budget,
       opt_in: optInUnmatched,
       terminal,
     }
@@ -681,11 +681,12 @@ export default function FlightForm({
               </label>
             </div>
 
+            {/* Dropoff and Budget sliders - commented out for now */}
+            {/* 
             <div className="mb-2 flex flex-col gap-4 md:grid md:grid-cols-2">
               <label className="flex flex-col">
                 <div className="flex items-center gap-1">
                   <span>Furthest pickup/dropoff radius:</span>
-                  {/* Desktop tooltip */}
                   <div className="hidden md:block">
                     <Tooltip {...dropoffRadiusTooltip}>
                       <TooltipTrigger asChild>
@@ -708,7 +709,6 @@ export default function FlightForm({
                       </TooltipContent>
                     </Tooltip>
                   </div>
-                  {/* Mobile info button */}
                   <div className="block md:hidden">
                     <button
                       type="button"
@@ -761,6 +761,7 @@ export default function FlightForm({
                 />
               </label>
             </div>
+            */}
 
             {/* Opt-in checkbox */}
             <label className="mb-2 mt-4 block rounded bg-gray-100 p-3">
