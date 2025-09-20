@@ -226,156 +226,396 @@ export default function Questionnaire() {
   }
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-gray-100 text-black">
-      <div className="flex min-h-screen w-full flex-col items-center justify-center">
-        <h1 className="mb-4 text-3xl font-bold">
-          {loading ? '' : hasProfile ? 'Update Profile' : 'Create Profile'}
-        </h1>
-        <p className="mb-6">
-          {loading ? '' : 'Please fill out your personal information below.'}
-        </p>
+    <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+      {/* Background decoration */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+        <div className="animate-float absolute left-1/4 top-20 h-16 w-16 rotate-12 rounded-2xl bg-gradient-to-br from-teal-400/20 to-teal-600/20"></div>
+        <div
+          className="animate-float absolute right-1/3 top-40 h-12 w-12 rounded-full bg-gradient-to-br from-blue-400/20 to-blue-600/20"
+          style={{ animationDelay: '1s' }}
+        ></div>
+        <div
+          className="animate-float absolute bottom-40 left-1/3 h-20 w-20 rotate-45 rounded-3xl bg-gradient-to-br from-indigo-400/20 to-indigo-600/20"
+          style={{ animationDelay: '2s' }}
+        ></div>
+      </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center bg-blue-50 p-4">
-            <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-teal-500"></div>
-            <span className="ml-2 text-teal-600">Loading Profile...</span>
+      <div className="relative flex min-h-screen w-full items-center justify-center p-4">
+        <div className="w-full max-w-2xl">
+          {/* Header Section */}
+          <div className="mb-4 text-center md:mb-8">
+            <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-teal-500 to-yellow-100 shadow-lg md:mb-6 md:h-20 md:w-20">
+              <svg
+                className="h-8 w-8 text-white md:h-10 md:w-10"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                />
+              </svg>
+            </div>
+            <h1 className="mb-2 text-2xl font-bold text-gray-900 md:mb-4 md:text-4xl">
+              {loading ? '' : hasProfile ? 'Update Profile' : 'Create Profile'}
+            </h1>
+            <p className="text-lg text-gray-600 md:text-xl">
+              {loading
+                ? ''
+                : 'Please fill out your personal information below.'}
+            </p>
           </div>
-        ) : (
-          <form
-            onSubmit={handleSubmit}
-            className="w-96 rounded-lg bg-white p-6 shadow-md"
-          >
-            <label className="mb-2 block">
-              <span className="font-bold after:ml-1 after:text-red-600 after:content-['*']">
-                First Name
-              </span>
-              <input
-                type="text"
-                value={firstname}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="mt-1 w-full rounded border p-2"
-                required
-              />
-            </label>
 
-            <label className="mb-2 block">
-              <span className="font-bold after:ml-1 after:text-red-600 after:content-['*']">
-                Last Name
-              </span>
-              <input
-                type="text"
-                value={lastname}
-                onChange={(e) => setLastName(e.target.value)}
-                className="mt-1 w-full rounded border p-2"
-                required
-              />
-            </label>
-
-            <label className="mb-2 block">
-              <span className="font-bold after:ml-1 after:text-red-600 after:content-['*']">
-                School
-              </span>
-              <select
-                value={school}
-                onChange={(e) => setSchool(e.target.value)}
-                className="mt-1 w-full rounded border p-2"
-                required
-              >
-                <option value="" disabled>
-                  Select your school
-                </option>
-                <option value="Pomona">Pomona College</option>
-                <option value="Claremont McKenna">
-                  Claremont McKenna College
-                </option>
-                <option value="Harvey Mudd">Harvey Mudd College</option>
-                <option value="Scripps">Scripps College</option>
-                <option value="Pitzer">Pitzer College</option>
-              </select>
-            </label>
-
-            <label className="mb-2 block">
-              <span className="font-bold after:ml-1 after:text-red-600 after:content-['*']">
-                Phone Number
-              </span>
-              <input
-                type="text"
-                value={phonenumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                className="mt-1 w-full rounded border p-2"
-                required
-              />
-            </label>
-
-            <label className="mb-2 block">
-              <span
-                className={`font-bold after:ml-1 after:text-red-600 ${
-                  !hasGooglePhoto ? "after:content-['*']" : ''
-                }`}
-              >
-                Profile Picture
-              </span>
-              <input
-                type="file"
-                accept={ALLOWED_IMAGE_TYPES.join(',')}
-                onChange={handlePhotoChange}
-                className="mt-1 w-full rounded border p-2"
-                required={!hasGooglePhoto}
-              />
-              <FileUploadInfo
-                acceptedFormats={['PNG', 'JPG', 'HEIC']}
-                maxSize="5MB"
-                className="mt-1"
-              />
-              {(photoUrl || photo) && (
-                <div className="mt-2 flex items-center gap-2">
-                  <img
-                    src={photo ? URL.createObjectURL(photo) : photoUrl}
-                    alt="Profile"
-                    width={50}
-                    height={50}
-                    className="rounded-full"
-                  />
-                  <div className="flex flex-col gap-1">
-                    {photo && (
-                      <span className="text-xs text-green-600">
-                        ✓ New image selected
+          {/* Form Container - Hidden on mobile, shown on desktop */}
+          {loading ? (
+            <div className="flex items-center justify-center rounded-2xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
+              <div className="flex items-center space-x-4">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-200 border-t-teal-500"></div>
+                <span className="text-lg font-medium text-gray-700">
+                  Loading Profile...
+                </span>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Desktop Form Container */}
+              <div className="hidden rounded-3xl bg-white/80 p-8 shadow-2xl backdrop-blur-sm md:block">
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold text-gray-700 after:ml-1 after:text-red-500 after:content-['*']">
+                        First Name
                       </span>
-                    )}
-                    {photoUrl && !photo && (
-                      <span className="text-xs text-gray-600">
-                        Current photo will be replaced
+                      <input
+                        type="text"
+                        value={firstname}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        placeholder="Enter your first name"
+                        required
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold text-gray-700 after:ml-1 after:text-red-500 after:content-['*']">
+                        Last Name
                       </span>
+                      <input
+                        type="text"
+                        value={lastname}
+                        onChange={(e) => setLastName(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        placeholder="Enter your last name"
+                        required
+                      />
+                    </label>
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold text-gray-700 after:ml-1 after:text-red-500 after:content-['*']">
+                      School
+                    </span>
+                    <select
+                      value={school}
+                      onChange={(e) => setSchool(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                      required
+                    >
+                      <option value="" disabled>
+                        Select your school
+                      </option>
+                      <option value="Pomona">Pomona College</option>
+                      <option value="Claremont McKenna">
+                        Claremont McKenna College
+                      </option>
+                      <option value="Harvey Mudd">Harvey Mudd College</option>
+                      <option value="Scripps">Scripps College</option>
+                      <option value="Pitzer">Pitzer College</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold text-gray-700 after:ml-1 after:text-red-500 after:content-['*']">
+                      Phone Number
+                    </span>
+                    <input
+                      type="text"
+                      value={phonenumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                      placeholder="(123) 456-7890"
+                      required
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span
+                      className={`mb-2 block text-sm font-semibold text-gray-700 ${
+                        !hasGooglePhoto
+                          ? "after:ml-1 after:text-red-500 after:content-['*']"
+                          : ''
+                      }`}
+                    >
+                      Profile Picture
+                    </span>
+                    <div className="space-y-3">
+                      <input
+                        type="file"
+                        accept={ALLOWED_IMAGE_TYPES.join(',')}
+                        onChange={handlePhotoChange}
+                        className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        required={!hasGooglePhoto}
+                      />
+                      <FileUploadInfo
+                        acceptedFormats={['PNG', 'JPG', 'HEIC']}
+                        maxSize="5MB"
+                        className="text-xs text-gray-500"
+                      />
+                      {(photoUrl || photo) && (
+                        <div className="flex items-center gap-3 rounded-xl bg-gray-50 p-3">
+                          <Image
+                            src={photo ? URL.createObjectURL(photo) : photoUrl}
+                            alt="Profile"
+                            width={60}
+                            height={60}
+                            className="rounded-full border-2 border-white shadow-md"
+                          />
+                          <div className="flex flex-col">
+                            {photo && (
+                              <span className="text-sm font-medium text-green-600">
+                                ✓ New image selected
+                              </span>
+                            )}
+                            {photoUrl && !photo && (
+                              <span className="text-sm text-gray-600">
+                                Current photo will be replaced
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold text-gray-700">
+                      Instagram (Optional)
+                    </span>
+                    <input
+                      type="text"
+                      value={instagram}
+                      onChange={(e) => setInstagram(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                      placeholder="@yourusername"
+                    />
+                  </label>
+
+                  <div className="pt-4">
+                    <button
+                      type="submit"
+                      className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 p-4 text-lg font-semibold text-white shadow-lg transition-all duration-200 hover:scale-[1.02] hover:from-teal-600 hover:to-teal-700 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                    >
+                      {loading ? (
+                        <div className="flex items-center justify-center space-x-2">
+                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                          <span>Processing...</span>
+                        </div>
+                      ) : hasProfile ? (
+                        'Update Profile'
+                      ) : (
+                        'Create Profile'
+                      )}
+                    </button>
+
+                    {message && (
+                      <div
+                        className={`mt-4 rounded-xl p-4 text-center ${
+                          message.includes('✅') ||
+                          message.includes('successfully')
+                            ? 'border border-green-200 bg-green-50 text-green-700'
+                            : 'border border-red-200 bg-red-50 text-red-700'
+                        }`}
+                      >
+                        <p className="font-medium">{message}</p>
+                      </div>
                     )}
                   </div>
-                </div>
-              )}
-            </label>
+                </form>
+              </div>
 
-            <label className="mb-2 block font-bold">
-              Instagram
-              <input
-                type="text"
-                value={instagram}
-                onChange={(e) => setInstagram(e.target.value)}
-                className="mt-1 w-full rounded border p-2"
-              />
-            </label>
+              {/* Mobile Form - No container, simpler */}
+              <div className="block md:hidden">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4">
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold text-gray-700 after:ml-1 after:text-red-500 after:content-['*']">
+                        First Name
+                      </span>
+                      <input
+                        type="text"
+                        value={firstname}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        placeholder="Enter your first name"
+                        required
+                      />
+                    </label>
 
-            <button
-              type="submit"
-              className="w-full rounded bg-teal-500 p-2 text-white hover:bg-teal-600"
-            >
-              {loading
-                ? 'Loading...'
-                : hasProfile
-                  ? 'Update Profile'
-                  : 'Create Profile'}
-            </button>
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold text-gray-700 after:ml-1 after:text-red-500 after:content-['*']">
+                        Last Name
+                      </span>
+                      <input
+                        type="text"
+                        value={lastname}
+                        onChange={(e) => setLastName(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        placeholder="Enter your last name"
+                        required
+                      />
+                    </label>
 
-            {message && <p className="mt-4 text-center">{message}</p>}
-          </form>
-        )}
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold text-gray-700 after:ml-1 after:text-red-500 after:content-['*']">
+                        School
+                      </span>
+                      <select
+                        value={school}
+                        onChange={(e) => setSchool(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        required
+                      >
+                        <option value="" disabled>
+                          Select your school
+                        </option>
+                        <option value="Pomona">Pomona College</option>
+                        <option value="Claremont McKenna">
+                          Claremont McKenna College
+                        </option>
+                        <option value="Harvey Mudd">Harvey Mudd College</option>
+                        <option value="Scripps">Scripps College</option>
+                        <option value="Pitzer">Pitzer College</option>
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold text-gray-700 after:ml-1 after:text-red-500 after:content-['*']">
+                        Phone Number
+                      </span>
+                      <input
+                        type="text"
+                        value={phonenumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        placeholder="(123) 456-7890"
+                        required
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span
+                        className={`mb-2 block text-sm font-semibold text-gray-700 ${
+                          !hasGooglePhoto
+                            ? "after:ml-1 after:text-red-500 after:content-['*']"
+                            : ''
+                        }`}
+                      >
+                        Profile Picture
+                      </span>
+                      <div className="space-y-3">
+                        <input
+                          type="file"
+                          accept={ALLOWED_IMAGE_TYPES.join(',')}
+                          onChange={handlePhotoChange}
+                          className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                          required={!hasGooglePhoto}
+                        />
+                        <FileUploadInfo
+                          acceptedFormats={['PNG', 'JPG', 'HEIC']}
+                          maxSize="5MB"
+                          className="text-xs text-gray-500"
+                        />
+                        {(photoUrl || photo) && (
+                          <div className="flex items-center gap-3 rounded-xl bg-gray-50 p-3">
+                            <Image
+                              src={
+                                photo ? URL.createObjectURL(photo) : photoUrl
+                              }
+                              alt="Profile"
+                              width={60}
+                              height={60}
+                              className="rounded-full border-2 border-white shadow-md"
+                            />
+                            <div className="flex flex-col">
+                              {photo && (
+                                <span className="text-sm font-medium text-green-600">
+                                  ✓ New image selected
+                                </span>
+                              )}
+                              {photoUrl && !photo && (
+                                <span className="text-sm text-gray-600">
+                                  Current photo will be replaced
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold text-gray-700">
+                        Instagram (Optional)
+                      </span>
+                      <input
+                        type="text"
+                        value={instagram}
+                        onChange={(e) => setInstagram(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        placeholder="@yourusername"
+                      />
+                    </label>
+
+                    <div className="pt-4">
+                      <button
+                        type="submit"
+                        className="w-full rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 p-4 text-lg font-semibold text-white shadow-lg transition-all duration-200 hover:scale-[1.02] hover:from-teal-600 hover:to-teal-700 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                      >
+                        {loading ? (
+                          <div className="flex items-center justify-center space-x-2">
+                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                            <span>Processing...</span>
+                          </div>
+                        ) : hasProfile ? (
+                          'Update Profile'
+                        ) : (
+                          'Create Profile'
+                        )}
+                      </button>
+
+                      {message && (
+                        <div
+                          className={`mt-4 rounded-xl p-4 text-center ${
+                            message.includes('✅') ||
+                            message.includes('successfully')
+                              ? 'border border-green-200 bg-green-50 text-green-700'
+                              : 'border border-red-200 bg-red-50 text-red-700'
+                          }`}
+                        >
+                          <p className="font-medium">{message}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

@@ -11,7 +11,7 @@ rm -rf node_modules/.cache 2>/dev/null || true
 # Remove corrupted modules
 echo "🗑️ Removing corrupted node_modules..."
 rm -rf node_modules
-rm -f pnpm-lock.yaml
+rm pnpm-lock.yaml
 
 # Reinstall with correct version
 echo "⬇️ Reinstalling dependencies..."
