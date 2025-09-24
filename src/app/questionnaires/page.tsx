@@ -348,7 +348,7 @@ export default function Questionnaires() {
                   📝 Editable Forms
                 </h3>
                 <p className="text-gray-600">
-                  Forms you can still modify (3+ days before flight)
+                  Forms you can still modify (8+ days before flight)
                 </p>
               </div>
 
