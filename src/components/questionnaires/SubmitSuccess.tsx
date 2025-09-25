@@ -30,9 +30,9 @@ const SubmitSuccess: React.FC<SubmitSuccessProps> = ({
           ✅ Flight details submitted successfully!
         </h2>
         <p className="mt-2 text-gray-600">
-          You may edit or delete this form up to 3 days before your requested
+          You may edit or delete this form up to 7 days before your requested
           ride share. Please check the <strong>Results</strong> page to see who
-          you match with. If you do not receive a match 3 days prior to your
+          you match with. If you do not receive a match 7 days prior to your
           requested ride share date, check the <strong>Unmatched</strong> page.
         </p>
 
