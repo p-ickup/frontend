@@ -87,6 +87,12 @@ export default function FlightForm({
   const [showMobileInfo, setShowMobileInfo] = useState(false)
   const [mobileInfoContent, setMobileInfoContent] = useState('')
 
+  // ASPC warning state
+  const [showASPCWarning, setShowASPCWarning] = useState(false)
+  const [aspcWarningMessage, setAspcWarningMessage] = useState('')
+  const [isASPCGuaranteed, setIsASPCGuaranteed] = useState(false)
+  const [userSchool, setUserSchool] = useState('')
+
   // Handle mobile info display
   const showMobileInfoModal = (content: string) => {
     setMobileInfoContent(content)
@@ -112,6 +118,152 @@ export default function FlightForm({
     }
     checkProfileStatus()
   }, [])
+
+  // Fetch user school information
+  useEffect(() => {
+    const fetchUserSchool = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (user) {
+        const { data: userProfile } = await supabase
+          .from('Users')
+          .select('school')
+          .eq('user_id', user.id)
+          .single()
+
+        if (userProfile?.school) {
+          setUserSchool(userProfile.school)
+        }
+      }
+    }
+    fetchUserSchool()
+  }, [])
+
+  // Check ASPC subsidy eligibility when date and time change
+  useEffect(() => {
+    if (dateOfFlight && earliestArrival && latestArrival && userSchool) {
+      checkASPCSubsidyEligibility()
+    }
+  }, [dateOfFlight, earliestArrival, latestArrival, tripType, userSchool])
+
+  // ASPC subsidy checking function
+  const checkASPCSubsidyEligibility = () => {
+    if (!dateOfFlight || !earliestArrival || !latestArrival || !userSchool)
+      return
+
+    // Only show ASPC warnings for Pomona College students
+    if (userSchool !== 'Pomona') {
+      setShowASPCWarning(false)
+      return
+    }
+
+    // ASPC operational dates (hardcoded for Fall 2025)
+    const aspcDates = ['2025-10-11', '2025-10-13', '2025-10-14']
+
+    // Check if date is within ±2 days of ASPC operational dates
+    const flightDate = new Date(dateOfFlight)
+    const isWithinASPCWindow = aspcDates.some((aspcDate) => {
+      const aspcDateObj = new Date(aspcDate)
+      const diffTime = Math.abs(flightDate.getTime() - aspcDateObj.getTime())
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+      return diffDays <= 2
+    })
+
+    // Check if date is exactly an ASPC operational date
+    const isExactASPCDate = aspcDates.includes(dateOfFlight)
+
+    if (!isWithinASPCWindow) {
+      setAspcWarningMessage(
+        'You are not eligible for ASPC subsidy because your flight date is not within the operational dates. You can still use P-ICKUP to coordinate non-subsidized rides.',
+      )
+      setIsASPCGuaranteed(false)
+      setShowASPCWarning(true)
+      return
+    }
+
+    // Parse time strings (format: "HH:MM")
+    const parseTime = (timeStr: string) => {
+      const [hours, minutes] = timeStr.split(':').map(Number)
+      return hours + minutes / 60
+    }
+
+    const earliestTime = parseTime(earliestArrival)
+    const latestTime = parseTime(latestArrival)
+
+    // Define time windows (in PST)
+    const outboundStart = 6 // 6:00 AM
+    const outboundEnd = 18 // 6:00 PM
+    const inboundStart = 10 // 10:00 AM
+    const inboundEnd = 22 // 10:00 PM
+
+    let isGuaranteed = false
+    let warningMessage = ''
+
+    if (tripType) {
+      // Outbound: 6 AM - 6 PM PST
+      if (earliestTime >= outboundStart && latestTime <= outboundEnd) {
+        if (isExactASPCDate) {
+          isGuaranteed = true
+          warningMessage =
+            '✅ You are guaranteed a subsidized ride! Your time range falls within ASPC guaranteed hours (6:00 AM - 6:00 PM PST) on an operational date.'
+        } else {
+          isGuaranteed = false
+          warningMessage =
+            'You are not guaranteed a subsidized ride because your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.'
+        }
+      } else {
+        // Determine specific reason for outbound
+        let reason = ''
+        if (earliestTime < outboundStart) {
+          reason = `your time range is before 6:00 AM PST`
+        } else if (latestTime > outboundEnd) {
+          reason = `your time range is after 6:00 PM PST`
+        } else {
+          reason = `your time range is outside the guaranteed window (6:00 AM - 6:00 PM PST)`
+        }
+
+        if (isExactASPCDate) {
+          warningMessage = `You are not guaranteed a subsidized ride because ${reason}, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
+        } else {
+          warningMessage = `You are not guaranteed a subsidized ride because ${reason} and your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
+        }
+      }
+    } else {
+      // Inbound: 10 AM - 10 PM PST
+      if (earliestTime >= inboundStart && latestTime <= inboundEnd) {
+        if (isExactASPCDate) {
+          isGuaranteed = true
+          warningMessage =
+            '✅ You are guaranteed a subsidized ride! Your arrival time falls within ASPC guaranteed hours (10:00 AM - 10:00 PM PST) on an operational date.'
+        } else {
+          isGuaranteed = false
+          warningMessage =
+            'You are not guaranteed a subsidized ride because your flight is not within the operational dates and/or times. However, you may be eligible for an after-hours ride if 2 or more riders are grouped for ONT. Check the ASPC policy page for more details.'
+        }
+      } else {
+        // Determine specific reason for inbound
+        let reason = ''
+        if (earliestTime < inboundStart) {
+          reason = `your arrival time is before 10:00 AM PST`
+        } else if (latestTime > inboundEnd) {
+          reason = `your arrival time is after 10:00 PM PST`
+        } else {
+          reason = `your arrival time is outside the guaranteed window (10:00 AM - 10:00 PM PST)`
+        }
+
+        if (isExactASPCDate) {
+          warningMessage = `You are not guaranteed a subsidized ride because ${reason}, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
+        } else {
+          warningMessage = `You are not guaranteed a subsidized ride because ${reason} and your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check the ASPC policy page for more details.`
+        }
+      }
+    }
+
+    setIsASPCGuaranteed(isGuaranteed)
+    setAspcWarningMessage(warningMessage)
+    setShowASPCWarning(true)
+  }
 
   // Load existing flight data for edit mode
   useEffect(() => {
@@ -297,7 +449,17 @@ export default function FlightForm({
   return (
     <div className="flex w-full flex-col items-center text-black">
       {/* <h1 className="mb-4 text-3xl font-bold">{title}</h1> */}
-      <p className="mb-4">All fields are required.</p>
+      <div className="mb-4 flex items-center gap-2">
+        <p>All fields are required.</p>
+        {userSchool === 'Pomona' && (
+          <a
+            href="/aspc-info"
+            className="text-sm text-blue-600 underline hover:text-blue-800"
+          >
+            See here for ASPC policies and resources
+          </a>
+        )}
+      </div>
       {!isProfileComplete && (
         <div className="mb-6">
           <RedirectButton label="Complete Profile First" route="/profile" />
@@ -762,6 +924,103 @@ export default function FlightForm({
               </label>
             </div>
             */}
+
+            {/* ASPC Warning - Above unmatched checkbox */}
+            {showASPCWarning && (
+              <div
+                className={`mb-4 rounded-xl border-2 p-4 shadow-lg ${
+                  isASPCGuaranteed
+                    ? 'to-emerald-50 border-green-200 bg-gradient-to-r from-green-50'
+                    : 'border-orange-200 bg-gradient-to-r from-orange-50 to-yellow-50'
+                }`}
+              >
+                <div className="flex items-start space-x-3">
+                  <div className="flex-shrink-0">
+                    {isASPCGuaranteed ? (
+                      <svg
+                        className="h-6 w-6 text-green-500"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    ) : (
+                      <svg
+                        className="h-6 w-6 text-orange-500"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p
+                      className={`text-sm font-medium ${
+                        isASPCGuaranteed ? 'text-green-800' : 'text-orange-800'
+                      }`}
+                    >
+                      {aspcWarningMessage}
+                    </p>
+                    <div className="mt-2">
+                      <a
+                        href="/aspc-policy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`inline-flex items-center text-sm font-semibold underline hover:opacity-80 ${
+                          isASPCGuaranteed
+                            ? 'text-green-600 hover:text-green-700'
+                            : 'text-orange-600 hover:text-orange-700'
+                        }`}
+                      >
+                        View ASPC Policy Details
+                        <svg
+                          className="ml-1 h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                          />
+                        </svg>
+                      </a>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowASPCWarning(false)}
+                    className={`flex-shrink-0 hover:opacity-80 ${
+                      isASPCGuaranteed
+                        ? 'text-green-400 hover:text-green-600'
+                        : 'text-orange-400 hover:text-orange-600'
+                    }`}
+                  >
+                    <svg
+                      className="h-5 w-5"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Opt-in checkbox */}
             <label className="mb-2 mt-4 block rounded bg-gray-100 p-3">

@@ -148,13 +148,13 @@ export default function Questionnaire() {
       return
     }
 
-    // Check if profile picture is required (only if no Google photo and no custom photo)
-    if (!photo && !photoUrl && !hasGooglePhoto) {
-      setMessage(
-        'Profile picture is required. Please upload an image or use your Google profile picture.',
-      )
-      return
-    }
+    // Check if profile picture is required (only if no Google photo and no custom photo) - COMMENTED OUT TO FIX CRITICAL ISSUE
+    // if (!photo && !photoUrl && !hasGooglePhoto) {
+    //   setMessage(
+    //     'Profile picture is required. Please upload an image or use your Google profile picture.',
+    //   )
+    //   return
+    // }
 
     let updatedPhotoUrl = photoUrl
 
@@ -214,8 +214,9 @@ export default function Questionnaire() {
     } else {
       setMessage(
         hasProfile
-          ? 'Profile updated! \n Any profile picture changes will appear upon refresh.'
-          : 'Profile created!',
+          ? '✅ Profile updated successfully!'
+          : //  \n Any profile picture changes will appear upon refresh.
+            '✅ Profile created successfully!',
       )
       setHasProfile(true)
       setPhotoUrl(updatedPhotoUrl)
@@ -352,7 +353,7 @@ export default function Questionnaire() {
                     />
                   </label>
 
-                  <label className="block">
+                  {/* <label className="block">
                     <span
                       className={`mb-2 block text-sm font-semibold text-gray-700 ${
                         !hasGooglePhoto
@@ -399,9 +400,9 @@ export default function Questionnaire() {
                         </div>
                       )}
                     </div>
-                  </label>
+                  </label> */}
 
-                  <label className="block">
+                  {/* <label className="block">
                     <span className="mb-2 block text-sm font-semibold text-gray-700">
                       Instagram (Optional)
                     </span>
@@ -412,7 +413,7 @@ export default function Questionnaire() {
                       className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       placeholder="@yourusername"
                     />
-                  </label>
+                  </label> */}
 
                   <div className="pt-4">
                     <button
@@ -516,7 +517,7 @@ export default function Questionnaire() {
                       />
                     </label>
 
-                    <label className="block">
+                    {/* <label className="block">
                       <span
                         className={`mb-2 block text-sm font-semibold text-gray-700 ${
                           !hasGooglePhoto
@@ -565,9 +566,9 @@ export default function Questionnaire() {
                           </div>
                         )}
                       </div>
-                    </label>
+                    </label> */}
 
-                    <label className="block">
+                    {/* <label className="block">
                       <span className="mb-2 block text-sm font-semibold text-gray-700">
                         Instagram (Optional)
                       </span>
@@ -578,7 +579,7 @@ export default function Questionnaire() {
                         className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                         placeholder="@yourusername"
                       />
-                    </label>
+                    </label> */}
 
                     <div className="pt-4">
                       <button

@@ -124,23 +124,42 @@ export default function Questionnaires() {
   }
 
   // variables dealing with showing specific forms
+  // COMMENTED OUT - ORIGINAL LOGIC (3-day threshold)
+  // const today = new Date()
+  // today.setHours(0, 0, 0, 0) // Normalize to midnight to avoid timezone issues
+  // const threeDaysFromNow = new Date(today)
+  // threeDaysFromNow.setDate(today.getDate() + 3) // Add 3 days
+
+  // const editableUnmatched = matchForms.filter((form) => {
+  //   const formDate = new Date(form.date)
+  //   formDate.setHours(0, 0, 0, 0)
+  //   return form.matched === false && formDate >= threeDaysFromNow
+  // })
+
+  // const noneditableUnmatched = matchForms.filter((form) => {
+  //   const formDate = new Date(form.date)
+  //   formDate.setHours(0, 0, 0, 0)
+  //   return (
+  //     form.matched == false && formDate < threeDaysFromNow && formDate >= today
+  //   )
+  // })
+
+  // NEW LOGIC - Allow modification of any current flight forms until 10/3/2025
   const today = new Date()
   today.setHours(0, 0, 0, 0) // Normalize to midnight to avoid timezone issues
-  const threeDaysFromNow = new Date(today)
-  threeDaysFromNow.setDate(today.getDate() + 3) // Add 3 days
+  const cutoffDate = new Date('2025-10-03') // October 3, 2025
+  cutoffDate.setHours(23, 59, 59, 999) // End of day
 
   const editableUnmatched = matchForms.filter((form) => {
     const formDate = new Date(form.date)
     formDate.setHours(0, 0, 0, 0)
-    return form.matched === false && formDate >= threeDaysFromNow
+    return form.matched === false && formDate >= today && formDate <= cutoffDate
   })
 
   const noneditableUnmatched = matchForms.filter((form) => {
     const formDate = new Date(form.date)
     formDate.setHours(0, 0, 0, 0)
-    return (
-      form.matched == false && formDate < threeDaysFromNow && formDate >= today
-    )
+    return form.matched === false && (formDate < today || formDate > cutoffDate)
   })
 
   if (!isAuthenticated) {
@@ -348,7 +367,7 @@ export default function Questionnaires() {
                   📝 Editable Forms
                 </h3>
                 <p className="text-gray-600">
-                  Forms you can still modify (3+ days before flight)
+                  Forms you can still modify (until 10/3/2025)
                 </p>
               </div>
 

@@ -109,13 +109,13 @@ export default function About() {
                   </div>
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900">
-                      7 Days
+                      14 Days
                     </h3>
                     <p className="text-gray-600">
                       Complete PICKUP questionnaire.
                     </p>
                     <p className="mt-1 text-sm italic text-gray-500">
-                      * anytime between booking and 3 days before *
+                      * anytime between booking and 7 days before *
                     </p>
                   </div>
                 </div>
