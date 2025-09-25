@@ -11,16 +11,26 @@ import {
 } from 'lucide-react'
 import RedirectButton from '@/components/buttons/RedirectButton'
 
+interface ASPCLink {
+  title: string
+  description: string
+  url: string
+  icon: any
+  color: string
+  isInternal: boolean
+}
+
 export default function ASPCInfoPage() {
   const [hoveredLink, setHoveredLink] = useState<string | null>(null)
 
-  const aspcLinks = [
+  const aspcLinks: ASPCLink[] = [
     {
       title: 'Quick Guide',
       description: 'Essential information for using ASPC Airport Rideshare',
       url: 'https://docs.google.com/document/d/e/2PACX-1vSEkEcvV6-2Fq9bb_F8-wqLrAAPi3fSBSCIGddqMlz2Zcdy6Z6AtDNBWU1cTEK7CbjnWW7anKUWrNY0/pub',
       icon: Info,
       color: 'bg-blue-500',
+      isInternal: false,
     },
     {
       title: 'Frequently Asked Questions',
@@ -28,6 +38,7 @@ export default function ASPCInfoPage() {
       url: 'https://nam10.safelinks.protection.outlook.com/?url=https%3A%2F%2Fdocs.google.com%2Fdocument%2Fd%2Fe%2F2PACX-1vQCaNGg8mk5Pq7zqTLnz0lH7gZ7iI9mrEPdh3_LqpjpsgObauHmuow7ltqlrPPd--EEa2jDKffhZpXI%2Fpub&data=05%7C02%7Cjljz2022%40mymail.pomona.edu%7C50c1d711755241b1d90908ddfae05489%7C817f590439044ee8b3a5a65d4746ff70%7C0%7C0%7C638942563626043986%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=QefDaOTdSzIlUBAGv%2BSSgaXvTyyCm5q6rZ3GSnI0IwQ%3D&reserved=0',
       icon: HelpCircle,
       color: 'bg-green-500',
+      isInternal: false,
     },
     {
       title: 'Program Policies',
@@ -36,6 +47,7 @@ export default function ASPCInfoPage() {
       url: 'https://nam10.safelinks.protection.outlook.com/?url=https%3A%2F%2Fdocs.google.com%2Fdocument%2Fd%2Fe%2F2PACX-1vSnd4UeEvul3M6_L5rPr3z1Shzlccuqa0aP-O5eifF7p_BIzfc-lKrNwAG95lCb4LnOWDeZ-Zz2YRa9%2Fpub&data=05%7C02%7Cjljz2022%40mymail.pomona.edu%7C50c1d711755241b1d90908ddfae05489%7C817f590439044ee8b3a5a65d4746ff70%7C0%7C0%7C638942563626080129%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=AjkV%2BM0VA9lvyyIxGxI9%2Bnd5s8BKGrG3yOJJBxY3teY%3D&reserved=0',
       icon: FileText,
       color: 'bg-purple-500',
+      isInternal: false,
     },
     {
       title: 'Delay Verification Form',
@@ -44,6 +56,7 @@ export default function ASPCInfoPage() {
       url: 'https://nam10.safelinks.protection.outlook.com/?url=https%3A%2F%2Fdocs.google.com%2Fforms%2Fd%2Fe%2F1FAIpQLSfmAK5eeJK1Z-zgH-5f3YLpD4sywjpsjYZwgiZPGlis5a-04A%2Fviewform%3Fusp%3Dheader&data=05%7C02%7Cjljz2022%40mymail.pomona.edu%7C50c1d711755241b1d90908ddfae05489%7C817f590439044ee8b3a5a65d4746ff70%7C0%7C0%7C638942563626061093%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=5bdAVhz3iu9YStgPNvKjEqLRB0wGEamZSfoD4xWEaYk%3D&reserved=0',
       icon: FileText,
       color: 'bg-orange-500',
+      isInternal: false,
     },
     {
       title: 'Comments, Concerns & Feedback',
@@ -51,6 +64,7 @@ export default function ASPCInfoPage() {
       url: 'https://nam10.safelinks.protection.outlook.com/?url=https%3A%2F%2Fdocs.google.com%2Fforms%2Fd%2Fe%2F1FAIpQLSdQIA8K23k7M6O9X3KDQYHmM5GovKikVftZIV5m2QDqUFr2aA%2Fviewform%3Fusp%3Dheader&data=05%7C02%7Cjljz2022%40mymail.pomona.edu%7C50c1d711755241b1d90908ddfae05489%7C817f590439044ee8b3a5a65d4746ff70%7C0%7C0%7C638942563626096897%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=oQ7n8K5rUcvoD9BVd1n5dagWKQbOFI1nm3a1nHmizjY%3D&reserved=0',
       icon: MessageSquare,
       color: 'bg-teal-500',
+      isInternal: false,
     },
   ]
 
@@ -136,9 +150,7 @@ export default function ASPCInfoPage() {
               <div
                 key={index}
                 className="transform cursor-pointer rounded-xl border border-gray-100 bg-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-                onClick={() =>
-                  handleLinkClick(link.url, (link as any).isInternal)
-                }
+                onClick={() => handleLinkClick(link.url, link.isInternal)}
                 onMouseEnter={() => setHoveredLink(link.title)}
                 onMouseLeave={() => setHoveredLink(null)}
               >
@@ -152,7 +164,7 @@ export default function ASPCInfoPage() {
                     <div className="min-w-0 flex-1">
                       <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold text-gray-800">
                         {link.title}
-                        {!(link as any).isInternal && (
+                        {!link.isInternal && (
                           <ExternalLink className="h-4 w-4 flex-shrink-0 text-gray-400" />
                         )}
                       </h3>
@@ -165,7 +177,7 @@ export default function ASPCInfoPage() {
                   {hoveredLink === link.title && (
                     <div className="mt-4 border-t border-gray-100 pt-4">
                       <p className="text-xs text-gray-500">
-                        {(link as any).isInternal
+                        {link.isInternal
                           ? 'Click to navigate'
                           : 'Click to open in new tab'}
                       </p>

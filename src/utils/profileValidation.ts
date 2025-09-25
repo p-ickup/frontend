@@ -49,17 +49,17 @@ export const validateUserProfile =
     if (!userProfile.school) missingFields.push('school')
     if (!userProfile.phonenumber) missingFields.push('phone number')
 
-    // Check for profile picture (custom or Google)
-    const hasCustomPhoto = !!userProfile.photo_url
-    const hasGooglePhoto = !!(
-      user.user_metadata?.avatar_url ||
-      user.identities?.[0]?.identity_data?.avatar_url ||
-      user.user_metadata?.picture
-    )
+    // Check for profile picture (custom or Google) - COMMENTED OUT TO FIX CRITICAL ISSUE
+    // const hasCustomPhoto = !!userProfile.photo_url
+    // const hasGooglePhoto = !!(
+    //   user.user_metadata?.avatar_url ||
+    //   user.identities?.[0]?.identity_data?.avatar_url ||
+    //   user.user_metadata?.picture
+    // )
 
-    if (!hasCustomPhoto && !hasGooglePhoto) {
-      missingFields.push('profile picture')
-    }
+    // if (!hasCustomPhoto && !hasGooglePhoto) {
+    //   missingFields.push('profile picture')
+    // }
 
     if (missingFields.length > 0) {
       return {

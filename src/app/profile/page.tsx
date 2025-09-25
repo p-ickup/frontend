@@ -148,13 +148,13 @@ export default function Questionnaire() {
       return
     }
 
-    // Check if profile picture is required (only if no Google photo and no custom photo)
-    if (!photo && !photoUrl && !hasGooglePhoto) {
-      setMessage(
-        'Profile picture is required. Please upload an image or use your Google profile picture.',
-      )
-      return
-    }
+    // Check if profile picture is required (only if no Google photo and no custom photo) - COMMENTED OUT TO FIX CRITICAL ISSUE
+    // if (!photo && !photoUrl && !hasGooglePhoto) {
+    //   setMessage(
+    //     'Profile picture is required. Please upload an image or use your Google profile picture.',
+    //   )
+    //   return
+    // }
 
     let updatedPhotoUrl = photoUrl
 
