@@ -140,12 +140,19 @@ export default function FlightForm({
     fetchUserSchool()
   }, [])
 
-  // Check ASPC subsidy eligibility when date and time change
+  // Check ASPC subsidy eligibility when date, time, or airport change
   useEffect(() => {
     if (dateOfFlight && earliestArrival && latestArrival && userSchool) {
       checkASPCSubsidyEligibility()
     }
-  }, [dateOfFlight, earliestArrival, latestArrival, tripType, userSchool])
+  }, [
+    dateOfFlight,
+    earliestArrival,
+    latestArrival,
+    tripType,
+    userSchool,
+    airport,
+  ])
 
   // ASPC subsidy checking function
   const checkASPCSubsidyEligibility = () => {
@@ -204,13 +211,26 @@ export default function FlightForm({
       // Outbound: 6 AM - 6 PM PST
       if (earliestTime >= outboundStart && latestTime <= outboundEnd) {
         if (isExactASPCDate) {
-          isGuaranteed = true
-          warningMessage =
-            '✅ You are guaranteed a subsidized ride! Your time range falls within ASPC guaranteed hours (6:00 AM - 6:00 PM PST) on an operational date.'
+          // FALL BREAK LOGIC: LAX flights are never guaranteed, only covered with 3+ riders
+          if (airport === 'LAX') {
+            isGuaranteed = false
+            warningMessage =
+              'You are not guaranteed a subsidized ride because LAX flights during fall break require at least 3 riders to be grouped. However, ASPC may still cover your ride if 3+ riders are matched for your flight. Check out the policy page for more details.'
+          } else {
+            isGuaranteed = true
+            warningMessage =
+              '✅ You are guaranteed a subsidized ride! Your time range falls within ASPC guaranteed hours (6:00 AM - 6:00 PM PST) on an operational date.'
+          }
         } else {
           isGuaranteed = false
-          warningMessage =
-            'You are not guaranteed a subsidized ride because your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.'
+          // FALL BREAK LOGIC: Check if this is a special LAX case outside operational dates
+          if (airport === 'LAX') {
+            warningMessage =
+              'You are not guaranteed a subsidized ride because your flight is not within the operational dates, but it may still be possible if 3+ riders are grouped for LAX. Check out the policy page for more details.'
+          } else {
+            warningMessage =
+              'You are not guaranteed a subsidized ride because your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.'
+          }
         }
       } else {
         // Determine specific reason for outbound
@@ -224,22 +244,45 @@ export default function FlightForm({
         }
 
         if (isExactASPCDate) {
-          warningMessage = `You are not guaranteed a subsidized ride because ${reason}, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
+          // FALL BREAK LOGIC: Check if this is a special LAX case
+          if (airport === 'LAX') {
+            warningMessage = `You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
+          } else {
+            warningMessage = `You are not guaranteed a subsidized ride because ${reason}, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
+          }
         } else {
-          warningMessage = `You are not guaranteed a subsidized ride because ${reason} and your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
+          // FALL BREAK LOGIC: Check if this is a special LAX case outside operational dates
+          if (airport === 'LAX') {
+            warningMessage = `You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
+          } else {
+            warningMessage = `You are not guaranteed a subsidized ride because ${reason} and your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
+          }
         }
       }
     } else {
       // Inbound: 10 AM - 10 PM PST
       if (earliestTime >= inboundStart && latestTime <= inboundEnd) {
         if (isExactASPCDate) {
-          isGuaranteed = true
-          warningMessage =
-            '✅ You are guaranteed a subsidized ride! Your arrival time falls within ASPC guaranteed hours (10:00 AM - 10:00 PM PST) on an operational date.'
+          // FALL BREAK LOGIC: LAX flights are never guaranteed, only covered with 3+ riders
+          if (airport === 'LAX') {
+            isGuaranteed = false
+            warningMessage =
+              'You are not guaranteed a subsidized ride because LAX flights during fall break require at least 3 riders to be grouped. However, ASPC may still cover your ride if 3+ riders are matched for your flight. Check out the policy page for more details.'
+          } else {
+            isGuaranteed = true
+            warningMessage =
+              '✅ You are guaranteed a subsidized ride! Your arrival time falls within ASPC guaranteed hours (10:00 AM - 10:00 PM PST) on an operational date.'
+          }
         } else {
           isGuaranteed = false
-          warningMessage =
-            'You are not guaranteed a subsidized ride because your flight is not within the operational dates and/or times. However, you may be eligible for an after-hours ride if 2 or more riders are grouped for ONT. Check the ASPC policy page for more details.'
+          // FALL BREAK LOGIC: Check if this is a special LAX case outside operational dates
+          if (airport === 'LAX') {
+            warningMessage =
+              'You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.'
+          } else {
+            warningMessage =
+              'You are not guaranteed a subsidized ride because your flight is not within the operational dates and/or times. However, you may be eligible for an after-hours ride if 2 or more riders are grouped for ONT. Check the ASPC policy page for more details.'
+          }
         }
       } else {
         // Determine specific reason for inbound
@@ -253,9 +296,19 @@ export default function FlightForm({
         }
 
         if (isExactASPCDate) {
-          warningMessage = `You are not guaranteed a subsidized ride because ${reason}, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
+          // FALL BREAK LOGIC: Check if this is a special LAX case
+          if (airport === 'LAX') {
+            warningMessage = `You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
+          } else {
+            warningMessage = `You are not guaranteed a subsidized ride because ${reason}, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
+          }
         } else {
-          warningMessage = `You are not guaranteed a subsidized ride because ${reason} and your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check the ASPC policy page for more details.`
+          // FALL BREAK LOGIC: Check if this is a special LAX case outside operational dates
+          if (airport === 'LAX') {
+            warningMessage = `You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
+          } else {
+            warningMessage = `You are not guaranteed a subsidized ride because ${reason} and your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check the ASPC policy page for more details.`
+          }
         }
       }
     }

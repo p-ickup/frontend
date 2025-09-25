@@ -77,7 +77,11 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
   const getProfileUrl = (photoPath: string | null) => {
     if (!photoPath) return '/images/profileIcon.webp'
     if (photoPath.startsWith('/images')) return photoPath
-    if (photoPath.includes('supabase.co')) return photoPath
+    if (
+      photoPath.includes('auth.p-ickup.com') ||
+      photoPath.includes('zgunhxopkgbksfoxthpn.supabase.co')
+    )
+      return photoPath
 
     // Check cache first
     if (urlCache[photoPath]) {

@@ -14,6 +14,12 @@ const nextConfig = {
       },
       {
         protocol: 'https',
+        hostname: 'auth.p-ickup.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
         hostname: 'zgunhxopkgbksfoxthpn.supabase.co',
         port: '',
         pathname: '/**',
