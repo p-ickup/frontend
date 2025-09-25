@@ -8,7 +8,7 @@ export default function PickupFooter() {
           <SimpleRedirectButton label="About" route="/about" />
           <SimpleRedirectButton label="Contact" route="/contact" />
           <SimpleRedirectButton label="FAQ" route="/faq" />
-          <SimpleRedirectButton label="ASPC Policy" route="/aspc-policy" />
+          <SimpleRedirectButton label="ASPC Info" route="/aspc-info" />
         </div>
       </div>
     </footer>

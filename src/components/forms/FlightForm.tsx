@@ -449,7 +449,17 @@ export default function FlightForm({
   return (
     <div className="flex w-full flex-col items-center text-black">
       {/* <h1 className="mb-4 text-3xl font-bold">{title}</h1> */}
-      <p className="mb-4">All fields are required.</p>
+      <div className="mb-4 flex items-center gap-2">
+        <p>All fields are required.</p>
+        {userSchool === 'Pomona' && (
+          <a
+            href="/aspc-info"
+            className="text-sm text-blue-600 underline hover:text-blue-800"
+          >
+            See here for ASPC policies and resources
+          </a>
+        )}
+      </div>
       {!isProfileComplete && (
         <div className="mb-6">
           <RedirectButton label="Complete Profile First" route="/profile" />
