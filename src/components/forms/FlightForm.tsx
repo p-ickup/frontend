@@ -246,14 +246,14 @@ export default function FlightForm({
         if (isExactASPCDate) {
           // FALL BREAK LOGIC: Check if this is a special LAX case
           if (airport === 'LAX') {
-            warningMessage = `You are not guaranteed a subsidized ride because ${reason}. However, for LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
+            warningMessage = `You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
           } else {
             warningMessage = `You are not guaranteed a subsidized ride because ${reason}, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
           }
         } else {
           // FALL BREAK LOGIC: Check if this is a special LAX case outside operational dates
           if (airport === 'LAX') {
-            warningMessage = `You are not guaranteed a subsidized ride because ${reason} and your flight is not within the operational dates. However, for LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
+            warningMessage = `You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
           } else {
             warningMessage = `You are not guaranteed a subsidized ride because ${reason} and your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
           }
@@ -278,7 +278,7 @@ export default function FlightForm({
           // FALL BREAK LOGIC: Check if this is a special LAX case outside operational dates
           if (airport === 'LAX') {
             warningMessage =
-              'You are not guaranteed a subsidized ride because your flight is not within the operational dates. However, for LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.'
+              'You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.'
           } else {
             warningMessage =
               'You are not guaranteed a subsidized ride because your flight is not within the operational dates and/or times. However, you may be eligible for an after-hours ride if 2 or more riders are grouped for ONT. Check the ASPC policy page for more details.'
@@ -298,14 +298,14 @@ export default function FlightForm({
         if (isExactASPCDate) {
           // FALL BREAK LOGIC: Check if this is a special LAX case
           if (airport === 'LAX') {
-            warningMessage = `You are not guaranteed a subsidized ride because ${reason}. However, for LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
+            warningMessage = `You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
           } else {
             warningMessage = `You are not guaranteed a subsidized ride because ${reason}, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
           }
         } else {
           // FALL BREAK LOGIC: Check if this is a special LAX case outside operational dates
           if (airport === 'LAX') {
-            warningMessage = `You are not guaranteed a subsidized ride because ${reason} and your flight is not within the operational dates. However, for LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
+            warningMessage = `You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
           } else {
             warningMessage = `You are not guaranteed a subsidized ride because ${reason} and your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check the ASPC policy page for more details.`
           }
@@ -417,25 +417,6 @@ export default function FlightForm({
     if (!flightValidation.isValid) {
       setMessage(flightValidation.errorMessage!)
       return
-    }
-
-    // FALL BREAK LOGIC ONLY: Check if flight falls outside guaranteed hours but is still on operational day
-    // or ±2 days from coverage, and if LAX airport with at least 3 riders grouped
-    const isFallBreakSpecialCase = () => {
-      // Check if it's LAX airport
-      if (airport !== 'LAX') return false
-
-      // TODO: Add logic to check if flight falls outside guaranteed hours but within ±2 days
-      // TODO: Add logic to check if at least 3 riders are grouped for this flight
-      // For now, this is a placeholder for the fall break logic
-      return false
-    }
-
-    if (isFallBreakSpecialCase()) {
-      // Allow submission for fall break special case
-      console.log(
-        'Fall break special case: LAX flight with 3+ riders outside guaranteed hours',
-      )
     }
 
     if (bag_no_personal + bag_no + bag_no_large >= 4) {
