@@ -45,6 +45,7 @@ export type Database = {
           last_arr_estimated_utc: string
           last_notified_at: string
           last_notified_delay_min: number
+          opt_in: boolean
         }
       }
 

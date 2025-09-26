@@ -622,7 +622,11 @@ function isWithinNext3Days(flightDateStr: string) {
   const diffTime = startOfFlightDay.getTime() - startOfToday.getTime()
   const diffDays = diffTime / (1000 * 60 * 60 * 24)
 
-  console.log(`Flight on ${flightDateStr}: ${diffDays} days away`)
+  console.log(`DEBUG: Flight on ${flightDateStr}: ${diffDays} days away`)
+  console.log(
+    `DEBUG: Today: ${startOfToday.toISOString()}, Flight: ${startOfFlightDay.toISOString()}`,
+  )
+  console.log(`DEBUG: Within 3 days? ${diffDays >= 0 && diffDays <= 3}`)
 
   return diffDays >= 0 && diffDays <= 3
 }
