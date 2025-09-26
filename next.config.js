@@ -12,6 +12,7 @@ const nextConfig = {
         port: '',
         pathname: '/**',
       },
+      // use this if you want to use the auth.p-ickup.com domain
       // {
       //   protocol: 'https',
       //   hostname: 'auth.p-ickup.com',
