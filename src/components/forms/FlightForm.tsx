@@ -1090,21 +1090,55 @@ export default function FlightForm({
               time, so you can try to find others who you may be able to split a
               ride with.
             </label>
+
+            {/* Mobile Submit Button - Inside form for mobile only */}
+            <div className="block md:hidden">
+              <div className="mt-6 flex flex-col gap-4">
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className={`min-h-[48px] w-full touch-manipulation select-none rounded-lg px-6 py-4 text-lg font-semibold text-white ${
+                    isLoading
+                      ? 'cursor-not-allowed bg-gray-400'
+                      : 'bg-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 active:bg-teal-600'
+                  }`}
+                >
+                  {isLoading ? 'Loading...' : submitButtonText}
+                </button>
+                <div className="flex justify-center">
+                  <RedirectButton label="Cancel" route="/questionnaires" />
+                </div>
+              </div>
+            </div>
           </form>
         </div>
 
-        {/* Fixed bottom section outside of scroll area */}
-        <div className="border-t bg-white p-6">
+        {/* Fixed bottom section outside of scroll area - Desktop only */}
+        <div className="hidden border-t bg-white p-6 md:block">
           <div className="flex justify-between">
             <RedirectButton label="Cancel" route="/questionnaires" />
             <button
-              type="submit"
-              form="flight-form"
+              type="button"
+              onClick={async (e) => {
+                e.preventDefault()
+                const form = document.getElementById(
+                  'flight-form',
+                ) as HTMLFormElement
+                if (form) {
+                  // Use requestSubmit if available (modern browsers)
+                  if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit()
+                  } else {
+                    // Fallback for older browsers - directly call handleSubmit
+                    await handleSubmit(e as any)
+                  }
+                }
+              }}
               disabled={isLoading}
               className={`mt-4 rounded-lg px-6 py-3 text-lg font-semibold text-white ${
                 isLoading
                   ? 'cursor-not-allowed bg-gray-400'
-                  : 'bg-teal-500 hover:bg-opacity-80'
+                  : 'bg-teal-500 hover:bg-opacity-80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2'
               }`}
             >
               {isLoading ? 'Loading...' : submitButtonText}
@@ -1113,6 +1147,15 @@ export default function FlightForm({
 
           {message && (
             <div className="mt-4 text-center">
+              <p className="mb-2">{message}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile message display */}
+        <div className="block md:hidden">
+          {message && (
+            <div className="mt-4 p-4 text-center">
               <p className="mb-2">{message}</p>
             </div>
           )}

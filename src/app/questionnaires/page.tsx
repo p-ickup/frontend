@@ -144,22 +144,26 @@ export default function Questionnaires() {
   //   )
   // })
 
-  // NEW LOGIC - Allow modification of any current flight forms until 10/3/2025
+  // NEW LOGIC - Allow modification of any current flight forms until 10/4/2025
   const today = new Date()
   today.setHours(0, 0, 0, 0) // Normalize to midnight to avoid timezone issues
-  const cutoffDate = new Date('2025-10-03') // October 3, 2025
+  const cutoffDate = new Date('2025-10-04') // October 4, 2025
   cutoffDate.setHours(23, 59, 59, 999) // End of day
+
+  // All unmatched forms are editable if today is before the cutoff date
+  // After the cutoff date, no forms are editable regardless of flight date
+  const isBeforeCutoff = today <= cutoffDate
 
   const editableUnmatched = matchForms.filter((form) => {
     const formDate = new Date(form.date)
     formDate.setHours(0, 0, 0, 0)
-    return form.matched === false && formDate >= today && formDate <= cutoffDate
+    return form.matched === false && isBeforeCutoff && formDate >= today
   })
 
   const noneditableUnmatched = matchForms.filter((form) => {
     const formDate = new Date(form.date)
     formDate.setHours(0, 0, 0, 0)
-    return form.matched === false && (formDate < today || formDate > cutoffDate)
+    return form.matched === false && (!isBeforeCutoff || formDate < today)
   })
 
   if (!isAuthenticated) {
@@ -367,7 +371,7 @@ export default function Questionnaires() {
                   📝 Editable Forms
                 </h3>
                 <p className="text-gray-600">
-                  Forms you can still modify (until 10/3/2025)
+                  Forms you can still modify (until 10/4/2025)
                 </p>
               </div>
 
