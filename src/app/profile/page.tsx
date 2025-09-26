@@ -75,12 +75,7 @@ export default function Questionnaire() {
 
   // Delete old profile picture from storage
   const deleteOldPhoto = async (photoUrl: string) => {
-    if (
-      !photoUrl ||
-      (!photoUrl.includes('auth.p-ickup.com') &&
-        !photoUrl.includes('zgunhxopkgbksfoxthpn.supabase.co'))
-    )
-      return
+    if (!photoUrl || !photoUrl.includes('supabase.co')) return
 
     try {
       // Extract filename from URL - handle Supabase storage URL format
