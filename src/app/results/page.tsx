@@ -130,11 +130,19 @@ export default function Results() {
       const now = new Date()
       const grouped = matchesWithDetails.reduce<GroupedMatches>(
         (acc, match) => {
-          const matchDate = new Date(match.created_at)
+          // Use match date and time, skip matches without date/time
+          if (!match.date || !match.time) {
+            return acc // Skip this match if no date/time
+          }
+
+          // Parse date manually to avoid timezone issues
+          const [year, month, day] = match.date.split('-').map(Number)
+          const [hours, minutes] = match.time.split(':').map(Number)
+          const matchDateTime = new Date(year, month - 1, day, hours, minutes)
           const rideId = match.ride_id
 
           // Determine if upcoming or previous
-          const category = matchDate > now ? 'upcoming' : 'previous'
+          const category = matchDateTime > now ? 'upcoming' : 'previous'
 
           // Initialize the ride_id array if it doesn't exist
           if (!acc[category][rideId]) {
