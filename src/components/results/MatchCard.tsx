@@ -28,28 +28,29 @@ const createICSFile = (
 ) => {
   const pad = (num: number) => String(num).padStart(2, '0')
 
-  const formatDateTime = (date: Date, time: string) => {
-    const [hours, minutes] = time.split(':').map(Number)
-    const eventDate = new Date(date)
-    eventDate.setHours(hours, minutes, 0, 0)
-
+  const formatDateTime = (date: Date) => {
     return (
-      eventDate.getUTCFullYear().toString() +
-      pad(eventDate.getUTCMonth() + 1) +
-      pad(eventDate.getUTCDate()) +
+      date.getUTCFullYear().toString() +
+      pad(date.getUTCMonth() + 1) +
+      pad(date.getUTCDate()) +
       'T' +
-      pad(eventDate.getUTCHours()) +
-      pad(eventDate.getUTCMinutes()) +
-      pad(eventDate.getUTCSeconds()) +
+      pad(date.getUTCHours()) +
+      pad(date.getUTCMinutes()) +
+      pad(date.getUTCSeconds()) +
       'Z'
     )
   }
 
-  const start = formatDateTime(startDate, startTime)
-  const endDate = new Date(startDate)
+  // Create start date/time
   const [hours, minutes] = startTime.split(':').map(Number)
-  endDate.setHours(hours + 1, minutes, 0, 0) // 1 hour duration
-  const end = formatDateTime(endDate, startTime)
+  const startDateTime = new Date(startDate)
+  startDateTime.setHours(hours, minutes, 0, 0)
+  const start = formatDateTime(startDateTime)
+
+  // Create end date/time (1 hour later)
+  const endDateTime = new Date(startDateTime)
+  endDateTime.setHours(hours + 1, minutes, 0, 0)
+  const end = formatDateTime(endDateTime)
 
   const content = `BEGIN:VCALENDAR
 VERSION:2.0
