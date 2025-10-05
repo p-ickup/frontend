@@ -19,27 +19,38 @@ const getAirportAddress = (airport: string): string => {
   return airports[airport] || ''
 }
 
-// Helper function to generate an all-day ICS file with two alarms
+// Helper function to generate an ICS file for match date/time
 const createICSFile = (
   eventTitle: string,
   description: string,
-  location: string,
   startDate: Date,
+  startTime: string,
 ) => {
   const pad = (num: number) => String(num).padStart(2, '0')
 
-  const formatDate = (date: Date) => {
+  const formatDateTime = (date: Date) => {
     return (
       date.getUTCFullYear().toString() +
       pad(date.getUTCMonth() + 1) +
-      pad(date.getUTCDate())
+      pad(date.getUTCDate()) +
+      'T' +
+      pad(date.getUTCHours()) +
+      pad(date.getUTCMinutes()) +
+      pad(date.getUTCSeconds()) +
+      'Z'
     )
   }
 
-  const start = formatDate(startDate)
-  const endDate = new Date(startDate)
-  endDate.setDate(startDate.getDate() + 1) // End is exclusive
-  const end = formatDate(endDate)
+  // Create start date/time
+  const [hours, minutes] = startTime.split(':').map(Number)
+  const startDateTime = new Date(startDate)
+  startDateTime.setHours(hours, minutes, 0, 0)
+  const start = formatDateTime(startDateTime)
+
+  // Create end date/time (1 hour later)
+  const endDateTime = new Date(startDateTime)
+  endDateTime.setHours(hours + 1, minutes, 0, 0)
+  const end = formatDateTime(endDateTime)
 
   const content = `BEGIN:VCALENDAR
 VERSION:2.0
@@ -47,9 +58,9 @@ CALSCALE:GREGORIAN
 BEGIN:VEVENT
 SUMMARY:${eventTitle}
 DESCRIPTION:${description}
-LOCATION:${location}
-DTSTART;VALUE=DATE:${start}
-DTEND;VALUE=DATE:${end}
+URL:https://p-ickup.com/results
+DTSTART:${start}
+DTEND:${end}
 BEGIN:VALARM
 TRIGGER:-P1D
 ACTION:DISPLAY
@@ -90,7 +101,10 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
       .getPublicUrl(photoPath)
 
     const publicUrl = data?.publicUrl || '/images/profileIcon.webp'
-    setUrlCache((prev) => ({ ...prev, [photoPath]: publicUrl }))
+    setUrlCache((prev: Record<string, string>) => ({
+      ...prev,
+      [photoPath]: publicUrl,
+    }))
     return publicUrl
   }
 
@@ -108,19 +122,22 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
   }
 
   const handleReminderClick = () => {
-    const flightDate = new Date(firstMatch.Flights.date) // Full day event on flight date
+    if (!firstMatch.date || !firstMatch.time) return
 
-    createICSFile(
-      'pickup_reminder',
-      'Reminder to prepare for your PICKUP ride share!',
-      getAirportAddress(firstMatch.Flights.airport),
-      flightDate,
-    )
+    // Parse date manually to avoid timezone issues
+    const [year, month, day] = firstMatch.date.split('-').map(Number)
+    const matchDate = new Date(year, month - 1, day)
+    const matchTime = firstMatch.time
+    const flightData = firstMatch.Flights
+
+    const title = `PICKUP Group: ${flightData?.to_airport ? 'School → ' + flightData.airport : flightData.airport + ' → School'}`
+
+    createICSFile(title, 'Your PICKUP ride share match!', matchDate, matchTime)
   }
 
   return (
-    <div className="mb-6 w-full max-w-3xl rounded-xl border border-gray-100 bg-white p-5 shadow-md transition-all hover:shadow-lg">
-      <div className="flex justify-between">
+    <div className="mb-6 w-full rounded-xl border border-gray-100 bg-white p-4 shadow-md transition-all hover:shadow-lg sm:p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:gap-6">
         <div className="flex flex-col gap-3">
           <div>
             <p className="flex items-center gap-1 font-medium text-indigo-600">
@@ -138,8 +155,15 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
                   d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                 />
               </svg>
-              {new Date(firstMatch.created_at).toLocaleDateString()},{' '}
-              {firstMatch.Flights.airport}
+              {firstMatch.date
+                ? (() => {
+                    const [year, month, day] = firstMatch.date
+                      .split('-')
+                      .map(Number)
+                    return new Date(year, month - 1, day).toLocaleDateString()
+                  })()
+                : 'No date'}
+              , {firstMatch.time || 'No time'}
             </p>
             <p className="mt-1 text-xl font-semibold text-gray-800">
               You are matched with{' '}
@@ -178,25 +202,27 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
                 {getAirportAddress(firstMatch.Flights.airport)}
               </span>
             </p>
-            <p className="flex items-center gap-1.5">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 text-gray-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <span className="font-medium text-gray-800">
-                ${firstMatch.Flights.max_price}
-              </span>
-            </p>
+            {firstMatch.voucher && (
+              <p className="flex items-center gap-1.5">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 text-gray-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"
+                  />
+                </svg>
+                <span className="font-medium text-gray-800">
+                  Voucher: {firstMatch.voucher}
+                </span>
+              </p>
+            )}
           </div>
 
           {upcoming && (
@@ -224,11 +250,11 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
         </div>
 
         {/* Right side with contact info and profile pictures */}
-        <div className="flex flex-col items-end gap-3">
+        <div className="flex flex-col items-center gap-3 lg:items-end">
           <p className="text-sm font-medium text-indigo-600">
             Other Riders Contact Information
           </p>
-          <div className="flex flex-wrap justify-end gap-3">
+          <div className="flex flex-wrap justify-center gap-3 lg:justify-end">
             {matches.map((match) => (
               <div
                 key={match.Users.user_id}
@@ -246,6 +272,9 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
                     className="rounded-full"
                   />
                 </div>
+                <p className="text-center text-xs text-gray-500">
+                  {match.Users.email || 'No email provided'}
+                </p>
               </div>
             ))}
           </div>

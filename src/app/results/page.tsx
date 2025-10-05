@@ -116,7 +116,6 @@ export default function Results() {
       //     'ride_id',
       //     userRideIds.map((r) => r.ride_id),
       //   )
-      console.log('All matches:', allMatches)
 
       if (matchError) throw matchError
       if (!allMatches) throw new Error('No matches found')
@@ -130,11 +129,26 @@ export default function Results() {
       const now = new Date()
       const grouped = matchesWithDetails.reduce<GroupedMatches>(
         (acc, match) => {
-          const matchDate = new Date(match.created_at)
+          // Use match date and time if available, otherwise fall back to flight date
+          let matchDateTime: Date
+
+          if (match.date && match.time) {
+            // Parse date manually to avoid timezone issues
+            const [year, month, day] = match.date.split('-').map(Number)
+            const [hours, minutes] = match.time.split(':').map(Number)
+            matchDateTime = new Date(year, month - 1, day, hours, minutes)
+          } else if (match.Flights?.date) {
+            // Fallback to flight date if match date/time not available
+            const [year, month, day] = match.Flights.date.split('-').map(Number)
+            matchDateTime = new Date(year, month - 1, day)
+          } else {
+            // Skip matches without meaningful date information
+            return acc
+          }
           const rideId = match.ride_id
 
           // Determine if upcoming or previous
-          const category = matchDate > now ? 'upcoming' : 'previous'
+          const category = matchDateTime > now ? 'upcoming' : 'previous'
 
           // Initialize the ride_id array if it doesn't exist
           if (!acc[category][rideId]) {

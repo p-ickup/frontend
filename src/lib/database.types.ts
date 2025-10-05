@@ -11,6 +11,7 @@ export type Database = {
           school: string
           photo_url: string
           instagram: string
+          email: string
         }
       }
       Matches: {
@@ -19,6 +20,14 @@ export type Database = {
           created_at: string
           user_id: string
           flight_id: number
+          id: number
+          source: string | null
+          date: string | null
+          time: string | null
+          voucher: string | null
+          is_verified: boolean | null
+          is_subsidized: boolean | null
+          contingency_voucher: string | null
         }
       }
       Flights: {
