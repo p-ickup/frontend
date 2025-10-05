@@ -135,8 +135,8 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
   }
 
   return (
-    <div className="mb-6 w-full max-w-3xl rounded-xl border border-gray-100 bg-white p-5 shadow-md transition-all hover:shadow-lg">
-      <div className="flex justify-between">
+    <div className="mb-6 w-full rounded-xl border border-gray-100 bg-white p-4 shadow-md transition-all hover:shadow-lg sm:p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:gap-6">
         <div className="flex flex-col gap-3">
           <div>
             <p className="flex items-center gap-1 font-medium text-indigo-600">
@@ -249,11 +249,11 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
         </div>
 
         {/* Right side with contact info and profile pictures */}
-        <div className="flex flex-col items-end gap-3">
+        <div className="flex flex-col items-center gap-3 lg:items-end">
           <p className="text-sm font-medium text-indigo-600">
             Other Riders Contact Information
           </p>
-          <div className="flex flex-wrap justify-end gap-3">
+          <div className="flex flex-wrap justify-center gap-3 lg:justify-end">
             {matches.map((match) => (
               <div
                 key={match.Users.user_id}
