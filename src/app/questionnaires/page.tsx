@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import RedirectButton from '@/components/buttons/RedirectButton'
 import { createBrowserClient } from '@/utils/supabase'
 import Image from 'next/image'
@@ -54,15 +54,7 @@ export default function Questionnaires() {
     return `${month}/${day}/${year}`
   }
 
-  useEffect(() => {
-    if (user) {
-      void fetchMatchForms()
-    } else {
-      setLoading(false)
-    }
-  }, [user])
-
-  const fetchMatchForms = async () => {
+  const fetchMatchForms = useCallback(async () => {
     try {
       setLoading(true)
 
@@ -95,7 +87,15 @@ export default function Questionnaires() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user, supabase])
+
+  useEffect(() => {
+    if (user) {
+      void fetchMatchForms()
+    } else {
+      setLoading(false)
+    }
+  }, [user, fetchMatchForms])
 
   const handleDelete = (flightId: string) => {
     setModalFlightId(flightId) // ✅ Set the specific flight ID
@@ -280,7 +280,18 @@ export default function Questionnaires() {
         <div className="relative mb-8 flex flex-col items-center gap-4">
           <div className="flex flex-wrap justify-center gap-4">
             <RedirectButton label="Update Profile" route="/profile" />
-            <RedirectButton label="Request Match" route="/matchForm" />
+            {/* <RedirectButton label="Request Match" route="/matchForm" /> */}
+            <div className="flex flex-col items-center">
+              <button
+                disabled
+                className="mt-4 cursor-not-allowed rounded-lg bg-gray-400 px-6 py-3 text-lg font-semibold text-white opacity-60"
+              >
+                Request Match
+              </button>
+              <p className="mt-2 text-center text-sm text-gray-500">
+                Sorry! You&apos;re past the deadline for fall break
+              </p>
+            </div>
           </div>
         </div>
 
