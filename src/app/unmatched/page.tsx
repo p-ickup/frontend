@@ -46,6 +46,17 @@ export default function UnmatchedPage() {
     null,
   )
 
+  // Function to convert military time to 12-hour format
+  const formatTime = (militaryTime: string) => {
+    if (!militaryTime) return 'N/A'
+
+    const [hours, minutes] = militaryTime.split(':').map(Number)
+    const period = hours >= 12 ? 'PM' : 'AM'
+    const displayHours = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours
+
+    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`
+  }
+
   const fetchData = useCallback(async () => {
     setLoading(true)
 
@@ -87,7 +98,7 @@ export default function UnmatchedPage() {
 
     const { data: flightData, error: flightError } = await supabase
       .from('Flights')
-      .select('*, Users:Users!Flights_user_id_fkey(firstname, lastname)')
+      .select('*, Users:Users!Flights_user_id_fkey(firstname, lastname, email)')
       .eq('opt_in', true)
       .eq('matched', false)
       .neq('user_id', user.id)
@@ -110,11 +121,32 @@ export default function UnmatchedPage() {
     // )
 
     setFlights(
-      (flightData || []).filter((flight) => {
-        const within3Days = isWithinNext3Days(flight.date)
-        // console.log(`Flight ${flight.flight_id} on ${flight.date} is within 3 days?`, within3Days)
-        return within3Days
-      }),
+      // (flightData || []).filter((flight) => {
+      //   const within3Days = isWithinNext3Days(flight.date)
+      //   // console.log(`Flight ${flight.flight_id} on ${flight.date} is within 3 days?`, within3Days)
+      //   return within3Days
+      // }),
+      (flightData || [])
+        .filter((flight) => {
+          const within7Days = isWithinNext7Days(flight.date)
+          // console.log(`Flight ${flight.flight_id} on ${flight.date} is within 7 days?`, within7Days)
+          return within7Days
+        })
+        .sort((a, b) => {
+          // First sort by date
+          const dateA = new Date(a.date).getTime()
+          const dateB = new Date(b.date).getTime()
+
+          if (dateA !== dateB) {
+            return dateA - dateB
+          }
+
+          // If dates are the same, sort by earliest_time
+          const timeA = a.earliest_time || '00:00'
+          const timeB = b.earliest_time || '00:00'
+
+          return timeA.localeCompare(timeB)
+        }),
     )
 
     const reduced = (matchData as any[]).reduce(
@@ -135,7 +167,8 @@ export default function UnmatchedPage() {
       (group) => {
         return (
           group.flights.length < 4 &&
-          group.flights.every((flight) => isWithinNext3Days(flight.date))
+          // group.flights.every((flight) => isWithinNext3Days(flight.date))
+          group.flights.every((flight) => isWithinNext7Days(flight.date))
         )
       },
     )
@@ -351,7 +384,7 @@ export default function UnmatchedPage() {
         <div className="relative flex-1 px-6 pb-8">
           <div className="mx-auto max-w-6xl">
             <div className="mb-8">
-              <h2 className="mb-6 text-2xl font-bold text-gray-900">
+              {/* <h2 className="mb-6 text-2xl font-bold text-gray-900">
                 Groups Available to Join
               </h2>
 
@@ -452,7 +485,7 @@ export default function UnmatchedPage() {
                     </div>
                   )
                 })}
-              </div>
+              </div>*/}
             </div>
 
             <div className="mb-8">
@@ -515,6 +548,11 @@ export default function UnmatchedPage() {
                                   ? `${flight.Users.firstname} ${flight.Users.lastname}`
                                   : 'Unknown user'}
                               </h3>
+                              {flight.Users?.email && (
+                                <p className="text-sm text-gray-500">
+                                  {flight.Users.email}
+                                </p>
+                              )}
                               <p className="text-gray-600">
                                 {flight.to_airport
                                   ? `School → ${flight.airport}`
@@ -534,12 +572,13 @@ export default function UnmatchedPage() {
                                 Time:
                               </span>
                               <p className="text-gray-600">
-                                {flight.earliest_time} - {flight.latest_time}
+                                {formatTime(flight.earliest_time)} -{' '}
+                                {formatTime(flight.latest_time)}
                               </p>
                             </div>
                           </div>
                         </div>
-                        <div className="ml-4">
+                        {/* <div className="ml-4">
                           <button
                             className={`rounded-xl px-6 py-3 font-semibold text-white transition-all duration-200 ${
                               userEligible
@@ -558,7 +597,7 @@ export default function UnmatchedPage() {
                               ? 'Send Request'
                               : 'All Your Flights Are Matched'}
                           </button>
-                        </div>
+                        </div> */}
                       </div>
                     </div>
                   ))}
@@ -603,7 +642,37 @@ export default function UnmatchedPage() {
   )
 }
 
-function isWithinNext3Days(flightDateStr: string) {
+// Original 3-day function (commented out for easy switch back)
+// function isWithinNext3Days(flightDateStr: string) {
+//   const today = new Date()
+//   const flightDate = new Date(flightDateStr)
+
+//   // Normalize both to start of day (ignore time)
+//   const startOfToday = new Date(
+//     today.getFullYear(),
+//     today.getMonth(),
+//     today.getDate(),
+//   )
+//   const startOfFlightDay = new Date(
+//     flightDate.getFullYear(),
+//     flightDate.getMonth(),
+//     flightDate.getDate(),
+//   )
+
+//   const diffTime = startOfFlightDay.getTime() - startOfToday.getTime()
+//   const diffDays = diffTime / (1000 * 60 * 60 * 24)
+
+//   console.log(`DEBUG: Flight on ${flightDateStr}: ${diffDays} days away`)
+//   console.log(
+//     `DEBUG: Today: ${startOfToday.toISOString()}, Flight: ${startOfFlightDay.toISOString()}`,
+//   )
+//   console.log(`DEBUG: Within 3 days? ${diffDays >= 0 && diffDays <= 3}`)
+
+//   return diffDays >= 0 && diffDays <= 3
+// }
+
+// New 7-day function
+function isWithinNext7Days(flightDateStr: string) {
   const today = new Date()
   const flightDate = new Date(flightDateStr)
 
@@ -626,9 +695,10 @@ function isWithinNext3Days(flightDateStr: string) {
   console.log(
     `DEBUG: Today: ${startOfToday.toISOString()}, Flight: ${startOfFlightDay.toISOString()}`,
   )
-  console.log(`DEBUG: Within 3 days? ${diffDays >= 0 && diffDays <= 3}`)
+  console.log(`DEBUG: Within 7 days? ${diffDays >= 0 && diffDays <= 7}`)
 
-  return diffDays >= 0 && diffDays <= 3
+  // return diffDays >= 0 && diffDays <= 3
+  return diffDays >= 0 && diffDays <= 7
 }
 
 function ConfirmationModal({
