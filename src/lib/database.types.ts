@@ -12,6 +12,7 @@ export type Database = {
           photo_url: string
           instagram: string
           email: string
+          sms_opt_in: boolean
         }
       }
       Matches: {

@@ -32,7 +32,7 @@ export default function CommentSection({ rideId }: { rideId: number }) {
         const { data, error } = await supabase
           .from('Users')
           .select(
-            'user_id, created_at, firstname, lastname, phonenumber, school, photo_url, instagram, email',
+            'user_id, created_at, firstname, lastname, phonenumber, school, photo_url, instagram, email, sms_opt_in',
           )
           .eq('user_id', user.id)
           .single()
