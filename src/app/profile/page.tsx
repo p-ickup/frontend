@@ -19,7 +19,9 @@ export default function Questionnaire() {
   const [firstname, setFirstName] = useState('')
   const [lastname, setLastName] = useState('')
   const [school, setSchool] = useState('')
+  const [email, setEmail] = useState('')
   const [phonenumber, setPhoneNumber] = useState('')
+  const [smsOptIn, setSmsOptIn] = useState(false)
   const [photo, setPhoto] = useState<File | null>(null)
   const [photoUrl, setPhotoUrl] = useState('')
   const [instagram, setInstagram] = useState('')
@@ -57,11 +59,15 @@ export default function Questionnaire() {
       if (error) {
         setMessage('Please enter your profile information.')
         console.error('Error fetching user data:', error)
+        // Set email from auth user if no profile exists
+        setEmail(user.email || '')
       } else if (data) {
         setFirstName(data.firstname || '')
         setLastName(data.lastname || '')
         setSchool(data.school || '')
+        setEmail(data.email || user.email || '')
         setPhoneNumber(data.phonenumber || '')
+        setSmsOptIn(data.sms_opt_in || false)
         setInstagram(data.instagram || '')
         setPhotoUrl(data.photo_url || '')
         setHasProfile(true)
@@ -197,11 +203,12 @@ export default function Questionnaire() {
       [
         {
           user_id: user.id,
-          email: user.email, // ✅ Automatically pulled from Supabase Auth
+          email: email, // User's preferred contact email
           firstname,
           lastname,
           school,
           phonenumber,
+          sms_opt_in: smsOptIn,
           photo_url: updatedPhotoUrl,
           instagram: instagram || null,
         },
@@ -341,6 +348,20 @@ export default function Questionnaire() {
 
                   <label className="block">
                     <span className="mb-2 block text-sm font-semibold text-gray-700 after:ml-1 after:text-red-500 after:content-['*']">
+                      Best Email to Contact
+                    </span>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                      placeholder="your.email@example.com"
+                      required
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold text-gray-700 after:ml-1 after:text-red-500 after:content-['*']">
                       Phone Number
                     </span>
                     <input
@@ -351,6 +372,18 @@ export default function Questionnaire() {
                       placeholder="(123) 456-7890"
                       required
                     />
+                  </label>
+
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={smsOptIn}
+                      onChange={(e) => setSmsOptIn(e.target.checked)}
+                      className="mt-1 h-5 w-5 rounded border-gray-300 text-teal-600 transition-all duration-200 focus:ring-2 focus:ring-teal-500/20"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      OPT-IN to text messaging with ASPC?
+                    </span>
                   </label>
 
                   {/* <label className="block">
@@ -432,6 +465,25 @@ export default function Questionnaire() {
                       )}
                     </button>
 
+                    {/* SMS Disclaimer */}
+                    <p className="mt-4 text-xs leading-relaxed text-gray-600">
+                      By submitting this form and signing up for texts, I agree
+                      to receive conversational text messages from Associated
+                      Students of Pomona College (ASPC) using the contact
+                      information provided. For help, reply HELP. Opt out at any
+                      time by replying STOP. Message and data rates may apply.
+                      Message frequency varies. Please view our{' '}
+                      <a
+                        href="https://docs.google.com/document/d/e/2PACX-1vTUgsgoxR1HOkfnW4QYfki4DXLUSB-ELyyMqFNFfOSgxyshPE9ykZyBODVxTCip10ULXgeaqrBXGddA/pub"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-teal-600 underline hover:text-teal-700"
+                      >
+                        Privacy Policy
+                      </a>
+                      .
+                    </p>
+
                     {message && (
                       <div
                         className={`mt-4 rounded-xl p-4 text-center ${
@@ -505,6 +557,20 @@ export default function Questionnaire() {
 
                     <label className="block">
                       <span className="mb-2 block text-sm font-semibold text-gray-700 after:ml-1 after:text-red-500 after:content-['*']">
+                        Best Email to Contact
+                      </span>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
+                        placeholder="your.email@example.com"
+                        required
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-semibold text-gray-700 after:ml-1 after:text-red-500 after:content-['*']">
                         Phone Number
                       </span>
                       <input
@@ -515,6 +581,18 @@ export default function Questionnaire() {
                         placeholder="(123) 456-7890"
                         required
                       />
+                    </label>
+
+                    <label className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={smsOptIn}
+                        onChange={(e) => setSmsOptIn(e.target.checked)}
+                        className="mt-1 h-5 w-5 rounded border-gray-300 text-teal-600 transition-all duration-200 focus:ring-2 focus:ring-teal-500/20"
+                      />
+                      <span className="text-sm font-medium text-gray-700">
+                        OPT-IN to text messaging with ASPC?
+                      </span>
                     </label>
 
                     {/* <label className="block">
@@ -597,6 +675,25 @@ export default function Questionnaire() {
                           'Create Profile'
                         )}
                       </button>
+
+                      {/* SMS Disclaimer */}
+                      <p className="mt-4 text-xs leading-relaxed text-gray-600">
+                        By submitting this form and signing up for texts, I
+                        agree to receive conversational text messages from
+                        Associated Students of Pomona College (ASPC) using the
+                        contact information provided. For help, reply HELP. Opt
+                        out at any time by replying STOP. Message and data rates
+                        may apply. Message frequency varies. Please view our{' '}
+                        <a
+                          href="https://docs.google.com/document/d/e/2PACX-1vTUgsgoxR1HOkfnW4QYfki4DXLUSB-ELyyMqFNFfOSgxyshPE9ykZyBODVxTCip10ULXgeaqrBXGddA/pub"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-teal-600 underline hover:text-teal-700"
+                        >
+                          Privacy Policy
+                        </a>
+                        .
+                      </p>
 
                       {message && (
                         <div

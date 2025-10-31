@@ -25,6 +25,16 @@ export default function Questionnaires() {
   const [message, setMessage] = useState('')
   const [modalFlightId, setModalFlightId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [smsOptIn, setSmsOptIn] = useState<boolean>(false)
+  const [smsBannerDismissed, setSmsBannerDismissed] = useState(false)
+  const [emailBannerDismissed, setEmailBannerDismissed] = useState(false)
+
+  // Check if current date is past November 16th deadline
+  const isPastDeadline = () => {
+    const today = new Date()
+    const deadline = new Date(today.getFullYear(), 10, 16) // Month is 0-indexed, so 10 = November
+    return today > deadline
+  }
   // Function to format date from yyyy-mm-dd to mm/dd/yy
   const formatDate = (dateString: string) => {
     if (!dateString) return ''
@@ -96,6 +106,28 @@ export default function Questionnaires() {
       setLoading(false)
     }
   }, [user, fetchMatchForms])
+
+  // Fetch user's SMS opt-in status
+  useEffect(() => {
+    const fetchUserPreferences = async () => {
+      if (!user) return
+
+      const { data, error } = await supabase
+        .from('Users')
+        .select('sms_opt_in')
+        .eq('user_id', user.id)
+        .single()
+
+      // Check SMS opt-in status
+      if (!error && data && data.sms_opt_in === true) {
+        setSmsOptIn(true)
+      } else {
+        setSmsOptIn(false)
+      }
+    }
+
+    fetchUserPreferences()
+  }, [user, supabase])
 
   const handleDelete = (flightId: string) => {
     setModalFlightId(flightId) // ✅ Set the specific flight ID
@@ -276,22 +308,138 @@ export default function Questionnaires() {
           </div>
         </div>
 
+        {/* Notification Banners */}
+        <div className="relative mx-auto mb-6 max-w-4xl space-y-4 px-6">
+          {/* Email Preferences Banner */}
+          {!emailBannerDismissed && (
+            <div className="flex items-start gap-3 rounded-xl border border-teal-200 bg-teal-50 p-4 shadow-sm">
+              <div className="flex-shrink-0 pt-0.5">
+                <svg
+                  className="h-5 w-5 text-teal-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-teal-900">
+                  📧 Update Your Preferred Email
+                </h3>
+                <p className="mt-1 text-sm text-teal-800">
+                  Add your best contact email to stay informed about your rides
+                  and important updates.
+                </p>
+              </div>
+              <a
+                href="/profile"
+                className="flex-shrink-0 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700"
+              >
+                Update Profile
+              </a>
+              <button
+                onClick={() => setEmailBannerDismissed(true)}
+                className="flex-shrink-0 text-teal-600 transition-colors hover:text-teal-800"
+                aria-label="Dismiss banner"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* SMS Opt-in Banner */}
+          {!smsOptIn && !smsBannerDismissed && (
+            <div className="flex items-start gap-3 rounded-xl border border-teal-200 bg-teal-50 p-4 shadow-sm">
+              <div className="flex-shrink-0 pt-0.5">
+                <svg
+                  className="h-5 w-5 text-teal-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-teal-900">
+                  📱 Stay Updated with Text Notifications
+                </h3>
+                <p className="mt-1 text-sm text-teal-800">
+                  Opt in to receive important updates about your rides from
+                  ASPC.
+                </p>
+              </div>
+              <a
+                href="/profile"
+                className="flex-shrink-0 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700"
+              >
+                Update Profile
+              </a>
+              <button
+                onClick={() => setSmsBannerDismissed(true)}
+                className="flex-shrink-0 text-teal-600 transition-colors hover:text-teal-800"
+                aria-label="Dismiss banner"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Action Buttons */}
         <div className="relative mb-8 flex flex-col items-center gap-4">
           <div className="flex flex-wrap justify-center gap-4">
             <RedirectButton label="Update Profile" route="/profile" />
-            {/* <RedirectButton label="Request Match" route="/matchForm" /> */}
-            <div className="flex flex-col items-center">
-              <button
-                disabled
-                className="mt-4 cursor-not-allowed rounded-lg bg-gray-400 px-6 py-3 text-lg font-semibold text-white opacity-60"
-              >
-                Request Match
-              </button>
-              <p className="mt-2 text-center text-sm text-gray-500">
-                Sorry! You&apos;re past the deadline for fall break
-              </p>
-            </div>
+            {isPastDeadline() ? (
+              <div className="flex flex-col items-center">
+                <button
+                  disabled
+                  className="mt-4 cursor-not-allowed rounded-lg bg-gray-400 px-6 py-3 text-lg font-semibold text-white opacity-60"
+                >
+                  Request Match
+                </button>
+                <p className="mt-2 text-center text-sm text-gray-500">
+                  Sorry! You&apos;re past the deadline for signing up
+                </p>
+              </div>
+            ) : (
+              <RedirectButton label="Request Match" route="/matchForm" />
+            )}
           </div>
         </div>
 
