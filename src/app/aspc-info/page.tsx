@@ -98,13 +98,46 @@ export default function ASPCInfoPage() {
             <p className="mb-4 text-lg text-gray-600">
               Information & Resources for Pomona College Students
             </p>
-            <div className="mx-auto max-w-2xl rounded-lg border border-blue-200 bg-blue-50 p-4">
-              <p className="text-sm text-blue-800">
-                <strong>Contact:</strong> operations@aspc.pomona.edu
-              </p>
-              <p className="mt-1 text-sm text-blue-700">
-                For questions about ASPC&apos;s Airport Rideshare Program
-              </p>
+            <div className="mx-auto max-w-2xl rounded-lg border border-teal-200 bg-gradient-to-br from-teal-50 to-blue-50 p-6 shadow-md">
+              <div className="mb-4 rounded-lg bg-white/70 p-4 backdrop-blur-sm">
+                <p className="text-base font-bold text-teal-900">
+                  Need day-of-travel RideLink support?
+                </p>
+                <p className="mt-2 text-lg font-bold text-teal-800">
+                  Call/text:{' '}
+                  <a
+                    href="tel:9093475295"
+                    className="text-xl text-teal-700 underline transition-colors hover:text-teal-900"
+                  >
+                    909-347-5295
+                  </a>
+                </p>
+              </div>
+              <div className="space-y-2 text-sm">
+                <p className="text-gray-700">
+                  <strong className="text-gray-800">Email:</strong>{' '}
+                  <a
+                    href="mailto:operations@aspc.pomona.edu"
+                    className="text-blue-700 hover:underline"
+                  >
+                    operations@aspc.pomona.edu
+                  </a>
+                </p>
+                <p className="text-gray-600">
+                  For questions about ASPC&apos;s Airport Rideshare Program
+                </p>
+                <p className="border-t border-gray-300 pt-3 text-gray-700">
+                  View our{' '}
+                  <a
+                    href="https://docs.google.com/document/d/e/2PACX-1vTUgsgoxR1HOkfnW4QYfki4DXLUSB-ELyyMqFNFfOSgxyshPE9ykZyBODVxTCip10ULXgeaqrBXGddA/pub"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-teal-700 underline hover:text-teal-900"
+                  >
+                    Privacy Policy
+                  </a>
+                </p>
+              </div>
             </div>
           </div>
         </div>

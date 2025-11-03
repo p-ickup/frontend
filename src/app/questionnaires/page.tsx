@@ -312,40 +312,10 @@ export default function Questionnaires() {
         <div className="relative mx-auto mb-6 max-w-4xl space-y-4 px-6">
           {/* Email Preferences Banner */}
           {!emailBannerDismissed && (
-            <div className="flex items-start gap-3 rounded-xl border border-teal-200 bg-teal-50 p-4 shadow-sm">
-              <div className="flex-shrink-0 pt-0.5">
-                <svg
-                  className="h-5 w-5 text-teal-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                  />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-teal-900">
-                  📧 Update Your Preferred Email
-                </h3>
-                <p className="mt-1 text-sm text-teal-800">
-                  Add your best contact email to stay informed about your rides
-                  and important updates.
-                </p>
-              </div>
-              <a
-                href="/profile"
-                className="flex-shrink-0 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700"
-              >
-                Update Profile
-              </a>
+            <div className="relative rounded-xl border border-teal-200 bg-teal-50 p-4 shadow-sm">
               <button
                 onClick={() => setEmailBannerDismissed(true)}
-                className="flex-shrink-0 text-teal-600 transition-colors hover:text-teal-800"
+                className="absolute right-3 top-3 text-teal-600 transition-colors hover:text-teal-800"
                 aria-label="Dismiss banner"
               >
                 <svg
@@ -362,45 +332,47 @@ export default function Questionnaires() {
                   />
                 </svg>
               </button>
+              <div className="flex items-start gap-3 pr-8">
+                <div className="hidden flex-shrink-0 pt-0.5 sm:block">
+                  <svg
+                    className="h-5 w-5 text-teal-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                    />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-teal-900">
+                    📧 Update Your Preferred Email
+                  </h3>
+                  <p className="mt-1 text-sm text-teal-800">
+                    Add your best contact email to stay informed about your
+                    rides and important updates.
+                  </p>
+                  <a
+                    href="/profile"
+                    className="mt-3 inline-block w-full rounded-lg bg-teal-600 px-4 py-2 text-center text-sm font-medium text-white transition-colors hover:bg-teal-700 sm:w-auto"
+                  >
+                    Update Profile
+                  </a>
+                </div>
+              </div>
             </div>
           )}
 
           {/* SMS Opt-in Banner */}
           {!smsOptIn && !smsBannerDismissed && (
-            <div className="flex items-start gap-3 rounded-xl border border-teal-200 bg-teal-50 p-4 shadow-sm">
-              <div className="flex-shrink-0 pt-0.5">
-                <svg
-                  className="h-5 w-5 text-teal-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                  />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-teal-900">
-                  📱 Stay Updated with Text Notifications
-                </h3>
-                <p className="mt-1 text-sm text-teal-800">
-                  Opt in to receive important updates about your rides from
-                  ASPC.
-                </p>
-              </div>
-              <a
-                href="/profile"
-                className="flex-shrink-0 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700"
-              >
-                Update Profile
-              </a>
+            <div className="relative rounded-xl border border-teal-200 bg-teal-50 p-4 shadow-sm">
               <button
                 onClick={() => setSmsBannerDismissed(true)}
-                className="flex-shrink-0 text-teal-600 transition-colors hover:text-teal-800"
+                className="absolute right-3 top-3 text-teal-600 transition-colors hover:text-teal-800"
                 aria-label="Dismiss banner"
               >
                 <svg
@@ -417,6 +389,38 @@ export default function Questionnaires() {
                   />
                 </svg>
               </button>
+              <div className="flex items-start gap-3 pr-8">
+                <div className="hidden flex-shrink-0 pt-0.5 sm:block">
+                  <svg
+                    className="h-5 w-5 text-teal-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                    />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-teal-900">
+                    📱 Stay Updated with Text Notifications
+                  </h3>
+                  <p className="mt-1 text-sm text-teal-800">
+                    Opt in to receive important updates about your rides from
+                    ASPC.
+                  </p>
+                  <a
+                    href="/profile"
+                    className="mt-3 inline-block w-full rounded-lg bg-teal-600 px-4 py-2 text-center text-sm font-medium text-white transition-colors hover:bg-teal-700 sm:w-auto"
+                  >
+                    Update Profile
+                  </a>
+                </div>
+              </div>
             </div>
           )}
         </div>
