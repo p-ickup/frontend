@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import RedirectButton from '@/components/buttons/RedirectButton'
 import SubmitSuccess from '@/components/questionnaires/SubmitSuccess'
 import ManyBagsNotice from '@/components/questionnaires/ManyBagsNotice'
@@ -73,8 +73,13 @@ export default function FlightForm({
   const [optInUnmatched, setOptInUnmatched] = useState(false)
   const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
+  const [isDuplicateError, setIsDuplicateError] = useState(false)
   const [isProfileComplete, setIsProfileComplete] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Use ref for immediate submission lock (prevents race conditions)
+  const isSubmittingRef = useRef(false)
 
   // Click tooltip hooks
   const personalItemsTooltip = useClickTooltip()
@@ -140,24 +145,71 @@ export default function FlightForm({
     fetchUserSchool()
   }, [])
 
-  // Check ASPC subsidy eligibility when date, time, or airport change
+  // Check ASPC subsidy eligibility when date, airport, or times change
   useEffect(() => {
-    if (dateOfFlight && earliestArrival && latestArrival && userSchool) {
+    if (dateOfFlight && airport && userSchool) {
       checkASPCSubsidyEligibility()
     }
-  }, [
-    dateOfFlight,
-    earliestArrival,
-    latestArrival,
-    tripType,
-    userSchool,
-    airport,
-  ])
+  }, [dateOfFlight, airport, userSchool, earliestArrival, latestArrival])
+
+  // Check for duplicate flights in real-time when date, airport, or trip type changes
+  useEffect(() => {
+    const checkForDuplicates = async () => {
+      // Only check in create mode and when we have the required fields
+      if (mode !== 'create' || !dateOfFlight || !airport) {
+        setMessage('')
+        setIsDuplicateError(false)
+        return
+      }
+
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser()
+
+        if (authError || !user) return
+
+        const { data: existingFlights, error: checkError } = await supabase
+          .from('Flights')
+          .select('flight_id, flight_no, date, to_airport, airport')
+          .eq('user_id', user.id)
+          .eq('date', dateOfFlight)
+          .eq('to_airport', tripType)
+          .eq('airport', airport)
+
+        if (checkError) {
+          console.error('Error checking for duplicates:', checkError)
+          return
+        }
+
+        if (existingFlights && existingFlights.length > 0) {
+          // Format date without timezone issues (YYYY-MM-DD to MM/DD/YYYY)
+          const [year, month, day] = dateOfFlight.split('-')
+          const formattedDate = `${month}/${day}/${year}`
+
+          setMessage(
+            `You already have a ${tripType ? 'departure to' : 'return from'} ${airport} on ${formattedDate}. Please edit your existing flight instead.`,
+          )
+          setIsDuplicateError(true)
+        } else {
+          // Clear duplicate error if no duplicates found
+          if (isDuplicateError) {
+            setMessage('')
+            setIsDuplicateError(false)
+          }
+        }
+      } catch (error) {
+        console.error('Error in duplicate check:', error)
+      }
+    }
+
+    checkForDuplicates()
+  }, [dateOfFlight, airport, tripType, mode, supabase, isDuplicateError])
 
   // ASPC subsidy checking function
   const checkASPCSubsidyEligibility = () => {
-    if (!dateOfFlight || !earliestArrival || !latestArrival || !userSchool)
-      return
+    if (!dateOfFlight || !userSchool) return
 
     // Only show ASPC warnings for Pomona College students
     if (userSchool !== 'Pomona') {
@@ -165,155 +217,64 @@ export default function FlightForm({
       return
     }
 
-    // ASPC operational dates (hardcoded for Fall 2025)
-    const aspcDates = ['2025-10-11', '2025-10-13', '2025-10-14']
+    // ASPC operational periods for 2025-2026
+    const operationalPeriods = [
+      // Thanksgiving Break Departures: November 21-26, 2025
+      { start: '2025-11-21', end: '2025-11-26', type: 'departure' },
+      // Thanksgiving Break Returns: November 29 - December 1, 2025
+      { start: '2025-11-29', end: '2025-12-01', type: 'return' },
+      // Winter Break Departure: December 9-13, 2025
+      { start: '2025-12-09', end: '2025-12-13', type: 'departure' },
+      // Winter Break Return: January 17-21, 2026
+      { start: '2026-01-17', end: '2026-01-21', type: 'return' },
+    ]
 
-    // Check if date is within ±2 days of ASPC operational dates
+    // Check if date is within any operational period
     const flightDate = new Date(dateOfFlight)
-    const isWithinASPCWindow = aspcDates.some((aspcDate) => {
-      const aspcDateObj = new Date(aspcDate)
-      const diffTime = Math.abs(flightDate.getTime() - aspcDateObj.getTime())
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-      return diffDays <= 2
-    })
+    let isWithinOperationalPeriod = false
+    let currentPeriod = null
 
-    // Check if date is exactly an ASPC operational date
-    const isExactASPCDate = aspcDates.includes(dateOfFlight)
+    for (const period of operationalPeriods) {
+      const startDate = new Date(period.start)
+      const endDate = new Date(period.end)
+      if (flightDate >= startDate && flightDate <= endDate) {
+        isWithinOperationalPeriod = true
+        currentPeriod = period
+        break
+      }
+    }
 
-    if (!isWithinASPCWindow) {
+    if (!isWithinOperationalPeriod) {
       setAspcWarningMessage(
-        'You are not eligible for ASPC subsidy because your flight date is not within the operational dates. You can still use P-ICKUP to coordinate non-subsidized rides.',
+        'Your flight date is not within ASPC RideLink operational periods (Thanksgiving Break or Winter Break). You can still use P-ICKUP to coordinate non-subsidized rides.',
       )
       setIsASPCGuaranteed(false)
       setShowASPCWarning(true)
       return
     }
 
-    // Parse time strings (format: "HH:MM")
-    const parseTime = (timeStr: string) => {
-      const [hours, minutes] = timeStr.split(':').map(Number)
-      return hours + minutes / 60
+    // Don't show warning until times are entered
+    if (!earliestArrival || !latestArrival) {
+      setShowASPCWarning(false)
+      return
     }
 
-    const earliestTime = parseTime(earliestArrival)
-    const latestTime = parseTime(latestArrival)
-
-    // Define time windows (in PST)
-    const outboundStart = 6 // 6:00 AM
-    const outboundEnd = 18 // 6:00 PM
-    const inboundStart = 10 // 10:00 AM
-    const inboundEnd = 22 // 10:00 PM
-
-    let isGuaranteed = false
+    // New policy: No guaranteed times, only grouping requirements
+    // LAX requires 3+ riders, ONT requires 2+ riders
     let warningMessage = ''
 
-    if (tripType) {
-      // Outbound: 6 AM - 6 PM PST
-      if (earliestTime >= outboundStart && latestTime <= outboundEnd) {
-        if (isExactASPCDate) {
-          // FALL BREAK LOGIC: LAX flights are never guaranteed, only covered with 3+ riders
-          if (airport === 'LAX') {
-            isGuaranteed = false
-            warningMessage =
-              'You are not guaranteed a subsidized ride because LAX flights during fall break require at least 3 riders to be grouped. However, ASPC may still cover your ride if 3+ riders are matched for your flight. Check out the policy page for more details.'
-          } else {
-            isGuaranteed = true
-            warningMessage =
-              '✅ You are guaranteed a subsidized ride! Your time range falls within ASPC guaranteed hours (6:00 AM - 6:00 PM PST) on an operational date.'
-          }
-        } else {
-          isGuaranteed = false
-          // FALL BREAK LOGIC: Check if this is a special LAX case outside operational dates
-          if (airport === 'LAX') {
-            warningMessage =
-              'You are not guaranteed a subsidized ride because your flight is not within the operational dates, but it may still be possible if 3+ riders are grouped for LAX. Check out the policy page for more details.'
-          } else {
-            warningMessage =
-              'You are not guaranteed a subsidized ride because your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.'
-          }
-        }
-      } else {
-        // Determine specific reason for outbound
-        let reason = ''
-        if (earliestTime < outboundStart) {
-          reason = `your time range is before 6:00 AM PST`
-        } else if (latestTime > outboundEnd) {
-          reason = `your time range is after 6:00 PM PST`
-        } else {
-          reason = `your time range is outside the guaranteed window (6:00 AM - 6:00 PM PST)`
-        }
-
-        if (isExactASPCDate) {
-          // FALL BREAK LOGIC: Check if this is a special LAX case
-          if (airport === 'LAX') {
-            warningMessage = `You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
-          } else {
-            warningMessage = `You are not guaranteed a subsidized ride because ${reason}, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
-          }
-        } else {
-          // FALL BREAK LOGIC: Check if this is a special LAX case outside operational dates
-          if (airport === 'LAX') {
-            warningMessage = `You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
-          } else {
-            warningMessage = `You are not guaranteed a subsidized ride because ${reason} and your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
-          }
-        }
-      }
+    if (airport === 'LAX') {
+      warningMessage =
+        '✅ Your flight is within an ASPC RideLink operational period. RideLink will cover your ride if 2+ riders are matched with you. Be flexible with your time range to increase matching odds.'
+    } else if (airport === 'ONT') {
+      warningMessage =
+        '✅ Your flight is within an ASPC RideLink operational period. RideLink will cover your ride if 1+ riders are matched with you. Be flexible with your time range to increase matching odds.'
     } else {
-      // Inbound: 10 AM - 10 PM PST
-      if (earliestTime >= inboundStart && latestTime <= inboundEnd) {
-        if (isExactASPCDate) {
-          // FALL BREAK LOGIC: LAX flights are never guaranteed, only covered with 3+ riders
-          if (airport === 'LAX') {
-            isGuaranteed = false
-            warningMessage =
-              'You are not guaranteed a subsidized ride because LAX flights during fall break require at least 3 riders to be grouped. However, ASPC may still cover your ride if 3+ riders are matched for your flight. Check out the policy page for more details.'
-          } else {
-            isGuaranteed = true
-            warningMessage =
-              '✅ You are guaranteed a subsidized ride! Your arrival time falls within ASPC guaranteed hours (10:00 AM - 10:00 PM PST) on an operational date.'
-          }
-        } else {
-          isGuaranteed = false
-          // FALL BREAK LOGIC: Check if this is a special LAX case outside operational dates
-          if (airport === 'LAX') {
-            warningMessage =
-              'You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.'
-          } else {
-            warningMessage =
-              'You are not guaranteed a subsidized ride because your flight is not within the operational dates and/or times. However, you may be eligible for an after-hours ride if 2 or more riders are grouped for ONT. Check the ASPC policy page for more details.'
-          }
-        }
-      } else {
-        // Determine specific reason for inbound
-        let reason = ''
-        if (earliestTime < inboundStart) {
-          reason = `your arrival time is before 10:00 AM PST`
-        } else if (latestTime > inboundEnd) {
-          reason = `your arrival time is after 10:00 PM PST`
-        } else {
-          reason = `your arrival time is outside the guaranteed window (10:00 AM - 10:00 PM PST)`
-        }
-
-        if (isExactASPCDate) {
-          // FALL BREAK LOGIC: Check if this is a special LAX case
-          if (airport === 'LAX') {
-            warningMessage = `You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
-          } else {
-            warningMessage = `You are not guaranteed a subsidized ride because ${reason}, but it may still be possible if 2+ riders are grouped for ONT. Check out the policy page for more details.`
-          }
-        } else {
-          // FALL BREAK LOGIC: Check if this is a special LAX case outside operational dates
-          if (airport === 'LAX') {
-            warningMessage = `You are not guaranteed a subsidized ride. For LAX flights during fall break, ASPC may still cover your ride if at least 3 riders are grouped and your flight falls within ±2 days of operational dates/times. Check out the policy page for more details.`
-          } else {
-            warningMessage = `You are not guaranteed a subsidized ride because ${reason} and your flight is not within the operational dates, but it may still be possible if 2+ riders are grouped for ONT. Check the ASPC policy page for more details.`
-          }
-        }
-      }
+      warningMessage =
+        '✅ Your flight is within an ASPC operational period. RideLink covers rides when groups can be formed (2+ to ONT, 3+ to LAX). Check the policy page for more details.'
     }
 
-    setIsASPCGuaranteed(isGuaranteed)
+    setIsASPCGuaranteed(false) // No more guaranteed rides under new policy
     setAspcWarningMessage(warningMessage)
     setShowASPCWarning(true)
   }
@@ -388,6 +349,11 @@ export default function FlightForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Failsafe: If ref is stuck but state says we're not submitting, reset the ref
+    if (isSubmittingRef.current && !isSubmitting) {
+      isSubmittingRef.current = false
+    }
+
     // Prevent submission while loading data
     if (isLoading) {
       setMessage('Please wait while data is loading...')
@@ -434,68 +400,117 @@ export default function FlightForm({
   }
 
   const actuallySubmitForm = async (e: React.FormEvent) => {
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      setMessage('Error: You must be logged in to submit flight details!')
+    // Prevent double-submit using ref (immediate, no React batching delay)
+    if (isSubmittingRef.current) {
       return
     }
 
-    if (!airline_iata || !flight_no || !earliestArrival || !latestArrival) {
-      setMessage('Missing information!')
+    // Prevent submit if there's a duplicate error
+    if (isDuplicateError) {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
 
-    const flightData = {
-      to_airport: tripType,
-      airport,
-      flight_no: flight_no,
-      airline_iata: airline_iata,
-      date: dateOfFlight,
-      bag_no_personal: bag_no_personal,
-      bag_no: bag_no,
-      bag_no_large: bag_no_large,
-      earliest_time: earliestArrival,
-      latest_time: latestArrival,
-      // max_dropoff: dropoff,
-      // max_price: budget,
-      opt_in: optInUnmatched,
-      terminal,
-    }
+    // Set submitting flags immediately to prevent race condition
+    isSubmittingRef.current = true
+    setIsSubmitting(true)
 
-    let error
-    if (mode === 'create') {
-      const result = await supabase.from('Flights').insert([
-        {
-          user_id: user.id,
-          ...flightData,
-        },
-      ])
-      error = result.error
-    } else {
-      const result = await supabase
-        .from('Flights')
-        .update({
-          ...flightData,
-          matched: optInUnmatched ? false : true, // For edit mode
-        })
-        .eq('flight_id', flightId)
-      error = result.error
-    }
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser()
 
-    if (error) {
-      console.error('Error with flight data:', error)
-      setMessage(`Error: ${error.message}`)
-      return
-    }
+      if (authError || !user) {
+        setMessage('Error: You must be logged in to submit flight details!')
+        isSubmittingRef.current = false
+        setIsSubmitting(false)
+        return
+      }
 
-    setIsModalOpen(true)
-    setMessage(successMessage)
-    if (onSuccess) {
-      onSuccess()
+      if (!airline_iata || !flight_no || !earliestArrival || !latestArrival) {
+        setMessage('Missing information!')
+        isSubmittingRef.current = false
+        setIsSubmitting(false)
+        return
+      }
+
+      const flightData = {
+        to_airport: tripType,
+        airport,
+        flight_no: flight_no,
+        airline_iata: airline_iata,
+        date: dateOfFlight,
+        bag_no_personal: bag_no_personal,
+        bag_no: bag_no,
+        bag_no_large: bag_no_large,
+        earliest_time: earliestArrival,
+        latest_time: latestArrival,
+        // max_dropoff: dropoff,
+        // max_price: budget,
+        opt_in: optInUnmatched,
+        terminal,
+      }
+
+      let error
+      if (mode === 'create') {
+        const result = await supabase.from('Flights').insert([
+          {
+            user_id: user.id,
+            ...flightData,
+            matched: null, // Will be calculated later by matching algorithm
+          },
+        ])
+        error = result.error
+      } else {
+        const result = await supabase
+          .from('Flights')
+          .update({
+            ...flightData,
+            matched: null, // Reset to null so it can be recalculated
+          })
+          .eq('flight_id', flightId)
+        error = result.error
+      }
+
+      if (error) {
+        console.error('Error with flight data:', error)
+
+        // Check if it's a unique constraint violation (duplicate flight)
+        if (
+          error.code === '23505' ||
+          error.message.includes('unique_user_flight_per_day')
+        ) {
+          const [year, month, day] = dateOfFlight.split('-')
+          const formattedDate = `${month}/${day}/${year}`
+
+          setMessage(
+            `You already have a ${tripType ? 'departure to' : 'return from'} ${airport} on ${formattedDate}. Please edit your existing flight instead.`,
+          )
+          setIsDuplicateError(true)
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        } else {
+          setMessage(`Error: ${error.message}`)
+        }
+
+        isSubmittingRef.current = false
+        setIsSubmitting(false)
+        return
+      }
+
+      // Clear any existing error messages before showing success modal
+      setMessage('')
+      setIsDuplicateError(false)
+      isSubmittingRef.current = false // Reset ref on success
+      setIsModalOpen(true)
+      if (onSuccess) {
+        onSuccess()
+      }
+    } catch (error) {
+      console.error('Unexpected error:', error)
+      setMessage('An unexpected error occurred. Please try again.')
+      isSubmittingRef.current = false
+      setIsSubmitting(false)
     }
   }
 
@@ -622,6 +637,19 @@ export default function FlightForm({
                 required
               />
             </label>
+
+            {/* Duplicate Flight Warning - Show right after date */}
+            {isDuplicateError && message && (
+              <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-4">
+                <p className="mb-2 font-medium text-orange-800">⚠️ {message}</p>
+                <a
+                  href="/questionnaires"
+                  className="inline-block rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-orange-700"
+                >
+                  Go to Your Flights
+                </a>
+              </div>
+            )}
 
             <div className="mb-2">
               <label className="mb-2 block">
@@ -1096,14 +1124,42 @@ export default function FlightForm({
               <div className="mt-6 flex flex-col gap-4">
                 <button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || isSubmitting || isDuplicateError}
                   className={`min-h-[48px] w-full touch-manipulation select-none rounded-lg px-6 py-4 text-lg font-semibold text-white ${
-                    isLoading
+                    isLoading || isSubmitting || isDuplicateError
                       ? 'cursor-not-allowed bg-gray-400'
                       : 'bg-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 active:bg-teal-600'
                   }`}
                 >
-                  {isLoading ? 'Loading...' : submitButtonText}
+                  {isSubmitting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg
+                        className="h-5 w-5 animate-spin"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      Submitting...
+                    </span>
+                  ) : isLoading ? (
+                    'Loading...'
+                  ) : (
+                    submitButtonText
+                  )}
                 </button>
                 <div className="flex justify-center">
                   <RedirectButton label="Cancel" route="/questionnaires" />
@@ -1134,29 +1190,59 @@ export default function FlightForm({
                   }
                 }
               }}
-              disabled={isLoading}
+              disabled={isLoading || isSubmitting || isDuplicateError}
               className={`mt-4 rounded-lg px-6 py-3 text-lg font-semibold text-white ${
-                isLoading
+                isLoading || isSubmitting || isDuplicateError
                   ? 'cursor-not-allowed bg-gray-400'
                   : 'bg-teal-500 hover:bg-opacity-80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2'
               }`}
             >
-              {isLoading ? 'Loading...' : submitButtonText}
+              {isSubmitting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg
+                    className="h-5 w-5 animate-spin"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Submitting...
+                </span>
+              ) : isLoading ? (
+                'Loading...'
+              ) : (
+                submitButtonText
+              )}
             </button>
           </div>
 
-          {message && (
-            <div className="mt-4 text-center">
-              <p className="mb-2">{message}</p>
+          {/* Only show non-duplicate errors here (duplicate is shown at top after date field) */}
+          {message && !isDuplicateError && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
+              <p className="mb-2 font-medium text-red-700">⚠️ {message}</p>
             </div>
           )}
         </div>
 
         {/* Mobile message display */}
         <div className="block md:hidden">
-          {message && (
-            <div className="mt-4 p-4 text-center">
-              <p className="mb-2">{message}</p>
+          {/* Only show non-duplicate errors here (duplicate is shown at top after date field) */}
+          {message && !isDuplicateError && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
+              <p className="mb-2 font-medium text-red-700">⚠️ {message}</p>
             </div>
           )}
         </div>

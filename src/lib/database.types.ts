@@ -48,7 +48,7 @@ export type Database = {
           date: string
           to_airport: boolean
           terminal: string
-          matched: boolean
+          matched: boolean | null
           airline_iata: string
           last_status: string
           last_dep_estimated_utc: string

@@ -31,9 +31,8 @@ const SubmitSuccess: React.FC<SubmitSuccessProps> = ({
         </h2>
         <p className="mt-2 text-gray-600">
           You may edit or delete this form up to 7 days before your requested
-          ride share. Please check the <strong>Results</strong> page to see who
-          you match with. If you do not receive a match 7 days prior to your
-          requested ride share date, check the <strong>Unmatched</strong> page.
+          ride share. You will receive an email with your match details at least
+          3 days before your requested ride share date.
         </p>
 
         <div className="mt-4 flex justify-end space-x-4">
