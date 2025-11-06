@@ -26,7 +26,7 @@ export default function ASPCInfoPage() {
   const aspcLinks: ASPCLink[] = [
     {
       title: 'Quick Guide',
-      description: 'Essential information for using ASPC Airport Rideshare',
+      description: 'Essential information for using ASPC RideLink',
       url: 'https://docs.google.com/document/d/e/2PACX-1vSEkEcvV6-2Fq9bb_F8-wqLrAAPi3fSBSCIGddqMlz2Zcdy6Z6AtDNBWU1cTEK7CbjnWW7anKUWrNY0/pub',
       icon: Info,
       color: 'bg-blue-500',
@@ -42,8 +42,7 @@ export default function ASPCInfoPage() {
     },
     {
       title: 'Program Policies',
-      description:
-        'Official policies and guidelines for ASPC Airport Rideshare',
+      description: 'Official policies and guidelines for ASPC RideLink',
       url: 'https://nam10.safelinks.protection.outlook.com/?url=https%3A%2F%2Fdocs.google.com%2Fdocument%2Fd%2Fe%2F2PACX-1vSnd4UeEvul3M6_L5rPr3z1Shzlccuqa0aP-O5eifF7p_BIzfc-lKrNwAG95lCb4LnOWDeZ-Zz2YRa9%2Fpub&data=05%7C02%7Cjljz2022%40mymail.pomona.edu%7C50c1d711755241b1d90908ddfae05489%7C817f590439044ee8b3a5a65d4746ff70%7C0%7C0%7C638942563626080129%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=AjkV%2BM0VA9lvyyIxGxI9%2Bnd5s8BKGrG3yOJJBxY3teY%3D&reserved=0',
       icon: FileText,
       color: 'bg-purple-500',
@@ -93,7 +92,7 @@ export default function ASPCInfoPage() {
 
           <div className="text-center">
             <h1 className="mb-2 text-4xl font-bold text-gray-800">
-              ASPC Airport Rideshare
+              ASPC RideLink
             </h1>
             <p className="mb-4 text-lg text-gray-600">
               Information & Resources for Pomona College Students
@@ -117,14 +116,14 @@ export default function ASPCInfoPage() {
                 <p className="text-gray-700">
                   <strong className="text-gray-800">Email:</strong>{' '}
                   <a
-                    href="mailto:operations@aspc.pomona.edu"
+                    href="mailto:ridelink@aspc.pomona.edu"
                     className="text-blue-700 hover:underline"
                   >
-                    operations@aspc.pomona.edu
+                    ridelink@aspc.pomona.edu
                   </a>
                 </p>
                 <p className="text-gray-600">
-                  For questions about ASPC&apos;s Airport Rideshare Program
+                  For questions about ASPC&apos;s RideLink Program
                 </p>
                 <p className="border-t border-gray-300 pt-3 text-gray-700">
                   View our{' '}
@@ -251,22 +250,14 @@ export default function ASPCInfoPage() {
                 607-2000 (on-campus)
               </span>
             </li>
-            <li className="flex items-start gap-3">
-              <span className="mt-1 font-bold text-teal-600">•</span>
-              <span>
-                <strong className="text-gray-800">Feedback:</strong> Complete
-                the feedback form by 11:59 PM PDT on 10/19 for a chance to win a
-                $25 Coop Store gift card
-              </span>
-            </li>
           </ul>
         </div>
 
         {/* Footer Note */}
         <div className="mt-8 text-center">
           <p className="text-sm text-gray-500">
-            This page provides quick access to ASPC&apos;s official Airport
-            Rideshare resources.
+            This page provides quick access to ASPC&apos;s official RideLink
+            resources.
             <br />
             All links open in new tabs for your convenience.
           </p>
