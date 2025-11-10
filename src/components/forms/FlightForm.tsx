@@ -628,7 +628,11 @@ export default function FlightForm({
             )}
 
             <label className="mb-2 block">
-              <span className="font-bold">Flight Date:</span>
+              <span className="font-bold">
+                {tripType
+                  ? "Earliest Date You're Able to Leave to the Airport:"
+                  : "Earliest Date You're Able to Leave from the Airport:"}
+              </span>
               <input
                 type="date"
                 value={dateOfFlight}
@@ -650,6 +654,12 @@ export default function FlightForm({
                 </a>
               </div>
             )}
+
+            <p className="mt-1 text-sm text-gray-600">
+              This is the first date of your availability. If your time range
+              extends overnight or across multiple days, choose the earliest
+              date and specify times below.
+            </p>
 
             <div className="mb-2">
               <label className="mb-2 block">
