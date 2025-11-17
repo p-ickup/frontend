@@ -139,7 +139,7 @@ const SERVICE_PERIODS: ServicePeriod[] = [
   // Deadline: Nov 14 @ 11:59 PM PT
   {
     start: '2025-11-16', // 5 days before Nov 21
-    end: '2025-12-06', // 5 days after Dec 1
+    end: '2025-12-03', // 2 days after Dec 1
     deadline: '2025-11-14T23:59:59-08:00',
     name: 'Thanksgiving Break',
   },
