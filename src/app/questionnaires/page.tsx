@@ -8,6 +8,7 @@ import ConfirmCancel from '@/components/questionnaires/ConfirmCancel'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAuth } from '@/hooks/useAuth'
 import EmptyState from '@/components/results/EmptyState'
+import { canEditFlight } from '@/utils/flightValidation'
 
 interface MatchForm {
   flight_id: string
@@ -125,36 +126,9 @@ export default function Questionnaires() {
     setModalFlightId(null) // ✅ Close modal after deletion
   }
 
-  // variables dealing with showing specific forms
-  // COMMENTED OUT - ORIGINAL LOGIC (3-day threshold)
-  // const today = new Date()
-  // today.setHours(0, 0, 0, 0) // Normalize to midnight to avoid timezone issues
-  // const threeDaysFromNow = new Date(today)
-  // threeDaysFromNow.setDate(today.getDate() + 3) // Add 3 days
-
-  // const editableUnmatched = matchForms.filter((form) => {
-  //   const formDate = new Date(form.date)
-  //   formDate.setHours(0, 0, 0, 0)
-  //   return form.matched === false && formDate >= threeDaysFromNow
-  // })
-
-  // const noneditableUnmatched = matchForms.filter((form) => {
-  //   const formDate = new Date(form.date)
-  //   formDate.setHours(0, 0, 0, 0)
-  //   return (
-  //     form.matched == false && formDate < threeDaysFromNow && formDate >= today
-  //   )
-  // })
-
   // Filter flights by date and matching status
   const today = new Date()
   today.setHours(0, 0, 0, 0) // Normalize to midnight to avoid timezone issues
-
-  // Cutoff date for editing forms - adjust this date as needed
-  const editCutoffDate = new Date('2025-11-15') // Last deadline for Winter Break Return
-  editCutoffDate.setHours(23, 59, 59, 999) // End of day
-
-  const isBeforeEditCutoff = today <= editCutoffDate
 
   // Filter out flights that have already happened
   const upcomingForms = matchForms.filter((form) => {
@@ -164,10 +138,10 @@ export default function Questionnaires() {
   })
 
   // Editable forms: upcoming flights where matching hasn't been calculated yet (matched === null)
-  // AND we're before the edit cutoff date
+  // AND the flight date is not past its specific deadline
   // These are flights users can still edit/delete
   const editableForms = upcomingForms.filter((form) => {
-    return form.matched === null && isBeforeEditCutoff
+    return form.matched === null && canEditFlight(form.date)
   })
 
   // Unmatched forms: upcoming flights where matching was calculated but no match was found (matched === false)
@@ -348,21 +322,7 @@ export default function Questionnaires() {
         <div className="relative mb-8 flex flex-col items-center gap-4">
           <div className="flex flex-wrap justify-center gap-4">
             <RedirectButton label="Update Profile" route="/profile" />
-            {!isBeforeEditCutoff ? (
-              <div className="flex flex-col items-center">
-                <button
-                  disabled
-                  className="mt-4 cursor-not-allowed rounded-lg bg-gray-400 px-6 py-3 text-lg font-semibold text-white opacity-60"
-                >
-                  Request Match
-                </button>
-                <p className="mt-2 text-center text-sm text-gray-500">
-                  Sorry! You&apos;re past the deadline for signing up
-                </p>
-              </div>
-            ) : (
-              <RedirectButton label="Request Match" route="/matchForm" />
-            )}
+            <RedirectButton label="Request Match" route="/matchForm" />
           </div>
         </div>
 
@@ -384,9 +344,9 @@ export default function Questionnaires() {
                   📝 Your Upcoming Flights
                 </h3>
                 <p className="text-gray-600">
-                  {isBeforeEditCutoff
-                    ? 'Forms you can edit or delete'
-                    : 'Editing is closed - matching in progress'}
+                  {editableForms.length > 0
+                    ? 'Forms you can edit or delete before their deadlines'
+                    : 'No editable flights - check deadlines for each service period'}
                 </p>
               </div>
 
