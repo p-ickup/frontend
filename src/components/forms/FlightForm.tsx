@@ -10,6 +10,7 @@ import { validateUserProfile } from '@/utils/profileValidation'
 import {
   validateAirlineCode,
   validateFlightNumber,
+  isFlightPastDeadline,
 } from '@/utils/flightValidation'
 import {
   Tooltip,
@@ -73,7 +74,10 @@ export default function FlightForm({
   const [optInUnmatched, setOptInUnmatched] = useState(false)
   const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
+  const [duplicateErrorMessage, setDuplicateErrorMessage] = useState('')
+  const [deadlineErrorMessage, setDeadlineErrorMessage] = useState('')
   const [isDuplicateError, setIsDuplicateError] = useState(false)
+  const [isPastDeadline, setIsPastDeadline] = useState(false)
   const [isProfileComplete, setIsProfileComplete] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -152,13 +156,33 @@ export default function FlightForm({
     }
   }, [dateOfFlight, airport, userSchool, earliestArrival, latestArrival])
 
+  // Check if selected date is past its deadline in real-time
+  useEffect(() => {
+    if (!dateOfFlight) {
+      setIsPastDeadline(false)
+      setDeadlineErrorMessage('')
+      return
+    }
+
+    const deadlineCheck = isFlightPastDeadline(dateOfFlight)
+    if (deadlineCheck.isPastDeadline) {
+      setDeadlineErrorMessage(
+        `Sorry! The deadline for ${deadlineCheck.periodName} has passed. Request deadline was ${deadlineCheck.deadline?.toLocaleString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}.`,
+      )
+      setIsPastDeadline(true)
+    } else {
+      setDeadlineErrorMessage('')
+      setIsPastDeadline(false)
+    }
+  }, [dateOfFlight])
+
   // Check for duplicate flights in real-time when date, airport, or trip type changes
   useEffect(() => {
     const checkForDuplicates = async () => {
       // Only check in create mode and when we have the required fields
       if (mode !== 'create' || !dateOfFlight || !airport) {
-        setMessage('')
         setIsDuplicateError(false)
+        setDuplicateErrorMessage('')
         return
       }
 
@@ -188,16 +212,13 @@ export default function FlightForm({
           const [year, month, day] = dateOfFlight.split('-')
           const formattedDate = `${month}/${day}/${year}`
 
-          setMessage(
+          setDuplicateErrorMessage(
             `You already have a ${tripType ? 'departure to' : 'return from'} ${airport} on ${formattedDate}. Please edit your existing flight instead.`,
           )
           setIsDuplicateError(true)
         } else {
-          // Clear duplicate error if no duplicates found
-          if (isDuplicateError) {
-            setMessage('')
-            setIsDuplicateError(false)
-          }
+          setDuplicateErrorMessage('')
+          setIsDuplicateError(false)
         }
       } catch (error) {
         console.error('Error in duplicate check:', error)
@@ -205,7 +226,7 @@ export default function FlightForm({
     }
 
     checkForDuplicates()
-  }, [dateOfFlight, airport, tripType, mode, supabase, isDuplicateError])
+  }, [dateOfFlight, airport, tripType, mode, supabase])
 
   // ASPC subsidy checking function
   const checkASPCSubsidyEligibility = () => {
@@ -372,6 +393,12 @@ export default function FlightForm({
       return
     }
 
+    // Prevent submit if date is past its deadline
+    if (isPastDeadline) {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
     // Validate airline code and flight number
     const airlineValidation = validateAirlineCode(airline_iata)
     const flightValidation = validateFlightNumber(flight_no)
@@ -405,8 +432,8 @@ export default function FlightForm({
       return
     }
 
-    // Prevent submit if there's a duplicate error
-    if (isDuplicateError) {
+    // Prevent submit if there's a duplicate or deadline error
+    if (isDuplicateError || isPastDeadline) {
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
@@ -517,6 +544,28 @@ export default function FlightForm({
   return (
     <div className="flex w-full flex-col items-center text-black">
       {/* <h1 className="mb-4 text-3xl font-bold">{title}</h1> */}
+
+      {/* Deadline Information Banner */}
+      <div className="mb-4 w-full max-w-6xl rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm">
+        <h3 className="mb-2 font-semibold text-blue-900">
+          📅 Service Period Deadlines
+        </h3>
+        <div className="space-y-1 text-blue-800">
+          <p>
+            <strong>Thanksgiving Break</strong>:{' '}
+            <span className="font-medium">Deadline Nov 14 @ 11:59 PM PT</span>
+          </p>
+          <p>
+            <strong>Winter Break Outbound</strong>:{' '}
+            <span className="font-medium">Deadline Dec 3 @ 11:59 PM PT</span>
+          </p>
+          <p>
+            <strong>Winter Break Return</strong>:{' '}
+            <span className="font-medium">Deadline Jan 9 @ 11:59 PM PT</span>
+          </p>
+        </div>
+      </div>
+
       <div className="mb-4 flex items-center gap-2">
         <p>All fields are required.</p>
         {userSchool === 'Pomona' && (
@@ -642,10 +691,21 @@ export default function FlightForm({
               />
             </label>
 
-            {/* Duplicate Flight Warning - Show right after date */}
-            {isDuplicateError && message && (
+            {/* Deadline Error - Show right after date (highest priority) */}
+            {isPastDeadline && deadlineErrorMessage && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+                <p className="font-medium text-red-800">
+                  ⚠️ {deadlineErrorMessage}
+                </p>
+              </div>
+            )}
+
+            {/* Duplicate Flight Warning - Show right after date (if no deadline error) */}
+            {!isPastDeadline && isDuplicateError && duplicateErrorMessage && (
               <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-4">
-                <p className="mb-2 font-medium text-orange-800">⚠️ {message}</p>
+                <p className="mb-2 font-medium text-orange-800">
+                  ⚠️ {duplicateErrorMessage}
+                </p>
                 <a
                   href="/questionnaires"
                   className="inline-block rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-orange-700"
@@ -1134,9 +1194,17 @@ export default function FlightForm({
               <div className="mt-6 flex flex-col gap-4">
                 <button
                   type="submit"
-                  disabled={isLoading || isSubmitting || isDuplicateError}
+                  disabled={
+                    isLoading ||
+                    isSubmitting ||
+                    isDuplicateError ||
+                    isPastDeadline
+                  }
                   className={`min-h-[48px] w-full touch-manipulation select-none rounded-lg px-6 py-4 text-lg font-semibold text-white ${
-                    isLoading || isSubmitting || isDuplicateError
+                    isLoading ||
+                    isSubmitting ||
+                    isDuplicateError ||
+                    isPastDeadline
                       ? 'cursor-not-allowed bg-gray-400'
                       : 'bg-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 active:bg-teal-600'
                   }`}
@@ -1200,9 +1268,11 @@ export default function FlightForm({
                   }
                 }
               }}
-              disabled={isLoading || isSubmitting || isDuplicateError}
+              disabled={
+                isLoading || isSubmitting || isDuplicateError || isPastDeadline
+              }
               className={`mt-4 rounded-lg px-6 py-3 text-lg font-semibold text-white ${
-                isLoading || isSubmitting || isDuplicateError
+                isLoading || isSubmitting || isDuplicateError || isPastDeadline
                   ? 'cursor-not-allowed bg-gray-400'
                   : 'bg-teal-500 hover:bg-opacity-80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2'
               }`}
@@ -1239,8 +1309,8 @@ export default function FlightForm({
             </button>
           </div>
 
-          {/* Only show non-duplicate errors here (duplicate is shown at top after date field) */}
-          {message && !isDuplicateError && (
+          {/* Only show non-duplicate/non-deadline errors here (those are shown at top after date field) */}
+          {message && !isDuplicateError && !isPastDeadline && (
             <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
               <p className="mb-2 font-medium text-red-700">⚠️ {message}</p>
             </div>
@@ -1249,8 +1319,8 @@ export default function FlightForm({
 
         {/* Mobile message display */}
         <div className="block md:hidden">
-          {/* Only show non-duplicate errors here (duplicate is shown at top after date field) */}
-          {message && !isDuplicateError && (
+          {/* Only show non-duplicate/non-deadline errors here (those are shown at top after date field) */}
+          {message && !isDuplicateError && !isPastDeadline && (
             <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
               <p className="mb-2 font-medium text-red-700">⚠️ {message}</p>
             </div>
