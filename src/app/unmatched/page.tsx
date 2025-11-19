@@ -19,6 +19,7 @@ interface FlightWithUser extends Flight {
 interface GroupedMatch {
   ride_id: number
   flights: FlightWithUser[]
+  time: string | null
 }
 
 export default function UnmatchedPage() {
@@ -45,6 +46,8 @@ export default function UnmatchedPage() {
   const [selectedMyFlightId, setSelectedMyFlightId] = useState<number | null>(
     null,
   )
+  const [showGroups, setShowGroups] = useState(false)
+  const [showIndividuals, setShowIndividuals] = useState(false)
 
   // Function to convert military time to 12-hour format
   const formatTime = (militaryTime: string) => {
@@ -103,11 +106,13 @@ export default function UnmatchedPage() {
       .eq('matched', false)
       .neq('user_id', user.id)
 
+    // Query for non-subsidized groups
     const { data: matchData, error: matchError } = await supabase
       .from('Matches')
       .select(
-        'ride_id, flight_id, flight:Flights(flight_id, airport, earliest_time, latest_time, date, user_id, matched, to_airport, Users(firstname, lastname))',
+        'ride_id, time, is_subsidized, flight:Flights(flight_id, airport, earliest_time, latest_time, date, user_id, matched, to_airport, opt_in, Users(firstname, lastname, email))',
       )
+      .eq('is_subsidized', false)
 
     if (flightError || matchError) {
       console.error('Error fetching data:', flightError || matchError)
@@ -120,17 +125,16 @@ export default function UnmatchedPage() {
     //   (flightData || []).filter((flight) => isWithinNext3Days(flight.date) ),
     // )
 
+    // Filter for future flights only (no time limit)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
     setFlights(
-      // (flightData || []).filter((flight) => {
-      //   const within3Days = isWithinNext3Days(flight.date)
-      //   // console.log(`Flight ${flight.flight_id} on ${flight.date} is within 3 days?`, within3Days)
-      //   return within3Days
-      // }),
       (flightData || [])
         .filter((flight) => {
-          const within7Days = isWithinNext7Days(flight.date)
-          // console.log(`Flight ${flight.flight_id} on ${flight.date} is within 7 days?`, within7Days)
-          return within7Days
+          const flightDate = new Date(flight.date)
+          flightDate.setHours(0, 0, 0, 0)
+          return flightDate >= today
         })
         .sort((a, b) => {
           // First sort by date
@@ -149,10 +153,17 @@ export default function UnmatchedPage() {
         }),
     )
 
+    // Group by ride_id and include the match time
     const reduced = (matchData as any[]).reduce(
       (acc, match) => {
         const rideId = match.ride_id
-        if (!acc[rideId]) acc[rideId] = { ride_id: rideId, flights: [] }
+        if (!acc[rideId]) {
+          acc[rideId] = {
+            ride_id: rideId,
+            flights: [],
+            time: match.time,
+          }
+        }
         if (match.flight && Array.isArray(match.flight)) {
           acc[rideId].flights.push(...match.flight)
         } else if (match.flight) {
@@ -163,15 +174,37 @@ export default function UnmatchedPage() {
       {} as Record<number, GroupedMatch>,
     )
 
-    const grouped = (Object.values(reduced) as GroupedMatch[]).filter(
-      (group) => {
+    // Filter for groups with upcoming flights (any future date), at least one person opted in, and less than 4 people
+    const grouped = (Object.values(reduced) as GroupedMatch[])
+      .filter((group) => {
         return (
+          group.flights.length > 0 &&
           group.flights.length < 4 &&
-          // group.flights.every((flight) => isWithinNext3Days(flight.date))
-          group.flights.every((flight) => isWithinNext7Days(flight.date))
+          group.flights.every((flight) => {
+            const flightDate = new Date(flight.date)
+            flightDate.setHours(0, 0, 0, 0)
+            const todayCheck = new Date()
+            todayCheck.setHours(0, 0, 0, 0)
+            return flightDate >= todayCheck
+          }) &&
+          group.flights.some((flight) => flight.opt_in === true)
         )
-      },
-    )
+      })
+      .sort((a, b) => {
+        // Sort by earliest flight date in each group
+        const dateA = new Date(a.flights[0]?.date || '').getTime()
+        const dateB = new Date(b.flights[0]?.date || '').getTime()
+
+        if (dateA !== dateB) {
+          return dateA - dateB
+        }
+
+        // If dates are the same, sort by match time
+        const timeA = a.time || '00:00'
+        const timeB = b.time || '00:00'
+
+        return timeA.localeCompare(timeB)
+      })
 
     setGroups(grouped)
     setLoading(false)
@@ -339,7 +372,6 @@ export default function UnmatchedPage() {
           style={{ animationDelay: '2s' }}
         ></div>
       </div>
-
       <div className="relative flex min-h-screen w-full flex-col">
         {/* Header Section */}
         <div className="relative px-6 pb-6 pt-8">
@@ -379,12 +411,140 @@ export default function UnmatchedPage() {
             </div>
           </div>
         </div>
-
         {/* Content Section */}
         <div className="relative flex-1 px-6 pb-8">
           <div className="mx-auto max-w-6xl">
+            {/* Non-Subsidized Groups Section */}
+            {groups.length > 0 && (
+              <div className="mb-8">
+                <button
+                  onClick={() => setShowGroups(!showGroups)}
+                  className="mb-4 flex w-full items-center justify-between rounded-xl bg-white/80 p-4 shadow-lg transition-all hover:shadow-xl"
+                >
+                  <div className="text-left">
+                    <h2 className="text-left text-2xl font-bold text-gray-900">
+                      Groups Looking for Riders ({groups.length})
+                    </h2>
+                    <p className="text-left text-sm text-gray-600">
+                      These groups have been matched but need more people to
+                      split costs (not ASPC subsidized)
+                    </p>
+                  </div>
+                  <svg
+                    className={`h-6 w-6 text-gray-600 transition-transform ${showGroups ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </button>
+
+                {showGroups && (
+                  <div className="space-y-4">
+                    {groups.map((group) => {
+                      const firstFlight = group.flights[0]
+                      const direction = firstFlight?.to_airport
+                        ? `School → ${firstFlight.airport}`
+                        : `${firstFlight.airport} → School`
+
+                      return (
+                        <div
+                          key={group.ride_id}
+                          className="group relative rounded-2xl border border-gray-200 bg-white/80 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="mb-4 flex items-center gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-purple-100 to-purple-200">
+                                  <svg
+                                    className="h-5 w-5 text-purple-600"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                                    />
+                                  </svg>
+                                </div>
+                                <div>
+                                  <h3 className="text-xl font-bold text-gray-900">
+                                    {direction}
+                                  </h3>
+                                  <p className="text-gray-600">
+                                    {firstFlight?.date}
+                                  </p>
+                                  {group.time && (
+                                    <p className="text-sm font-medium text-purple-600">
+                                      Ride Time: {formatTime(group.time)}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <h4 className="font-semibold text-gray-800">
+                                  Current Members ({group.flights.length}):
+                                </h4>
+                                <ul className="space-y-1">
+                                  {group.flights.map((flight, index) => (
+                                    <li
+                                      key={index}
+                                      className="flex items-center gap-2 text-sm text-gray-700"
+                                    >
+                                      <div className="h-2 w-2 rounded-full bg-purple-500"></div>
+                                      {flight.opt_in ? (
+                                        <>
+                                          <span className="font-medium">
+                                            {flight.Users?.firstname}{' '}
+                                            {flight.Users?.lastname}
+                                          </span>
+                                          {flight.Users?.email && (
+                                            <span className="text-gray-500">
+                                              ({flight.Users.email})
+                                            </span>
+                                          )}
+                                          <span className="text-gray-500">
+                                            — Available:{' '}
+                                            {formatTime(flight.earliest_time)} -{' '}
+                                            {formatTime(flight.latest_time)}
+                                          </span>
+                                        </>
+                                      ) : (
+                                        <span className="italic text-gray-500">
+                                          Anonymous Rider
+                                        </span>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                                <p className="mt-3 text-sm italic text-gray-600">
+                                  💡 Contact members directly to coordinate
+                                  joining this ride
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Individual Flights Section */}
             <div className="mb-8">
-              {/* <h2 className="mb-6 text-2xl font-bold text-gray-900">
+              {/* OLD GROUPS CODE - COMMENTED OUT
+              <h2 className="mb-6 text-2xl font-bold text-gray-900">
                 Groups Available to Join
               </h2>
 
@@ -485,100 +645,125 @@ export default function UnmatchedPage() {
                     </div>
                   )
                 })}
-              </div>*/}
-            </div>
+              </div>
+              END OLD GROUPS CODE */}
 
-            <div className="mb-8">
-              <h2 className="mb-6 text-2xl font-bold text-gray-900">
-                Individual Flights
-              </h2>
-
-              {flights.length === 0 ? (
-                <div className="rounded-2xl bg-white/80 p-8 text-center shadow-lg backdrop-blur-sm">
-                  <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
-                    <svg
-                      className="h-8 w-8 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                      />
-                    </svg>
-                  </div>
-                  <h3 className="mb-2 text-lg font-semibold text-gray-800">
-                    No Individual Flights
-                  </h3>
-                  <p className="text-gray-600">
-                    All available flights are already in groups
+              <button
+                onClick={() => setShowIndividuals(!showIndividuals)}
+                className="mb-4 flex w-full items-center justify-between rounded-xl bg-white/80 p-4 shadow-lg transition-all hover:shadow-xl"
+              >
+                <div className="text-left">
+                  <h2 className="text-left text-2xl font-bold text-gray-900">
+                    Individual Travelers ({flights.length})
+                  </h2>
+                  <p className="text-left text-sm text-gray-600">
+                    Individuals with upcoming flights looking for ride shares
                   </p>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {flights.map((flight) => (
-                    <div
-                      key={flight.flight_id}
-                      className="group relative rounded-2xl border border-gray-200 bg-white/80 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="mb-4 flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-orange-100 to-orange-200">
-                              <svg
-                                className="h-5 w-5 text-orange-600"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                                />
-                              </svg>
+                <svg
+                  className={`h-6 w-6 text-gray-600 transition-transform ${showIndividuals ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+
+              {showIndividuals &&
+                (flights.length === 0 ? (
+                  <div className="rounded-2xl bg-white/80 p-8 text-center shadow-lg backdrop-blur-sm">
+                    <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
+                      <svg
+                        className="h-8 w-8 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                        />
+                      </svg>
+                    </div>
+                    <h3 className="mb-2 text-lg font-semibold text-gray-800">
+                      No Individual Flights
+                    </h3>
+                    <p className="text-gray-600">
+                      All available flights are already in groups
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {flights.map((flight) => (
+                      <div
+                        key={flight.flight_id}
+                        className="group relative rounded-2xl border border-gray-200 bg-white/80 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="mb-4 flex items-center gap-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-orange-100 to-orange-200">
+                                <svg
+                                  className="h-5 w-5 text-orange-600"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                  />
+                                </svg>
+                              </div>
+                              <div>
+                                <h3 className="text-xl font-bold text-gray-900">
+                                  {flight.to_airport
+                                    ? `School → ${flight.airport}`
+                                    : `${flight.airport} → School`}
+                                </h3>
+                                <p className="text-gray-600">{flight.date}</p>
+                              </div>
                             </div>
-                            <div>
-                              <h3 className="text-xl font-bold text-gray-900">
-                                {flight.Users
-                                  ? `${flight.Users.firstname} ${flight.Users.lastname}`
-                                  : 'Unknown user'}
-                              </h3>
-                              {flight.Users?.email && (
-                                <p className="text-sm text-gray-500">
-                                  {flight.Users.email}
-                                </p>
-                              )}
-                              <p className="text-gray-600">
-                                {flight.to_airport
-                                  ? `School → ${flight.airport}`
-                                  : `${flight.airport} → School`}
+                            <div className="space-y-2">
+                              <h4 className="font-semibold text-gray-800">
+                                Traveler:
+                              </h4>
+                              <ul className="space-y-1">
+                                <li className="flex items-center gap-2 text-sm text-gray-700">
+                                  <div className="h-2 w-2 rounded-full bg-orange-500"></div>
+                                  <span className="font-medium">
+                                    {flight.Users
+                                      ? `${flight.Users.firstname} ${flight.Users.lastname}`
+                                      : 'Unknown user'}
+                                  </span>
+                                  {flight.Users?.email && (
+                                    <span className="text-gray-500">
+                                      ({flight.Users.email})
+                                    </span>
+                                  )}
+                                  <span className="text-gray-500">
+                                    — Available:{' '}
+                                    {formatTime(flight.earliest_time)} -{' '}
+                                    {formatTime(flight.latest_time)}
+                                  </span>
+                                </li>
+                              </ul>
+                              <p className="mt-3 text-sm italic text-gray-600">
+                                💡 Contact directly to coordinate ride sharing
                               </p>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <span className="font-semibold text-gray-700">
-                                Date:
-                              </span>
-                              <p className="text-gray-600">{flight.date}</p>
-                            </div>
-                            <div>
-                              <span className="font-semibold text-gray-700">
-                                Time:
-                              </span>
-                              <p className="text-gray-600">
-                                {formatTime(flight.earliest_time)} -{' '}
-                                {formatTime(flight.latest_time)}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        {/* <div className="ml-4">
+                          {/* <div className="ml-4">
                           <button
                             className={`rounded-xl px-6 py-3 font-semibold text-white transition-all duration-200 ${
                               userEligible
@@ -598,16 +783,18 @@ export default function UnmatchedPage() {
                               : 'All Your Flights Are Matched'}
                           </button>
                         </div> */}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                ))}
             </div>
-          </div>
-        </div>
-      </div>
-
+          </div>{' '}
+          {/* end max-w-6xl */}
+        </div>{' '}
+        {/* end relative flex-1 */}
+      </div>{' '}
+      {/* end outer container */}
       {showConfirmation && (selectedFlight || selectedGroup) && (
         <ConfirmationModal
           title={
