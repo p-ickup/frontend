@@ -275,6 +275,9 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
                 <p className="text-center text-xs text-gray-500">
                   {match.Users.email || 'No email provided'}
                 </p>
+                <p className="text-center text-xs text-gray-500">
+                  {match.Users.phonenumber || 'No phone provided'}
+                </p>
               </div>
             ))}
           </div>
