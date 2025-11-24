@@ -172,57 +172,65 @@ export default function Results() {
     }
   }
 
-  // Function to delete a match
+  // ===== COMMENTED OUT: MATCH DELETION FUNCTIONALITY =====
+  // This function handles the backend logic for deleting matches
+  // To re-enable: Uncomment this function AND uncomment the button code in MatchCard.tsx
+
+  // const deleteMatch = async (rideId: number) => {
+  //   if (!user) {
+  //     console.error('No authenticated user found')
+  //     return
+  //   }
+
+  //   try {
+  //     // First, get all matches for this ride
+  //     const { data: allRideMatches, error: fetchError } = await supabase
+  //       .from('Matches')
+  //       .select('*')
+  //       .eq('ride_id', rideId)
+
+  //     if (fetchError) {
+  //       console.error('Error fetching ride matches:', fetchError)
+  //       throw fetchError
+  //     }
+
+  //     // If there are only 2 people in the ride group, delete all matches
+  //     if (allRideMatches && allRideMatches.length <= 2) {
+  //       // Delete all matches for this ride_id
+  //       const { error: deleteAllError } = await supabase
+  //         .from('Matches')
+  //         .delete()
+  //         .eq('ride_id', rideId)
+
+  //       if (deleteAllError) {
+  //         console.error('Error deleting all matches:', deleteAllError)
+  //         throw deleteAllError
+  //       }
+  //     } else {
+  //       // Delete only the user's match
+  //       const { error: deleteUserError } = await supabase
+  //         .from('Matches')
+  //         .delete()
+  //         .eq('ride_id', rideId)
+  //         .eq('user_id', user.id)
+
+  //       if (deleteUserError) {
+  //         console.error('Error deleting user match:', deleteUserError)
+  //         throw deleteUserError
+  //       }
+  //     }
+
+  //     // Refresh matches after deleting
+  //     await fetchMatches()
+  //   } catch (error) {
+  //     console.error('Error in delete operation:', error)
+  //     throw error
+  //   }
+  // }
+
+  // Placeholder function while deletion is disabled
   const deleteMatch = async (rideId: number) => {
-    if (!user) {
-      console.error('No authenticated user found')
-      return
-    }
-
-    try {
-      // First, get all matches for this ride
-      const { data: allRideMatches, error: fetchError } = await supabase
-        .from('Matches')
-        .select('*')
-        .eq('ride_id', rideId)
-
-      if (fetchError) {
-        console.error('Error fetching ride matches:', fetchError)
-        throw fetchError
-      }
-
-      // If there are only 2 people in the ride group, delete all matches
-      if (allRideMatches && allRideMatches.length <= 2) {
-        // Delete all matches for this ride_id
-        const { error: deleteAllError } = await supabase
-          .from('Matches')
-          .delete()
-          .eq('ride_id', rideId)
-
-        if (deleteAllError) {
-          console.error('Error deleting all matches:', deleteAllError)
-          throw deleteAllError
-        }
-      } else {
-        // Delete only the user's match
-        const { error: deleteUserError } = await supabase
-          .from('Matches')
-          .delete()
-          .eq('ride_id', rideId)
-          .eq('user_id', user.id)
-
-        if (deleteUserError) {
-          console.error('Error deleting user match:', deleteUserError)
-          throw deleteUserError
-        }
-      }
-
-      // Refresh matches after deleting
-      await fetchMatches()
-    } catch (error) {
-      console.error('Error in delete operation:', error)
-      throw error
-    }
+    console.log('Match deletion is currently disabled')
   }
 
   if (!isAuthenticated) {
