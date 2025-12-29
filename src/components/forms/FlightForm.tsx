@@ -517,7 +517,17 @@ export default function FlightForm({
           setIsDuplicateError(true)
           window.scrollTo({ top: 0, behavior: 'smooth' })
         } else {
+          // Database error - scroll to bottom so user sees the error
           setMessage(`Error: ${error.message}`)
+          window.scrollTo({
+            top: document.body.scrollHeight,
+            behavior: 'smooth',
+          })
+
+          // Also show browser alert for critical errors that user might miss
+          alert(
+            `⚠️ Submission Failed\n\nThere was an error saving your flight request:\n${error.message}\n\nPlease try again. If the problem persists, contact support.`,
+          )
         }
 
         isSubmittingRef.current = false
@@ -535,7 +545,16 @@ export default function FlightForm({
       }
     } catch (error) {
       console.error('Unexpected error:', error)
-      setMessage('An unexpected error occurred. Please try again.')
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred'
+      setMessage(`An unexpected error occurred: ${errorMessage}`)
+
+      // Scroll to error and show alert for unexpected errors
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
+      alert(
+        `⚠️ Submission Failed\n\nAn unexpected error occurred:\n${errorMessage}\n\nPlease try again. If the problem persists, contact support.`,
+      )
+
       isSubmittingRef.current = false
       setIsSubmitting(false)
     }
@@ -1311,8 +1330,14 @@ export default function FlightForm({
 
           {/* Only show non-duplicate/non-deadline errors here (those are shown at top after date field) */}
           {message && !isDuplicateError && !isPastDeadline && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
-              <p className="mb-2 font-medium text-red-700">⚠️ {message}</p>
+            <div className="mt-4 rounded-lg border-2 border-red-400 bg-red-100 p-6 text-center shadow-lg">
+              <p className="mb-2 text-lg font-bold text-red-800">
+                ⚠️ Submission Failed
+              </p>
+              <p className="font-medium text-red-700">{message}</p>
+              <p className="mt-2 text-sm text-red-600">
+                Please try again. If the problem persists, contact support.
+              </p>
             </div>
           )}
         </div>
@@ -1321,8 +1346,14 @@ export default function FlightForm({
         <div className="block md:hidden">
           {/* Only show non-duplicate/non-deadline errors here (those are shown at top after date field) */}
           {message && !isDuplicateError && !isPastDeadline && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
-              <p className="mb-2 font-medium text-red-700">⚠️ {message}</p>
+            <div className="mt-4 rounded-lg border-2 border-red-400 bg-red-100 p-6 text-center shadow-lg">
+              <p className="mb-2 text-lg font-bold text-red-800">
+                ⚠️ Submission Failed
+              </p>
+              <p className="font-medium text-red-700">{message}</p>
+              <p className="mt-2 text-sm text-red-600">
+                Please try again. If the problem persists, contact support.
+              </p>
             </div>
           )}
         </div>
