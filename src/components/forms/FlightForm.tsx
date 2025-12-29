@@ -314,7 +314,10 @@ export default function FlightForm({
           .single()
 
         if (error) {
-          setMessage(`Error fetching flight data: ${error.message}`)
+          // console.error('Error fetching flight data:', error)
+          setMessage(
+            'Unable to load flight data. Please refresh the page or contact support if the problem persists.',
+          )
         } else {
           console.log('Debug - Fetched flight data:', data)
           setTripType(data.to_airport)
@@ -517,7 +520,19 @@ export default function FlightForm({
           setIsDuplicateError(true)
           window.scrollTo({ top: 0, behavior: 'smooth' })
         } else {
-          setMessage(`Error: ${error.message}`)
+          // Database error - log details but show generic message to user
+          setMessage(
+            'There was an error saving your flight request. Please try again. If the problem persists, contact support.',
+          )
+          window.scrollTo({
+            top: document.body.scrollHeight,
+            behavior: 'smooth',
+          })
+
+          // Also show browser alert for critical errors that user might miss
+          alert(
+            `⚠️ Submission Failed\n\nThere was an error saving your flight request.\n\nPlease try again. If the problem persists, contact support.`,
+          )
         }
 
         isSubmittingRef.current = false
@@ -535,7 +550,17 @@ export default function FlightForm({
       }
     } catch (error) {
       console.error('Unexpected error:', error)
-      setMessage('An unexpected error occurred. Please try again.')
+      // Display generic message to user while logging details for debugging
+      setMessage(
+        'An unexpected error occurred. Please try again. If the problem persists, contact support.',
+      )
+
+      // Scroll to error and show alert for unexpected errors
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
+      alert(
+        `⚠️ Submission Failed\n\nAn unexpected error occurred.\n\nPlease try again. If the problem persists, contact support.`,
+      )
+
       isSubmittingRef.current = false
       setIsSubmitting(false)
     }
@@ -1311,8 +1336,14 @@ export default function FlightForm({
 
           {/* Only show non-duplicate/non-deadline errors here (those are shown at top after date field) */}
           {message && !isDuplicateError && !isPastDeadline && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
-              <p className="mb-2 font-medium text-red-700">⚠️ {message}</p>
+            <div className="mt-4 rounded-lg border-2 border-red-400 bg-red-100 p-6 text-center shadow-lg">
+              <p className="mb-2 text-lg font-bold text-red-800">
+                ⚠️ Submission Failed
+              </p>
+              <p className="font-medium text-red-700">{message}</p>
+              <p className="mt-2 text-sm text-red-600">
+                Please try again. If the problem persists, contact support.
+              </p>
             </div>
           )}
         </div>
@@ -1321,8 +1352,14 @@ export default function FlightForm({
         <div className="block md:hidden">
           {/* Only show non-duplicate/non-deadline errors here (those are shown at top after date field) */}
           {message && !isDuplicateError && !isPastDeadline && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
-              <p className="mb-2 font-medium text-red-700">⚠️ {message}</p>
+            <div className="mt-4 rounded-lg border-2 border-red-400 bg-red-100 p-6 text-center shadow-lg">
+              <p className="mb-2 text-lg font-bold text-red-800">
+                ⚠️ Submission Failed
+              </p>
+              <p className="font-medium text-red-700">{message}</p>
+              <p className="mt-2 text-sm text-red-600">
+                Please try again. If the problem persists, contact support.
+              </p>
             </div>
           )}
         </div>
