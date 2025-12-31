@@ -82,6 +82,10 @@ export default function FlightForm({
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Multi-page wizard state
+  const [currentStep, setCurrentStep] = useState(1)
+  const totalSteps = 4
+
   // Use ref for immediate submission lock (prevents race conditions)
   const isSubmittingRef = useRef(false)
 
@@ -367,8 +371,26 @@ export default function FlightForm({
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault()
+    }
+
+    console.log(
+      'handleSubmit called on step:',
+      currentStep,
+      'totalSteps:',
+      totalSteps,
+    )
+
+    // Only allow submission on step 4 - prevent any form submission before final step
+    if (currentStep !== totalSteps) {
+      // Prevent form submission on steps 1-3 (user must click Next button)
+      console.log('Blocking submission - not on final step')
+      return
+    }
+
+    console.log('Proceeding with form submission on step 4')
 
     // Failsafe: If ref is stuck but state says we're not submitting, reset the ref
     if (isSubmittingRef.current && !isSubmitting) {
@@ -395,7 +417,6 @@ export default function FlightForm({
 
     // Prevent submit if date is past its deadline
     if (isPastDeadline) {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
 
@@ -413,8 +434,10 @@ export default function FlightForm({
     }
 
     if (bag_no_personal + bag_no + bag_no_large >= 4) {
-      setPendingSubmit(e)
-      setShowManyBagsModal(true)
+      if (e) {
+        setPendingSubmit(e)
+        setShowManyBagsModal(true)
+      }
       return
     }
 
@@ -423,10 +446,20 @@ export default function FlightForm({
       return
     }
 
-    await actuallySubmitForm(e)
+    console.log('About to call actuallySubmitForm')
+    await actuallySubmitForm()
   }
 
-  const actuallySubmitForm = async (e: React.FormEvent) => {
+  // Handle keyboard events to prevent Enter key from submitting form on steps 1-3
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key === 'Enter' && currentStep !== totalSteps) {
+      console.log('Prevented Enter key on step:', currentStep)
+      e.preventDefault()
+      return false
+    }
+  }
+
+  const actuallySubmitForm = async () => {
     // Prevent double-submit using ref (immediate, no React batching delay)
     if (isSubmittingRef.current) {
       return
@@ -541,11 +574,137 @@ export default function FlightForm({
     }
   }
 
+  // Helper function to calculate time range duration
+  const calculateTimeRange = (): number => {
+    if (!earliestArrival || !latestArrival) return 0
+
+    const [earlyHour, earlyMin] = earliestArrival.split(':').map(Number)
+    const [lateHour, lateMin] = latestArrival.split(':').map(Number)
+
+    let hours = lateHour - earlyHour
+    let minutes = lateMin - earlyMin
+
+    if (minutes < 0) {
+      hours -= 1
+      minutes += 60
+    }
+
+    // Handle case where latest time is next day
+    if (hours < 0) {
+      hours += 24
+    }
+
+    return hours + minutes / 60
+  }
+
+  // Helper function to convert 24-hour time to 12-hour format with AM/PM
+  const formatTime12Hour = (time24: string): string => {
+    if (!time24) return ''
+    const [hours, minutes] = time24.split(':').map(Number)
+    const period = hours >= 12 ? 'PM' : 'AM'
+    const hours12 = hours % 12 || 12
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`
+  }
+
+  // Wizard navigation functions
+  const goToNextStep = () => {
+    // Validate current step before proceeding
+    if (!validateCurrentStep()) {
+      return
+    }
+    setMessage('') // Clear any messages when moving forward
+    if (currentStep < totalSteps) {
+      setCurrentStep(currentStep + 1)
+      // Removed scroll to top for better UX
+    }
+  }
+
+  const goToPreviousStep = () => {
+    setMessage('') // Clear any messages when going back
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1)
+      // Removed scroll to top for better UX
+    }
+  }
+
+  const validateCurrentStep = (): boolean => {
+    switch (currentStep) {
+      case 1: // Trip direction
+        if (!airport) {
+          setMessage('Please select an airport')
+          return false
+        }
+        return true
+      case 2: // Date, times, and flight details
+        if (!dateOfFlight) {
+          setMessage('Please enter your flight date')
+          return false
+        }
+        if (isPastDeadline) {
+          setMessage('The deadline for this date has passed')
+          return false
+        }
+        if (isDuplicateError) {
+          setMessage('You already have a flight on this date')
+          return false
+        }
+        if (!earliestArrival || !latestArrival) {
+          setMessage('Please enter your time range')
+          return false
+        }
+        if (!airline_iata || !flight_no) {
+          setMessage('Please enter your flight information')
+          return false
+        }
+        const airlineValidation = validateAirlineCode(airline_iata)
+        const flightValidation = validateFlightNumber(flight_no)
+        if (!airlineValidation.isValid) {
+          setMessage(airlineValidation.errorMessage!)
+          return false
+        }
+        if (!flightValidation.isValid) {
+          setMessage(flightValidation.errorMessage!)
+          return false
+        }
+        if (!terminal) {
+          setMessage('Please enter your terminal')
+          return false
+        }
+        return true
+      case 3: // Luggage
+        if (bag_no_personal < 0 || bag_no < 0 || bag_no_large < 0) {
+          setMessage('Please enter valid luggage counts (0 or more)')
+          return false
+        }
+        return true
+      case 4: // Review - no validation needed
+        return true
+      default:
+        return true
+    }
+  }
+
+  const getStepTitle = (): string => {
+    switch (currentStep) {
+      case 1:
+        return 'Trip Direction & Airport'
+      case 2:
+        return 'Flight Details'
+      case 3:
+        return 'Luggage Information'
+      case 4:
+        return 'Review & Submit'
+      default:
+        return ''
+    }
+  }
+
   return (
     <div className="flex w-full flex-col items-center text-black">
       {/* <h1 className="mb-4 text-3xl font-bold">{title}</h1> */}
 
-      {/* Deadline Information Banner */}
+      {/* Deadline Information Banner - Commented out to save space */}
+      {/* 
       <div className="mb-4 w-full max-w-6xl rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm">
         <h3 className="mb-2 font-semibold text-blue-900">
           📅 Service Period Deadlines
@@ -565,6 +724,7 @@ export default function FlightForm({
           </p>
         </div>
       </div>
+      */}
 
       <div className="mb-4 flex items-center gap-2">
         <p>All fields are required.</p>
@@ -583,157 +743,453 @@ export default function FlightForm({
         </div>
       )}
 
-      <div className="w-full max-w-6xl md:rounded-lg md:bg-white md:shadow-md">
+      <div className="w-full max-w-4xl md:rounded-lg md:bg-white md:shadow-md">
         {isLoading && (
           <div className="flex items-center justify-center bg-blue-50 p-4">
             <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-teal-500"></div>
             <span className="ml-2 text-teal-600">Loading flight data...</span>
           </div>
         )}
-        <div className="px-2 py-4 md:px-8 md:py-8">
-          <form id="flight-form" onSubmit={handleSubmit} className="space-y-4">
-            <div className="mb-2 flex gap-2">
-              <label className="flex flex-1 flex-col">
-                <span className="font-bold">Trip Direction:</span>
-                <TripToggle onSelect={setTripType} />
-              </label>
-            </div>
 
-            <div className="mb-2 flex gap-2">
-              <label className="flex flex-1 flex-col">
-                <span className="font-bold">Airport:</span>
-                <select
-                  value={airport}
-                  onChange={(e) => setAirport(e.target.value)}
-                  className="mt-1 w-full rounded border bg-white p-2 text-black"
-                  required
+        {/* Progress indicator */}
+        <div className="border-b bg-white px-4 py-6 md:px-8">
+          <div className="mb-4 flex items-center justify-between">
+            {[1, 2, 3, 4].map((step) => (
+              <div key={step} className="flex flex-1 items-center">
+                <div
+                  className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border-2 font-semibold transition-colors ${
+                    step < currentStep
+                      ? 'border-teal-500 bg-teal-500 text-white'
+                      : step === currentStep
+                        ? 'border-teal-500 bg-white text-teal-500'
+                        : 'border-gray-300 bg-white text-gray-400'
+                  }`}
                 >
-                  <option value="" disabled>
-                    Select
-                  </option>
-                  <option value="LAX">LAX</option>
-                  <option value="ONT">ONT</option>
-                </select>
-              </label>
+                  {step < currentStep ? (
+                    <svg
+                      className="h-6 w-6"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={3}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  ) : (
+                    step
+                  )}
+                </div>
+                {step < 4 && (
+                  <div
+                    className={`mx-2 h-1 flex-1 transition-colors ${
+                      step < currentStep ? 'bg-teal-500' : 'bg-gray-300'
+                    }`}
+                  ></div>
+                )}
+              </div>
+            ))}
+          </div>
+          <h2 className="text-center text-xl font-bold text-gray-800">
+            {getStepTitle()}
+          </h2>
+          <p className="mt-1 text-center text-sm text-gray-600">
+            Step {currentStep} of {totalSteps}
+          </p>
+        </div>
 
-              <label className="flex flex-1 flex-col">
-                <span className="font-bold">Terminal:</span>
-                <input
-                  type="text"
-                  value={terminal}
-                  onChange={(e) => setTerminal(e.target.value)}
-                  className="mt-1 w-full rounded border bg-white p-2 text-black"
-                  required
-                />
-              </label>
-            </div>
+        <div className="px-4 py-6 md:px-8 md:py-8">
+          <div className="space-y-6">
+            {/* Step 1: Trip Direction & Airport */}
+            {currentStep === 1 && (
+              <div className="space-y-6">
+                <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
+                  <p className="mb-2 font-medium">
+                    Let&apos;s start with the basics:
+                  </p>
+                  <p>
+                    Tell us whether you&apos;re traveling to the airport from
+                    campus or returning to campus from the airport.
+                  </p>
+                </div>
 
-            <div className="mb-2 flex gap-2">
-              <label className="flex flex-1 flex-col">
-                <span className="font-bold">Airline Code:</span>
-                <input
-                  type="text"
-                  value={airline_iata}
-                  onChange={(e) => handleAirlineCodeChange(e.target.value)}
-                  className={`mt-1 w-full rounded border bg-white p-2 text-black ${
-                    flightValidationError &&
-                    flightValidationError.includes('Airline')
-                      ? 'border-red-500'
-                      : ''
-                  }`}
-                  placeholder="AA"
-                  maxLength={2}
-                  required
-                />
-              </label>
-              <label className="flex flex-1 flex-col">
-                <span className="font-bold">Flight Number:</span>
-                <input
-                  type="text"
-                  value={flight_no}
-                  onChange={(e) => handleFlightNumberChange(e.target.value)}
-                  className={`mt-1 w-full rounded border bg-white p-2 text-black ${
-                    flightValidationError &&
-                    flightValidationError.includes('Flight number')
-                      ? 'border-red-500'
-                      : ''
-                  }`}
-                  placeholder="123"
-                  maxLength={4}
-                  required
-                />
-              </label>
-            </div>
-            {flightValidationError && (
-              <p className="mb-2 text-sm text-red-600">
-                {flightValidationError}
-              </p>
-            )}
-            {airline_iata && flight_no && !flightValidationError && (
-              <p className="mb-2 text-sm text-teal-500">
-                Full Flight: {airline_iata}
-                {flight_no}
-              </p>
-            )}
+                <div className="space-y-4">
+                  <label className="block">
+                    <span className="mb-3 block text-lg font-bold text-gray-800">
+                      Trip Direction
+                    </span>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => setTripType(true)}
+                        className={`rounded-xl border-2 p-6 text-center transition-all ${
+                          tripType === true
+                            ? 'border-teal-500 bg-teal-50'
+                            : 'border-gray-300 bg-white hover:border-gray-400'
+                        }`}
+                      >
+                        <div className="mb-2 text-3xl">✈️</div>
+                        <div
+                          className={`text-lg font-bold ${
+                            tripType === true
+                              ? 'text-teal-700'
+                              : 'text-gray-700'
+                          }`}
+                        >
+                          To Airport from Campus
+                        </div>
+                        <div className="mt-1 text-sm text-gray-600">
+                          Departing from Claremont
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTripType(false)}
+                        className={`rounded-xl border-2 p-6 text-center transition-all ${
+                          tripType === false
+                            ? 'border-teal-500 bg-teal-50'
+                            : 'border-gray-300 bg-white hover:border-gray-400'
+                        }`}
+                      >
+                        <div className="mb-2 text-3xl">🏫</div>
+                        <div
+                          className={`text-lg font-bold ${
+                            tripType === false
+                              ? 'text-teal-700'
+                              : 'text-gray-700'
+                          }`}
+                        >
+                          To Campus from Airport
+                        </div>
+                        <div className="mt-1 text-sm text-gray-600">
+                          Returning to Claremont
+                        </div>
+                      </button>
+                    </div>
+                  </label>
 
-            <label className="mb-2 block">
-              <span className="font-bold">
-                {tripType
-                  ? "Earliest Date You're Able to Leave to the Airport:"
-                  : "Earliest Date You're Able to Leave from the Airport:"}
-              </span>
-              <input
-                type="date"
-                value={dateOfFlight}
-                onChange={(e) => setDateOfFlight(e.target.value)}
-                className="mt-1 w-full rounded border bg-white p-2 text-black"
-                required
-              />
-            </label>
-
-            {/* Deadline Error - Show right after date (highest priority) */}
-            {isPastDeadline && deadlineErrorMessage && (
-              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
-                <p className="font-medium text-red-800">
-                  ⚠️ {deadlineErrorMessage}
-                </p>
+                  <label className="block">
+                    <span className="mb-2 block text-lg font-bold text-gray-800">
+                      Which Airport?
+                    </span>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button
+                        type="button"
+                        onClick={() => setAirport('LAX')}
+                        className={`rounded-xl border-2 p-6 text-center font-semibold transition-all ${
+                          airport === 'LAX'
+                            ? 'border-teal-500 bg-teal-50 text-teal-700'
+                            : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                        }`}
+                      >
+                        <div className="text-2xl font-bold">LAX</div>
+                        <div className="mt-1 text-sm">
+                          Los Angeles International
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAirport('ONT')}
+                        className={`rounded-xl border-2 p-6 text-center font-semibold transition-all ${
+                          airport === 'ONT'
+                            ? 'border-teal-500 bg-teal-50 text-teal-700'
+                            : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                        }`}
+                      >
+                        <div className="text-2xl font-bold">ONT</div>
+                        <div className="mt-1 text-sm">
+                          Ontario International
+                        </div>
+                      </button>
+                    </div>
+                  </label>
+                </div>
               </div>
             )}
 
-            {/* Duplicate Flight Warning - Show right after date (if no deadline error) */}
-            {!isPastDeadline && isDuplicateError && duplicateErrorMessage && (
-              <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-4">
-                <p className="mb-2 font-medium text-orange-800">
-                  ⚠️ {duplicateErrorMessage}
-                </p>
-                <a
-                  href="/questionnaires"
-                  className="inline-block rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-orange-700"
-                >
-                  Go to Your Flights
-                </a>
+            {/* Step 2: Flight Details (Date, Times, Flight Info) */}
+            {currentStep === 2 && (
+              <div className="space-y-6">
+                <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
+                  <p className="mb-2 font-medium">Flight Information:</p>
+                  <p>
+                    Enter your flight date, time range when you can{' '}
+                    {tripType ? 'leave to' : 'leave from'} the airport, and
+                    flight details.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Ride Date */}
+                  <div>
+                    <label className="mb-2 block text-lg font-bold text-gray-800">
+                      Date You Need the Ride
+                    </label>
+                    <p className="mb-2 text-sm text-gray-600">
+                      Choose the day you want to{' '}
+                      {tripType
+                        ? 'leave campus'
+                        : 'be picked up from the airport'}
+                      . This might be different from your flight date if
+                      traveling overnight or early morning.
+                    </p>
+                    <input
+                      type="date"
+                      value={dateOfFlight}
+                      onChange={(e) => setDateOfFlight(e.target.value)}
+                      className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                      required
+                    />
+                  </div>
+
+                  {/* Earliest Time */}
+                  <div>
+                    <label className="mb-2 block text-lg font-bold text-gray-800">
+                      Earliest Time You&apos;re Able to Leave{' '}
+                      {tripType ? 'from Campus' : 'from Airport'} (PST)
+                    </label>
+                    <input
+                      type="time"
+                      value={earliestArrival}
+                      onChange={(e) => setEarliestArrival(e.target.value)}
+                      className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                      required
+                    />
+                  </div>
+
+                  {/* Latest Time */}
+                  <div>
+                    <div className="mb-2 flex items-center gap-2">
+                      <label className="text-lg font-bold text-gray-800">
+                        Latest Time You&apos;re Able to Leave{' '}
+                        {tripType ? 'from Campus' : 'from Airport'} (PST)
+                      </label>
+                      <div className="hidden md:block">
+                        <Tooltip {...timeRangeTooltip}>
+                          <TooltipTrigger asChild>
+                            <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                              <svg
+                                className="h-3 w-3 text-blue-600"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs">
+                            <p>
+                              The wider the range, the more likely you are to
+                              get matched with others. You must be available for
+                              the entire range.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <div className="block md:hidden">
+                        <button
+                          type="button"
+                          className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            showMobileInfoModal(
+                              'Time Range: The wider the range, the more likely you are to get matched with others. You must be available for the entire range.',
+                            )
+                          }}
+                        >
+                          <svg
+                            className="h-3 w-3 text-blue-600"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type="time"
+                      value={latestArrival}
+                      onChange={(e) => setLatestArrival(e.target.value)}
+                      className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                      required
+                    />
+                  </div>
+
+                  {/* Time Range Duration Display */}
+                  {earliestArrival && latestArrival && (
+                    <div className="rounded-lg bg-teal-50 p-3 text-center">
+                      <p className="text-sm font-medium text-teal-800">
+                        Your provided time range is{' '}
+                        <span className="font-bold">
+                          {calculateTimeRange().toFixed(1)} hours
+                        </span>
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Deadline Error */}
+                  {isPastDeadline && deadlineErrorMessage && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                      <p className="font-medium text-red-800">
+                        ⚠️ {deadlineErrorMessage}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Duplicate Flight Warning */}
+                  {!isPastDeadline &&
+                    isDuplicateError &&
+                    duplicateErrorMessage && (
+                      <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                        <p className="mb-2 font-medium text-orange-800">
+                          ⚠️ {duplicateErrorMessage}
+                        </p>
+                        <a
+                          href="/questionnaires"
+                          className="inline-block rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-orange-700"
+                        >
+                          Go to Your Flights
+                        </a>
+                      </div>
+                    )}
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <label className="block">
+                      <span className="mb-2 block text-lg font-bold text-gray-800">
+                        Airline Code
+                      </span>
+                      <input
+                        type="text"
+                        value={airline_iata}
+                        onChange={(e) =>
+                          handleAirlineCodeChange(e.target.value)
+                        }
+                        className={`w-full rounded-lg border-2 bg-white p-3 text-black focus:outline-none ${
+                          flightValidationError &&
+                          flightValidationError.includes('Airline')
+                            ? 'border-red-500'
+                            : 'border-gray-300 focus:border-teal-500'
+                        }`}
+                        placeholder="AA"
+                        maxLength={2}
+                        required
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-lg font-bold text-gray-800">
+                        Flight Number
+                      </span>
+                      <input
+                        type="text"
+                        value={flight_no}
+                        onChange={(e) =>
+                          handleFlightNumberChange(e.target.value)
+                        }
+                        className={`w-full rounded-lg border-2 bg-white p-3 text-black focus:outline-none ${
+                          flightValidationError &&
+                          flightValidationError.includes('Flight number')
+                            ? 'border-red-500'
+                            : 'border-gray-300 focus:border-teal-500'
+                        }`}
+                        placeholder="123"
+                        maxLength={4}
+                        required
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 block text-lg font-bold text-gray-800">
+                        Terminal
+                      </span>
+                      <input
+                        type="text"
+                        value={terminal}
+                        onChange={(e) => setTerminal(e.target.value)}
+                        className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                        placeholder="e.g., TBIT, 2"
+                        required
+                      />
+                    </label>
+                  </div>
+                  {flightValidationError && (
+                    <p className="text-sm text-red-600">
+                      {flightValidationError}
+                    </p>
+                  )}
+                  {airline_iata && flight_no && !flightValidationError && (
+                    <p className="text-sm font-medium text-teal-600">
+                      ✓ Full Flight: {airline_iata}
+                      {flight_no}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
-            <p className="mt-1 text-sm text-gray-600">
-              This is the first date of your availability. If your time range
-              extends overnight or across multiple days, choose the earliest
-              date and specify times below.
-            </p>
+            {/* Step 3: Luggage Information */}
+            {currentStep === 3 && (
+              <div className="space-y-6">
+                <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
+                  <p className="mb-2 font-medium">Luggage Details:</p>
+                  <p>
+                    Let us know how much luggage you&apos;ll be traveling with.
+                    This helps us plan vehicle capacity.
+                  </p>
+                </div>
 
-            <div className="mb-2">
-              <label className="mb-2 block">
-                <div className="flex items-center gap-1">
-                  <span className="font-bold">
-                    {tripType
-                      ? "Time Range You're Able to Leave to the Airport (PST):"
-                      : "Time Range You're Able to Leave from the Airport (PST):"}
-                  </span>
-                  {/* Desktop tooltip */}
-                  <div className="hidden md:block">
-                    <Tooltip {...timeRangeTooltip}>
-                      <TooltipTrigger asChild>
-                        <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                <div className="space-y-4">
+                  <label className="block">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="text-lg font-bold text-gray-800">
+                        Personal Items
+                      </span>
+                      <div className="hidden md:block">
+                        <Tooltip {...personalItemsTooltip}>
+                          <TooltipTrigger asChild>
+                            <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                              <svg
+                                className="h-3 w-3 text-blue-600"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs">
+                            <p>
+                              purse, backpack, laptop bag (fit under the seat in
+                              front of you)
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <div className="block md:hidden">
+                        <button
+                          type="button"
+                          className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            showMobileInfoModal(
+                              'Personal Item: purse, backpack, laptop bag (fit under the seat in front of you)',
+                            )
+                          }}
+                        >
                           <svg
                             className="h-3 w-3 text-blue-600"
                             fill="currentColor"
@@ -745,72 +1201,60 @@ export default function FlightForm({
                               clipRule="evenodd"
                             />
                           </svg>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-xs">
-                        <p>
-                          The wider the range, the more likely you are to get
-                          matched with others. You must be available for the
-                          entire range.
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  {/* Mobile info button */}
-                  <div className="block md:hidden">
-                    <button
-                      type="button"
-                      className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        showMobileInfoModal(
-                          'Time Range: The wider the range, the more likely you are to get matched with others. You must be available for the entire range.',
-                        )
-                      }}
-                    >
-                      <svg
-                        className="h-3 w-3 text-blue-600"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-1 flex items-center gap-3">
-                  <input
-                    type="time"
-                    value={earliestArrival}
-                    onChange={(e) => setEarliestArrival(e.target.value)}
-                    className="flex-1 rounded border bg-white p-2 text-black"
-                    required
-                  />
-                  <span className="font-medium text-gray-600">to</span>
-                  <input
-                    type="time"
-                    value={latestArrival}
-                    onChange={(e) => setLatestArrival(e.target.value)}
-                    className="flex-1 rounded border bg-white p-2 text-black"
-                    required
-                  />
-                </div>
-              </label>
-            </div>
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      value={bag_no_personal}
+                      onChange={(e) => setBagNoPersonal(Number(e.target.value))}
+                      className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                      required
+                    />
+                  </label>
 
-            <div className="mb-2 flex gap-2 md:grid md:grid-cols-3 md:gap-4">
-              <label className="flex flex-1 flex-col md:flex-col">
-                <div className="flex items-center gap-1">
-                  <span className="font-bold">Personal Item:</span>
-                  {/* Desktop tooltip */}
-                  <div className="hidden md:block">
-                    <Tooltip {...personalItemsTooltip}>
-                      <TooltipTrigger asChild>
-                        <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                  <label className="block">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="text-lg font-bold text-gray-800">
+                        Carry-on Sized Bags
+                      </span>
+                      <div className="hidden md:block">
+                        <Tooltip {...carryOnBagsTooltip}>
+                          <TooltipTrigger asChild>
+                            <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                              <svg
+                                className="h-3 w-3 text-blue-600"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs">
+                            <p>
+                              small suitcases, mid-size backpacks (fit in
+                              overhead bins)
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <div className="block md:hidden">
+                        <button
+                          type="button"
+                          className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            showMobileInfoModal(
+                              'Carry-on Sized: small suitcases, mid-size backpacks (fit in overhead bins)',
+                            )
+                          }}
+                        >
                           <svg
                             className="h-3 w-3 text-blue-600"
                             fill="currentColor"
@@ -822,58 +1266,60 @@ export default function FlightForm({
                               clipRule="evenodd"
                             />
                           </svg>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-xs">
-                        <p>
-                          purse, backpack, laptop bag (fit under the seat in
-                          front of you)
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  {/* Mobile info button */}
-                  <div className="block md:hidden">
-                    <button
-                      type="button"
-                      className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        showMobileInfoModal(
-                          'Personal Item: purse, backpack, laptop bag (fit under the seat in front of you)',
-                        )
-                      }}
-                    >
-                      <svg
-                        className="h-3 w-3 text-blue-600"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-                <input
-                  type="number"
-                  value={bag_no_personal}
-                  onChange={(e) => setBagNoPersonal(Number(e.target.value))}
-                  className="mt-1 w-full rounded border bg-white p-2 text-black"
-                  required
-                />
-              </label>
-              <label className="flex flex-1 flex-col">
-                <div className="flex items-center gap-1">
-                  <span className="font-bold">Carry-on Sized:</span>
-                  {/* Desktop tooltip */}
-                  <div className="hidden md:block">
-                    <Tooltip {...carryOnBagsTooltip}>
-                      <TooltipTrigger asChild>
-                        <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      value={bag_no}
+                      onChange={(e) => setBagNo(Number(e.target.value))}
+                      className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                      required
+                    />
+                  </label>
+
+                  <label className="block">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="text-lg font-bold text-gray-800">
+                        Checked Luggage
+                      </span>
+                      <div className="hidden md:block">
+                        <Tooltip {...checkedLuggageTooltip}>
+                          <TooltipTrigger asChild>
+                            <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+                              <svg
+                                className="h-3 w-3 text-blue-600"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs">
+                            <p>
+                              large suitcases or similar; log as multiple items
+                              if larger than 30&quot; x 20&quot; x 12&quot;
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <div className="block md:hidden">
+                        <button
+                          type="button"
+                          className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            showMobileInfoModal(
+                              'Checked Luggage: large suitcases or similar; log as multiple items if larger than 30" x 20" x 12"',
+                            )
+                          }}
+                        >
                           <svg
                             className="h-3 w-3 text-blue-600"
                             fill="currentColor"
@@ -885,114 +1331,232 @@ export default function FlightForm({
                               clipRule="evenodd"
                             />
                           </svg>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-xs">
-                        <p>
-                          small suitcases, mid-size backpacks (fit in overhead
-                          bins)
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  {/* Mobile info button */}
-                  <div className="block md:hidden">
-                    <button
-                      type="button"
-                      className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        showMobileInfoModal(
-                          'Carry-on Sized: small suitcases, mid-size backpacks (fit in overhead bins)',
-                        )
-                      }}
-                    >
-                      <svg
-                        className="h-3 w-3 text-blue-600"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </button>
-                  </div>
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      value={bag_no_large}
+                      onChange={(e) => setBagNoLarge(Number(e.target.value))}
+                      className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                      required
+                    />
+                  </label>
                 </div>
-                <input
-                  type="number"
-                  value={bag_no}
-                  onChange={(e) => setBagNo(Number(e.target.value))}
-                  className="mt-1 w-full rounded border bg-white p-2 text-black"
-                  required
-                />
-              </label>
-              <label className="flex flex-1 flex-col">
-                <div className="flex items-center gap-1">
-                  <span className="font-bold">Checked Luggage:</span>
-                  {/* Desktop tooltip */}
-                  <div className="hidden md:block">
-                    <Tooltip {...checkedLuggageTooltip}>
-                      <TooltipTrigger asChild>
-                        <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
+              </div>
+            )}
+
+            {/* Step 4: Review & Submit */}
+            {currentStep === 4 && (
+              <div className="space-y-6">
+                <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
+                  <p className="mb-2 font-medium">Review Your Information:</p>
+                  <p>
+                    Please review all your flight details below before
+                    submitting.
+                  </p>
+                </div>
+
+                {/* Flight Summary */}
+                <div className="space-y-4 rounded-lg border-2 border-gray-200 bg-gray-50 p-6">
+                  <h3 className="mb-4 text-xl font-bold text-gray-800">
+                    Flight Summary
+                  </h3>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Trip Direction
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-900">
+                        {tripType ? 'To Airport' : 'To Campus'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Airport
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-900">
+                        {airport}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Flight
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-900">
+                        {airline_iata}
+                        {flight_no} - Terminal {terminal}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Date</p>
+                      <p className="mt-1 text-lg font-semibold text-gray-900">
+                        {dateOfFlight
+                          ? new Date(
+                              dateOfFlight + 'T00:00:00',
+                            ).toLocaleDateString('en-US', {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })
+                          : 'Not set'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Time Range (PST)
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-900">
+                        {formatTime12Hour(earliestArrival)} -{' '}
+                        {formatTime12Hour(latestArrival)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Luggage
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-900">
+                        {bag_no_personal} personal, {bag_no} carry-on,{' '}
+                        {bag_no_large} checked
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(1)}
+                    className="mt-4 text-sm font-medium text-teal-600 hover:text-teal-700 hover:underline"
+                  >
+                    ← Edit Information
+                  </button>
+                </div>
+
+                {/* ASPC Warning */}
+                {showASPCWarning && (
+                  <div
+                    className={`rounded-xl border-2 p-4 shadow-lg ${
+                      isASPCGuaranteed
+                        ? 'to-emerald-50 border-green-200 bg-gradient-to-r from-green-50'
+                        : 'border-orange-200 bg-gradient-to-r from-orange-50 to-yellow-50'
+                    }`}
+                  >
+                    <div className="flex items-start space-x-3">
+                      <div className="flex-shrink-0">
+                        {isASPCGuaranteed ? (
                           <svg
-                            className="h-3 w-3 text-blue-600"
+                            className="h-6 w-6 text-green-500"
                             fill="currentColor"
                             viewBox="0 0 20 20"
                           >
                             <path
                               fillRule="evenodd"
-                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
                               clipRule="evenodd"
                             />
                           </svg>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-xs">
-                        <p>
-                          large suitcases or similar; log as multiple items if
-                          larger than 30&quot; x 20&quot; x 12&quot;
+                        ) : (
+                          <svg
+                            className="h-6 w-6 text-orange-500"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p
+                          className={`text-sm font-medium ${
+                            isASPCGuaranteed
+                              ? 'text-green-800'
+                              : 'text-orange-800'
+                          }`}
+                        >
+                          {aspcWarningMessage}
                         </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  {/* Mobile info button */}
-                  <div className="block md:hidden">
-                    <button
-                      type="button"
-                      className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        showMobileInfoModal(
-                          'Checked Luggage: large suitcases or similar; log as multiple items if larger than 30" x 20" x 12"',
-                        )
-                      }}
-                    >
-                      <svg
-                        className="h-3 w-3 text-blue-600"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
+                        <div className="mt-2">
+                          <a
+                            href="/aspc-policy"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`inline-flex items-center text-sm font-semibold underline hover:opacity-80 ${
+                              isASPCGuaranteed
+                                ? 'text-green-600 hover:text-green-700'
+                                : 'text-orange-600 hover:text-orange-700'
+                            }`}
+                          >
+                            View ASPC Policy Details
+                            <svg
+                              className="ml-1 h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                              />
+                            </svg>
+                          </a>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setShowASPCWarning(false)}
+                        className={`flex-shrink-0 hover:opacity-80 ${
+                          isASPCGuaranteed
+                            ? 'text-green-400 hover:text-green-600'
+                            : 'text-orange-400 hover:text-orange-600'
+                        }`}
                       >
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </button>
+                        <svg
+                          className="h-5 w-5"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <input
-                  type="number"
-                  value={bag_no_large}
-                  onChange={(e) => setBagNoLarge(Number(e.target.value))}
-                  className="mt-1 w-full rounded border bg-white p-2 text-black"
-                  required
-                />
-              </label>
-            </div>
+                )}
+
+                {/* Opt-in checkbox */}
+                <label className="block rounded-lg bg-gray-100 p-4">
+                  <div className="flex items-start">
+                    <input
+                      type="checkbox"
+                      checked={optInUnmatched}
+                      onChange={(e) => setOptInUnmatched(e.target.checked)}
+                      className="mr-3 mt-1 h-5 w-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                    />
+                    <div>
+                      <strong className="text-gray-900">
+                        Would you like to opt-in to the Unmatched page?
+                      </strong>
+                      <p className="mt-2 text-sm text-gray-700">
+                        If PICKUP is unable to match you through our algorithm,
+                        the Unmatched page will display your name, email, flight
+                        date, and time, so you can try to find others who you
+                        may be able to split a ride with.
+                      </p>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            )}
 
             {/* Dropoff and Budget sliders - commented out for now */}
             {/* 
@@ -1076,137 +1640,88 @@ export default function FlightForm({
             </div>
             */}
 
-            {/* ASPC Warning - Above unmatched checkbox */}
-            {showASPCWarning && (
-              <div
-                className={`mb-4 rounded-xl border-2 p-4 shadow-lg ${
-                  isASPCGuaranteed
-                    ? 'to-emerald-50 border-green-200 bg-gradient-to-r from-green-50'
-                    : 'border-orange-200 bg-gradient-to-r from-orange-50 to-yellow-50'
-                }`}
-              >
-                <div className="flex items-start space-x-3">
-                  <div className="flex-shrink-0">
-                    {isASPCGuaranteed ? (
-                      <svg
-                        className="h-6 w-6 text-green-500"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    ) : (
-                      <svg
-                        className="h-6 w-6 text-orange-500"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p
-                      className={`text-sm font-medium ${
-                        isASPCGuaranteed ? 'text-green-800' : 'text-orange-800'
-                      }`}
-                    >
-                      {aspcWarningMessage}
-                    </p>
-                    <div className="mt-2">
-                      <a
-                        href="/aspc-policy"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`inline-flex items-center text-sm font-semibold underline hover:opacity-80 ${
-                          isASPCGuaranteed
-                            ? 'text-green-600 hover:text-green-700'
-                            : 'text-orange-600 hover:text-orange-700'
-                        }`}
-                      >
-                        View ASPC Policy Details
-                        <svg
-                          className="ml-1 h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                          />
-                        </svg>
-                      </a>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setShowASPCWarning(false)}
-                    className={`flex-shrink-0 hover:opacity-80 ${
-                      isASPCGuaranteed
-                        ? 'text-green-400 hover:text-green-600'
-                        : 'text-orange-400 hover:text-orange-600'
-                    }`}
-                  >
-                    <svg
-                      className="h-5 w-5"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </button>
-                </div>
+            {/* Message display */}
+            {message && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-center">
+                <p className="font-medium text-red-700">⚠️ {message}</p>
               </div>
             )}
 
-            {/* Opt-in checkbox */}
-            <label className="mb-2 mt-4 block rounded bg-gray-100 p-3">
-              <input
-                type="checkbox"
-                checked={optInUnmatched}
-                onChange={(e) => setOptInUnmatched(e.target.checked)}
-                className="mr-2"
-              />
-              <strong>Would you like to opt-in to the Unmatched page?</strong>{' '}
-              <br /> <br />
-              If PICKUP is unable to match you through our algorithm, the
-              Unmatched page will display your name, email, flight date, and
-              time, so you can try to find others who you may be able to split a
-              ride with.
-            </label>
-
-            {/* Mobile Submit Button - Inside form for mobile only */}
-            <div className="block md:hidden">
-              <div className="mt-6 flex flex-col gap-4">
+            {/* Navigation Buttons */}
+            <div className="flex items-center justify-between gap-4 pt-4">
+              {currentStep > 1 ? (
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={goToPreviousStep}
+                  className="flex items-center gap-2 rounded-lg border-2 border-gray-300 bg-white px-6 py-3 font-semibold text-gray-700 transition-colors hover:border-gray-400 hover:bg-gray-50"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                  Back
+                </button>
+              ) : (
+                <a
+                  href="/questionnaires"
+                  className="flex items-center gap-2 rounded-lg border-2 border-gray-300 bg-white px-6 py-3 font-semibold text-gray-700 transition-colors hover:border-gray-400 hover:bg-gray-50"
+                >
+                  Cancel
+                </a>
+              )}
+
+              {currentStep < totalSteps ? (
+                <button
+                  type="button"
+                  onClick={goToNextStep}
+                  disabled={isLoading || isDuplicateError || isPastDeadline}
+                  className={`flex items-center gap-2 rounded-lg px-6 py-3 font-semibold text-white transition-colors ${
+                    isLoading || isDuplicateError || isPastDeadline
+                      ? 'cursor-not-allowed bg-gray-400'
+                      : 'bg-teal-500 hover:bg-teal-600'
+                  }`}
+                >
+                  Next
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => handleSubmit(e as any)}
                   disabled={
                     isLoading ||
                     isSubmitting ||
                     isDuplicateError ||
                     isPastDeadline
                   }
-                  className={`min-h-[48px] w-full touch-manipulation select-none rounded-lg px-6 py-4 text-lg font-semibold text-white ${
+                  className={`rounded-lg px-8 py-3 font-semibold text-white transition-colors ${
                     isLoading ||
                     isSubmitting ||
                     isDuplicateError ||
                     isPastDeadline
                       ? 'cursor-not-allowed bg-gray-400'
-                      : 'bg-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 active:bg-teal-600'
+                      : 'bg-teal-500 hover:bg-teal-600'
                   }`}
                 >
                   {isSubmitting ? (
@@ -1233,98 +1748,13 @@ export default function FlightForm({
                       </svg>
                       Submitting...
                     </span>
-                  ) : isLoading ? (
-                    'Loading...'
                   ) : (
                     submitButtonText
                   )}
                 </button>
-                <div className="flex justify-center">
-                  <RedirectButton label="Cancel" route="/questionnaires" />
-                </div>
-              </div>
-            </div>
-          </form>
-        </div>
-
-        {/* Fixed bottom section outside of scroll area - Desktop only */}
-        <div className="hidden border-t bg-white p-6 md:block">
-          <div className="flex justify-between">
-            <RedirectButton label="Cancel" route="/questionnaires" />
-            <button
-              type="button"
-              onClick={async (e) => {
-                e.preventDefault()
-                const form = document.getElementById(
-                  'flight-form',
-                ) as HTMLFormElement
-                if (form) {
-                  // Use requestSubmit if available (modern browsers)
-                  if (typeof form.requestSubmit === 'function') {
-                    form.requestSubmit()
-                  } else {
-                    // Fallback for older browsers - directly call handleSubmit
-                    await handleSubmit(e as any)
-                  }
-                }
-              }}
-              disabled={
-                isLoading || isSubmitting || isDuplicateError || isPastDeadline
-              }
-              className={`mt-4 rounded-lg px-6 py-3 text-lg font-semibold text-white ${
-                isLoading || isSubmitting || isDuplicateError || isPastDeadline
-                  ? 'cursor-not-allowed bg-gray-400'
-                  : 'bg-teal-500 hover:bg-opacity-80 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2'
-              }`}
-            >
-              {isSubmitting ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg
-                    className="h-5 w-5 animate-spin"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  Submitting...
-                </span>
-              ) : isLoading ? (
-                'Loading...'
-              ) : (
-                submitButtonText
               )}
-            </button>
+            </div>
           </div>
-
-          {/* Only show non-duplicate/non-deadline errors here (those are shown at top after date field) */}
-          {message && !isDuplicateError && !isPastDeadline && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
-              <p className="mb-2 font-medium text-red-700">⚠️ {message}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Mobile message display */}
-        <div className="block md:hidden">
-          {/* Only show non-duplicate/non-deadline errors here (those are shown at top after date field) */}
-          {message && !isDuplicateError && !isPastDeadline && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
-              <p className="mb-2 font-medium text-red-700">⚠️ {message}</p>
-            </div>
-          )}
         </div>
 
         {/* Handle Bag Pop-up */}
@@ -1333,7 +1763,7 @@ export default function FlightForm({
           onConfirm={() => {
             setShowManyBagsModal(false)
             if (pendingSubmit) {
-              actuallySubmitForm(pendingSubmit)
+              actuallySubmitForm()
               setPendingSubmit(null)
             }
           }}
