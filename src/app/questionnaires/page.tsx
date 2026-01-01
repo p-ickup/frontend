@@ -17,6 +17,10 @@ interface MatchForm {
   date: string
   matched: boolean | null
   opt_in: boolean
+  earliest_time: string
+  latest_time: string
+  to_airport: boolean
+  airport: string
 }
 
 export default function Questionnaires() {
@@ -57,6 +61,15 @@ export default function Questionnaires() {
     return `${month}/${day}/${year}`
   }
 
+  // Function to convert 24-hour time to 12-hour format with AM/PM
+  const formatTime12Hour = (time24: string): string => {
+    if (!time24) return ''
+    const [hours, minutes] = time24.split(':').map(Number)
+    const period = hours >= 12 ? 'PM' : 'AM'
+    const hours12 = hours % 12 || 12
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`
+  }
+
   const fetchMatchForms = useCallback(async () => {
     try {
       setLoading(true)
@@ -70,7 +83,9 @@ export default function Questionnaires() {
 
       const { data: matchForms, error } = await supabase
         .from('Flights')
-        .select('flight_id, flight_no, airline_iata, date, matched')
+        .select(
+          'flight_id, flight_no, airline_iata, date, matched, earliest_time, latest_time, to_airport, airport',
+        )
         .eq('user_id', userId)
         .order('date', { ascending: true })
 
@@ -407,8 +422,21 @@ export default function Questionnaires() {
                               </div>
                               <div className="space-y-2">
                                 <p className="text-gray-600">
+                                  <span className="font-semibold">
+                                    Direction:
+                                  </span>{' '}
+                                  {form.to_airport
+                                    ? `To ${form.airport}`
+                                    : 'To Campus'}
+                                </p>
+                                <p className="text-gray-600">
                                   <span className="font-semibold">Date:</span>{' '}
                                   {formatDate(form.date)}
+                                </p>
+                                <p className="text-gray-600">
+                                  <span className="font-semibold">Time:</span>{' '}
+                                  {formatTime12Hour(form.earliest_time)} -{' '}
+                                  {formatTime12Hour(form.latest_time)}
                                 </p>
                                 {!canEdit && (
                                   <p className="text-sm italic text-gray-500">
