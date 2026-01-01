@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import Link from 'next/link'
 import RedirectButton from '@/components/buttons/RedirectButton'
 import SubmitSuccess from '@/components/questionnaires/SubmitSuccess'
 import ManyBagsNotice from '@/components/questionnaires/ManyBagsNotice'
@@ -74,6 +75,7 @@ export default function FlightForm({
   const [optInUnmatched, setOptInUnmatched] = useState(false)
   const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
+  const [isValidationError, setIsValidationError] = useState(false) // true = validation, false = submission error
   const [duplicateErrorMessage, setDuplicateErrorMessage] = useState('')
   const [deadlineErrorMessage, setDeadlineErrorMessage] = useState('')
   const [isDuplicateError, setIsDuplicateError] = useState(false)
@@ -376,21 +378,11 @@ export default function FlightForm({
       e.preventDefault()
     }
 
-    console.log(
-      'handleSubmit called on step:',
-      currentStep,
-      'totalSteps:',
-      totalSteps,
-    )
-
     // Only allow submission on step 4 - prevent any form submission before final step
     if (currentStep !== totalSteps) {
       // Prevent form submission on steps 1-3 (user must click Next button)
-      console.log('Blocking submission - not on final step')
       return
     }
-
-    console.log('Proceeding with form submission on step 4')
 
     // Failsafe: If ref is stuck but state says we're not submitting, reset the ref
     if (isSubmittingRef.current && !isSubmitting) {
@@ -400,6 +392,7 @@ export default function FlightForm({
     // Prevent submission while loading data
     if (isLoading) {
       setMessage('Please wait while data is loading...')
+      setIsValidationError(true)
       return
     }
 
@@ -407,11 +400,13 @@ export default function FlightForm({
     const profileValidation = await validateUserProfile()
     if (!profileValidation.isValid) {
       setMessage(`${profileValidation.message}`)
+      setIsValidationError(true)
       return
     }
 
     if (!airline_iata || !flight_no || !earliestArrival || !latestArrival) {
       setMessage('Missing information!')
+      setIsValidationError(true)
       return
     }
 
@@ -426,10 +421,12 @@ export default function FlightForm({
 
     if (!airlineValidation.isValid) {
       setMessage(airlineValidation.errorMessage!)
+      setIsValidationError(true)
       return
     }
     if (!flightValidation.isValid) {
       setMessage(flightValidation.errorMessage!)
+      setIsValidationError(true)
       return
     }
 
@@ -443,10 +440,10 @@ export default function FlightForm({
 
     if (bag_no_personal < 0 || bag_no < 0 || bag_no_large < 0) {
       setMessage('Please enter a valid number of bags')
+      setIsValidationError(true)
       return
     }
 
-    console.log('About to call actuallySubmitForm')
     await actuallySubmitForm()
   }
 
@@ -483,6 +480,7 @@ export default function FlightForm({
 
       if (authError || !user) {
         setMessage('Error: You must be logged in to submit flight details!')
+        setIsValidationError(true)
         isSubmittingRef.current = false
         setIsSubmitting(false)
         return
@@ -490,6 +488,7 @@ export default function FlightForm({
 
       if (!airline_iata || !flight_no || !earliestArrival || !latestArrival) {
         setMessage('Missing information!')
+        setIsValidationError(true)
         isSubmittingRef.current = false
         setIsSubmitting(false)
         return
@@ -547,10 +546,13 @@ export default function FlightForm({
           setMessage(
             `You already have a ${tripType ? 'departure to' : 'return from'} ${airport} on ${formattedDate}. Please edit your existing flight instead.`,
           )
+          setIsValidationError(true)
           setIsDuplicateError(true)
           window.scrollTo({ top: 0, behavior: 'smooth' })
         } else {
+          // Database/submission error - use bold red styling
           setMessage(`Error: ${error.message}`)
+          setIsValidationError(false)
         }
 
         isSubmittingRef.current = false
@@ -568,7 +570,9 @@ export default function FlightForm({
       }
     } catch (error) {
       console.error('Unexpected error:', error)
+      // Unexpected runtime errors are submission failures (not validation)
       setMessage('An unexpected error occurred. Please try again.')
+      setIsValidationError(false)
       isSubmittingRef.current = false
       setIsSubmitting(false)
     }
@@ -632,48 +636,58 @@ export default function FlightForm({
       case 1: // Trip direction
         if (!airport) {
           setMessage('Please select an airport')
+          setIsValidationError(true)
           return false
         }
         return true
       case 2: // Date, times, and flight details
         if (!dateOfFlight) {
           setMessage('Please enter your flight date')
+          setIsValidationError(true)
           return false
         }
         if (isPastDeadline) {
           setMessage('The deadline for this date has passed')
+          setIsValidationError(true)
           return false
         }
         if (isDuplicateError) {
           setMessage('You already have a flight on this date')
+          setIsValidationError(true)
           return false
         }
         if (!earliestArrival || !latestArrival) {
           setMessage('Please enter your time range')
+          setIsValidationError(true)
           return false
         }
         if (!airline_iata || !flight_no) {
           setMessage('Please enter your flight information')
+          setIsValidationError(true)
           return false
         }
         const airlineValidation = validateAirlineCode(airline_iata)
         const flightValidation = validateFlightNumber(flight_no)
         if (!airlineValidation.isValid) {
           setMessage(airlineValidation.errorMessage!)
+          setIsValidationError(true)
           return false
         }
         if (!flightValidation.isValid) {
           setMessage(flightValidation.errorMessage!)
+          setIsValidationError(true)
           return false
         }
         if (!terminal) {
           setMessage('Please enter your terminal')
+          setIsValidationError(true)
           return false
         }
         return true
       case 3: // Luggage
         if (bag_no_personal < 0 || bag_no < 0 || bag_no_large < 0) {
           setMessage('Please enter valid luggage counts (0 or more)')
+          setIsValidationError(true)
           return false
         }
         return true
@@ -1438,14 +1452,14 @@ export default function FlightForm({
                 {showASPCWarning && (
                   <div
                     className={`rounded-xl border-2 p-4 shadow-lg ${
-                      isASPCGuaranteed
+                      aspcWarningMessage.includes('✅')
                         ? 'to-emerald-50 border-green-200 bg-gradient-to-r from-green-50'
                         : 'border-orange-200 bg-gradient-to-r from-orange-50 to-yellow-50'
                     }`}
                   >
                     <div className="flex items-start space-x-3">
                       <div className="flex-shrink-0">
-                        {isASPCGuaranteed ? (
+                        {aspcWarningMessage.includes('✅') ? (
                           <svg
                             className="h-6 w-6 text-green-500"
                             fill="currentColor"
@@ -1474,7 +1488,7 @@ export default function FlightForm({
                       <div className="flex-1">
                         <p
                           className={`text-sm font-medium ${
-                            isASPCGuaranteed
+                            aspcWarningMessage.includes('✅')
                               ? 'text-green-800'
                               : 'text-orange-800'
                           }`}
@@ -1487,7 +1501,7 @@ export default function FlightForm({
                             target="_blank"
                             rel="noopener noreferrer"
                             className={`inline-flex items-center text-sm font-semibold underline hover:opacity-80 ${
-                              isASPCGuaranteed
+                              aspcWarningMessage.includes('✅')
                                 ? 'text-green-600 hover:text-green-700'
                                 : 'text-orange-600 hover:text-orange-700'
                             }`}
@@ -1512,7 +1526,7 @@ export default function FlightForm({
                       <button
                         onClick={() => setShowASPCWarning(false)}
                         className={`flex-shrink-0 hover:opacity-80 ${
-                          isASPCGuaranteed
+                          aspcWarningMessage.includes('✅')
                             ? 'text-green-400 hover:text-green-600'
                             : 'text-orange-400 hover:text-orange-600'
                         }`}
@@ -1586,8 +1600,8 @@ export default function FlightForm({
                       </TooltipContent>
                     </Tooltip>
                   </div>
-                  <div className="block md:hidden">
-                    <button
+            <div className="block md:hidden">
+                <button
                       type="button"
                       className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
                       onClick={(e) => {
@@ -1608,9 +1622,9 @@ export default function FlightForm({
                           clipRule="evenodd"
                         />
                       </svg>
-                    </button>
-                  </div>
+                </button>
                 </div>
+              </div>
                 <strong>{dropoff} mi</strong>
                 <input
                   type="range"
@@ -1642,9 +1656,26 @@ export default function FlightForm({
 
             {/* Message display */}
             {message && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-center">
-                <p className="font-medium text-red-700">⚠️ {message}</p>
-              </div>
+              <>
+                {isValidationError ? (
+                  /* Validation Error - Lighter yellow/orange style */
+                  <div className="rounded-lg border-2 border-yellow-400 bg-yellow-50 p-4 text-center">
+                    <p className="font-medium text-yellow-800">⚠️ {message}</p>
+                  </div>
+                ) : (
+                  /* Submission Error - Bold red style */
+                  <div className="rounded-lg border-2 border-red-400 bg-red-100 p-6 text-center shadow-lg">
+                    <p className="mb-2 text-lg font-bold text-red-800">
+                      ⚠️ Submission Failed
+                    </p>
+                    <p className="font-medium text-red-700">{message}</p>
+                    <p className="mt-2 text-sm text-red-600">
+                      Please try again. If the problem persists, contact
+                      support.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Navigation Buttons */}
@@ -1671,12 +1702,12 @@ export default function FlightForm({
                   Back
                 </button>
               ) : (
-                <a
+                <Link
                   href="/questionnaires"
                   className="flex items-center gap-2 rounded-lg border-2 border-gray-300 bg-white px-6 py-3 font-semibold text-gray-700 transition-colors hover:border-gray-400 hover:bg-gray-50"
                 >
                   Cancel
-                </a>
+                </Link>
               )}
 
               {currentStep < totalSteps ? (
