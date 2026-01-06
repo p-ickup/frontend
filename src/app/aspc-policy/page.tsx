@@ -41,115 +41,157 @@ export default function ASPCPolicy() {
               </svg>
             </div>
             <h1 className="mb-4 text-4xl font-bold text-gray-900">
-              ASPC Subsidy Policy
+              ASPC RideLink Policy
             </h1>
             <p className="text-xl text-gray-600">
-              Fall 2025 Operational Guidelines
+              2025-2026 Operational Guidelines
             </p>
           </div>
 
           {/* Policy Content */}
           <div className="rounded-3xl bg-white/80 p-8 shadow-2xl backdrop-blur-sm">
+            {/* Contact Info */}
+            <div className="mb-8 rounded-xl bg-gradient-to-r from-teal-50 to-blue-50 p-6">
+              <p className="text-center text-gray-700">
+                <strong>Questions?</strong> Contact{' '}
+                <a
+                  href="mailto:ridelink@aspc.pomona.edu"
+                  className="font-semibold text-teal-700 hover:underline"
+                >
+                  ridelink@aspc.pomona.edu
+                </a>
+              </p>
+            </div>
+
             {/* Operational Periods */}
             <div className="mb-8">
               <h2 className="mb-4 text-2xl font-bold text-gray-900">
-                📅 Fall 2025 Operational Periods
+                📅 Operational Periods
               </h2>
-              <div className="rounded-xl bg-gradient-to-r from-teal-50 to-blue-50 p-6">
-                <h3 className="mb-3 text-lg font-semibold text-gray-800">
-                  Fall Break - October 11, 13, 14 (ONT Only)
+
+              {/* Thanksgiving Break */}
+              <div className="mb-6 rounded-xl bg-gradient-to-r from-orange-50 to-amber-50 p-6">
+                <h3 className="mb-3 text-xl font-semibold text-gray-800">
+                  🦃 Thanksgiving Break
                 </h3>
-                <p className="text-gray-700">
-                  ASPC-subsidized rides are only available on these specific
-                  dates.
-                </p>
-              </div>
-            </div>
-
-            {/* Time Windows */}
-            <div className="mb-8">
-              <h2 className="mb-4 text-2xl font-bold text-gray-900">
-                ⏰ Guaranteed Subsidy Time Windows
-              </h2>
-
-              <div className="grid gap-6 md:grid-cols-2">
-                {/* Outbound */}
-                <div className="to-emerald-50 rounded-xl bg-gradient-to-br from-green-50 p-6">
-                  <h3 className="mb-3 text-lg font-semibold text-gray-800">
-                    🛫 Outbound (To Airport)
-                  </h3>
-                  <div className="space-y-2">
+                <div className="space-y-3">
+                  <div>
+                    <p className="font-semibold text-gray-800">
+                      Deadline to request:
+                    </p>
                     <p className="text-gray-700">
-                      <span className="font-semibold">Guaranteed:</span> 6:00 AM
-                      - 6:00 PM PST
+                      Friday, November 14, 2025 at 11:59 PM PST
                     </p>
                   </div>
-                </div>
-
-                {/* Inbound */}
-                <div className="rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 p-6">
-                  <h3 className="mb-3 text-lg font-semibold text-gray-800">
-                    🛬 Inbound (Return to Campus)
-                  </h3>
-                  <div className="space-y-2">
-                    <p className="text-gray-700">
-                      <span className="font-semibold">Guaranteed:</span> 10:00
-                      AM - 10:00 PM PST
+                  <div>
+                    <p className="font-semibold text-gray-800">
+                      Service Window:
                     </p>
+                    <ul className="ml-5 list-disc space-y-1 text-gray-700">
+                      <li>Departures: November 21-26</li>
+                      <li>Returns: November 29-December 1</li>
+                    </ul>
                   </div>
                 </div>
               </div>
+
+              {/* Winter Break Departure */}
+              <div className="mb-6 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 p-6">
+                <h3 className="mb-3 text-xl font-semibold text-gray-800">
+                  ❄️ Winter Break Departure
+                </h3>
+                <div className="space-y-3">
+                  <div>
+                    <p className="font-semibold text-gray-800">
+                      Deadline to request:
+                    </p>
+                    <p className="text-gray-700">
+                      Wednesday, December 3, 2025 at 11:59 PM PST
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-800">
+                      Service Window:
+                    </p>
+                    <p className="text-gray-700">December 9-13</p>
+                  </div>
+                  <div className="rounded-lg bg-yellow-100 p-3">
+                    <p className="text-sm font-semibold text-yellow-900">
+                      ⚠️ Pomona College dorms and facilities close at 12:00 PM
+                      on December 13.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Winter Break Return */}
+              <div className="rounded-xl bg-gradient-to-r from-teal-50 to-cyan-50 p-6">
+                <h3 className="mb-3 text-xl font-semibold text-gray-800">
+                  🎉 Winter Break Return
+                </h3>
+                <div className="space-y-3">
+                  <div>
+                    <p className="font-semibold text-gray-800">
+                      Deadline to request:
+                    </p>
+                    <p className="text-gray-700">
+                      Friday, January 9, 2026 at 11:59 PM PST
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-800">
+                      Service Window:
+                    </p>
+                    <p className="text-gray-700">January 17-21</p>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* After Hours Policy */}
+            {/* How Matching Works */}
             <div className="mb-8">
               <h2 className="mb-4 text-2xl font-bold text-gray-900">
-                🌙 After Hours Requests
+                🤝 How Matching Works
               </h2>
-              <div className="rounded-xl bg-gradient-to-r from-yellow-50 to-orange-50 p-6">
+              <div className="rounded-xl bg-gradient-to-r from-purple-50 to-pink-50 p-6">
                 <p className="mb-4 text-gray-700">
-                  If your flight falls outside guaranteed hours but is still on
-                  an operational day, or ±2 days from our coverage, we will
-                  cover it if:
+                  RideLink covers rides only when groups can be formed:{' '}
+                  <span className="font-bold">2+ riders to ONT</span> or{' '}
+                  <span className="font-bold">3+ riders to LAX</span>.
                 </p>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-lg bg-white/50 p-4">
-                    <h4 className="font-semibold text-gray-800">ONT Airport</h4>
-                    <p className="text-gray-700">
-                      At least <span className="font-bold">2 riders</span> must
-                      be grouped
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-white/50 p-4">
-                    <h4 className="font-semibold text-gray-800">LAX Airport</h4>
-                    <p className="text-gray-700">
-                      At least <span className="font-bold">3 riders</span> must
-                      be grouped
-                    </p>
-                  </div>
+                <div className="rounded-lg bg-white/70 p-4">
+                  <p className="mb-3 font-semibold text-gray-800">
+                    💡 Tips to Increase Your Matching Odds:
+                  </p>
+                  <ul className="space-y-2 text-gray-700">
+                    <li className="flex items-start">
+                      <span className="mr-2 text-teal-500">•</span>
+                      <span>
+                        <strong>Travel during common times:</strong> Daytime
+                        hours and within ±1 day of the start or end of the break
+                      </span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="mr-2 text-teal-500">•</span>
+                      <span>
+                        <strong>Be flexible:</strong> Provide a wide range of
+                        availability and be willing to arrive at the airport
+                        earlier than necessary
+                      </span>
+                    </li>
+                    <li className="flex items-start">
+                      <span className="mr-2 text-teal-500">•</span>
+                      <span>
+                        <strong>Encourage friends:</strong> More riders = more
+                        matches! Get your friends to sign up
+                      </span>
+                    </li>
+                  </ul>
                 </div>
                 <p className="mt-4 text-sm text-gray-600">
-                  If grouping cannot be achieved, the ride will not be
-                  subsidized. PICKUP will notify you at least 5 days before
-                  travel. Students may still use P-ICKUP.com to coordinate
-                  non-subsidized rides and split costs among themselves.
-                </p>
-              </div>
-            </div>
-
-            {/* Non-Covered Days */}
-            <div className="mb-8">
-              <h2 className="mb-4 text-2xl font-bold text-gray-900">
-                ❌ Non-Covered Days
-              </h2>
-              <div className="rounded-xl bg-gradient-to-r from-red-50 to-pink-50 p-6">
-                <p className="text-gray-700">
-                  Flights outside operational periods (more than ±2 days from
-                  the published schedule) are not eligible for subsidy.
-                </p>
-                <p className="mt-2 text-gray-700">
-                  Students may still use P-ICKUP.com to coordinate
-                  non-subsidized rides and split costs among themselves.
+                  If a sufficient group cannot be formed, RideLink will be
+                  unable to cover the ride. However, you may still use PICKUP to
+                  coordinate non-subsidized carpools.
                 </p>
               </div>
             </div>

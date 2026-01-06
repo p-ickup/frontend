@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import RedirectButton from '@/components/buttons/RedirectButton'
 import { createBrowserClient } from '@/utils/supabase'
 import Image from 'next/image'
@@ -8,14 +8,19 @@ import ConfirmCancel from '@/components/questionnaires/ConfirmCancel'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAuth } from '@/hooks/useAuth'
 import EmptyState from '@/components/results/EmptyState'
+import { canEditFlight } from '@/utils/flightValidation'
 
 interface MatchForm {
   flight_id: string
   flight_no: string
   airline_iata: string
   date: string
-  matched: boolean
+  matched: boolean | null
   opt_in: boolean
+  earliest_time: string
+  latest_time: string
+  to_airport: boolean
+  airport: string
 }
 
 export default function Questionnaires() {
@@ -25,6 +30,8 @@ export default function Questionnaires() {
   const [message, setMessage] = useState('')
   const [modalFlightId, setModalFlightId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [profileBannerDismissed, setProfileBannerDismissed] = useState(false)
+
   // Function to format date from yyyy-mm-dd to mm/dd/yy
   const formatDate = (dateString: string) => {
     if (!dateString) return ''
@@ -54,15 +61,16 @@ export default function Questionnaires() {
     return `${month}/${day}/${year}`
   }
 
-  useEffect(() => {
-    if (user) {
-      void fetchMatchForms()
-    } else {
-      setLoading(false)
-    }
-  }, [user])
+  // Function to convert 24-hour time to 12-hour format with AM/PM
+  const formatTime12Hour = (time24: string): string => {
+    if (!time24) return ''
+    const [hours, minutes] = time24.split(':').map(Number)
+    const period = hours >= 12 ? 'PM' : 'AM'
+    const hours12 = hours % 12 || 12
+    return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`
+  }
 
-  const fetchMatchForms = async () => {
+  const fetchMatchForms = useCallback(async () => {
     try {
       setLoading(true)
 
@@ -75,7 +83,9 @@ export default function Questionnaires() {
 
       const { data: matchForms, error } = await supabase
         .from('Flights')
-        .select('flight_id, flight_no, airline_iata, date, matched')
+        .select(
+          'flight_id, flight_no, airline_iata, date, matched, earliest_time, latest_time, to_airport, airport',
+        )
         .eq('user_id', userId)
         .order('date', { ascending: true })
 
@@ -95,7 +105,15 @@ export default function Questionnaires() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user, supabase])
+
+  useEffect(() => {
+    if (user) {
+      void fetchMatchForms()
+    } else {
+      setLoading(false)
+    }
+  }, [user, fetchMatchForms])
 
   const handleDelete = (flightId: string) => {
     setModalFlightId(flightId) // ✅ Set the specific flight ID
@@ -123,47 +141,26 @@ export default function Questionnaires() {
     setModalFlightId(null) // ✅ Close modal after deletion
   }
 
-  // variables dealing with showing specific forms
-  // COMMENTED OUT - ORIGINAL LOGIC (3-day threshold)
-  // const today = new Date()
-  // today.setHours(0, 0, 0, 0) // Normalize to midnight to avoid timezone issues
-  // const threeDaysFromNow = new Date(today)
-  // threeDaysFromNow.setDate(today.getDate() + 3) // Add 3 days
-
-  // const editableUnmatched = matchForms.filter((form) => {
-  //   const formDate = new Date(form.date)
-  //   formDate.setHours(0, 0, 0, 0)
-  //   return form.matched === false && formDate >= threeDaysFromNow
-  // })
-
-  // const noneditableUnmatched = matchForms.filter((form) => {
-  //   const formDate = new Date(form.date)
-  //   formDate.setHours(0, 0, 0, 0)
-  //   return (
-  //     form.matched == false && formDate < threeDaysFromNow && formDate >= today
-  //   )
-  // })
-
-  // NEW LOGIC - Allow modification of any current flight forms until 10/4/2025
+  // Filter flights by date and matching status
   const today = new Date()
   today.setHours(0, 0, 0, 0) // Normalize to midnight to avoid timezone issues
-  const cutoffDate = new Date('2025-10-04') // October 4, 2025
-  cutoffDate.setHours(23, 59, 59, 999) // End of day
 
-  // All unmatched forms are editable if today is before the cutoff date
-  // After the cutoff date, no forms are editable regardless of flight date
-  const isBeforeCutoff = today <= cutoffDate
-
-  const editableUnmatched = matchForms.filter((form) => {
+  // Filter out flights that have already happened
+  const upcomingForms = matchForms.filter((form) => {
     const formDate = new Date(form.date)
     formDate.setHours(0, 0, 0, 0)
-    return form.matched === false && isBeforeCutoff && formDate >= today
+    return formDate >= today
   })
 
-  const noneditableUnmatched = matchForms.filter((form) => {
-    const formDate = new Date(form.date)
-    formDate.setHours(0, 0, 0, 0)
-    return form.matched === false && (!isBeforeCutoff || formDate < today)
+  // Upcoming forms: all flights where matching hasn't been calculated yet (matched === null)
+  // Show all of them, but disable edit/delete buttons if past deadline
+  const upcomingUnmatchedForms = upcomingForms.filter((form) => {
+    return form.matched === null
+  })
+
+  // Unmatched forms: upcoming flights where matching was calculated but no match was found (matched === false)
+  const unmatchedForms = upcomingForms.filter((form) => {
+    return form.matched === false
   })
 
   if (!isAuthenticated) {
@@ -276,6 +273,65 @@ export default function Questionnaires() {
           </div>
         </div>
 
+        {/* Profile Update Banner */}
+        <div className="relative mx-auto mb-6 max-w-4xl px-6">
+          {!profileBannerDismissed && (
+            <div className="relative rounded-xl border border-teal-200 bg-teal-50 p-4 shadow-sm">
+              <button
+                onClick={() => setProfileBannerDismissed(true)}
+                className="absolute right-3 top-3 text-teal-600 transition-colors hover:text-teal-800"
+                aria-label="Dismiss banner"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+              <div className="flex items-start gap-3 pr-8">
+                <div className="hidden flex-shrink-0 pt-0.5 sm:block">
+                  <svg
+                    className="h-5 w-5 text-teal-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-teal-900">
+                    📧 Update Your Contact Info & Get Text Notifications
+                  </h3>
+                  <p className="mt-1 text-sm text-teal-800">
+                    Make sure your preferred email is up to date and opt in to
+                    receive important text updates about your rides from ASPC.
+                  </p>
+                  <a
+                    href="/profile"
+                    className="mt-3 inline-block w-full rounded-lg bg-teal-600 px-4 py-2 text-center text-sm font-medium text-white transition-colors hover:bg-teal-700 sm:w-auto"
+                  >
+                    Update Profile
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Action Buttons */}
         <div className="relative mb-8 flex flex-col items-center gap-4">
           <div className="flex flex-wrap justify-center gap-4">
@@ -287,11 +343,7 @@ export default function Questionnaires() {
         {/* Content Section */}
         <div className="relative flex-1 px-6 pb-8">
           <div className="mx-auto max-w-4xl">
-            <div className="mb-8 text-center">
-              <h2 className="text-2xl font-bold text-gray-900">
-                Recent Match Forms
-              </h2>
-            </div>
+            <div className="mb-8 text-center"></div>
 
             {message && (
               <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-center">
@@ -299,8 +351,151 @@ export default function Questionnaires() {
               </div>
             )}
 
+            {/* Upcoming Forms Section */}
+            <div className="mb-8">
+              <div className="mb-4 text-center">
+                <h3 className="text-xl font-semibold text-gray-800">
+                  📝 Your Upcoming Flights
+                </h3>
+                <p className="text-gray-600">
+                  {upcomingUnmatchedForms.length > 0
+                    ? 'Flights awaiting match results'
+                    : 'No upcoming flights - check deadlines for each service period'}
+                </p>
+              </div>
+
+              {upcomingUnmatchedForms.length > 0 ? (
+                <ScrollArea className="h-[50vh]">
+                  <div className="space-y-4 pr-4">
+                    {upcomingUnmatchedForms.map((form) => {
+                      const canEdit = canEditFlight(form.date)
+                      return (
+                        <div
+                          key={form.flight_id}
+                          className="group relative rounded-2xl border border-gray-200 bg-white/80 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="mb-3 flex items-center space-x-2">
+                                <div
+                                  className={`flex h-8 w-8 items-center justify-center rounded-full ${canEdit ? 'bg-teal-100' : 'bg-gray-100'}`}
+                                >
+                                  {canEdit ? (
+                                    <svg
+                                      className="h-4 w-4 text-teal-600"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                                      />
+                                    </svg>
+                                  ) : (
+                                    <svg
+                                      className="h-4 w-4 text-gray-500"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                                      />
+                                    </svg>
+                                  )}
+                                </div>
+                                <h4 className="text-lg font-semibold text-gray-800">
+                                  Flight {form.airline_iata}
+                                  {form.flight_no}
+                                </h4>
+                                {!canEdit && (
+                                  <span className="rounded-full bg-gray-200 px-2 py-1 text-xs font-medium text-gray-600">
+                                    Locked
+                                  </span>
+                                )}
+                              </div>
+                              <div className="space-y-2">
+                                <p className="text-gray-600">
+                                  <span className="font-semibold">
+                                    Direction:
+                                  </span>{' '}
+                                  {form.to_airport
+                                    ? `To ${form.airport}`
+                                    : 'To Campus'}
+                                </p>
+                                <p className="text-gray-600">
+                                  <span className="font-semibold">Date:</span>{' '}
+                                  {formatDate(form.date)}
+                                </p>
+                                <p className="text-gray-600">
+                                  <span className="font-semibold">Time:</span>{' '}
+                                  {formatTime12Hour(form.earliest_time)} -{' '}
+                                  {formatTime12Hour(form.latest_time)}
+                                </p>
+                                {!canEdit && (
+                                  <p className="text-sm italic text-gray-500">
+                                    Deadline passed - awaiting match results
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col gap-2 md:flex-row">
+                              {canEdit ? (
+                                <>
+                                  <a
+                                    href={`/editForm/${form.flight_id}`}
+                                    className="rounded-lg bg-teal-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-600"
+                                  >
+                                    Edit
+                                  </a>
+                                  <button
+                                    onClick={() => handleDelete(form.flight_id)}
+                                    className="rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-600"
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    disabled
+                                    className="cursor-not-allowed rounded-lg bg-gray-300 px-4 py-2 text-sm font-semibold text-gray-500"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    disabled
+                                    className="cursor-not-allowed rounded-lg bg-gray-300 px-4 py-2 text-sm font-semibold text-gray-500"
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <div className="rounded-2xl border border-gray-200 bg-white/80 p-8 text-center shadow-lg">
+                  <p className="text-gray-600">
+                    No upcoming flights. Request a match to get started!
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Unmatched Forms Section */}
-            {noneditableUnmatched.length > 0 && (
+            {unmatchedForms.length > 0 && (
               <div className="mb-8">
                 <div className="mb-4 text-center">
                   <h3 className="text-xl font-semibold text-gray-800">
@@ -311,7 +506,7 @@ export default function Questionnaires() {
                   </p>
                 </div>
                 <div className="space-y-4">
-                  {noneditableUnmatched.map((form) => (
+                  {unmatchedForms.map((form) => (
                     <div
                       key={form.flight_id}
                       className="group relative rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-red-50 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 hover:shadow-xl"
@@ -363,110 +558,6 @@ export default function Questionnaires() {
                 </div>
               </div>
             )}
-
-            {/* Editable Forms Section */}
-            <div className="mb-8">
-              <div className="mb-4 text-center">
-                <h3 className="text-xl font-semibold text-gray-800">
-                  📝 Editable Forms
-                </h3>
-                <p className="text-gray-600">
-                  Forms you can still modify (until 10/4/2025)
-                </p>
-              </div>
-
-              {editableUnmatched.length > 0 ? (
-                <ScrollArea className="h-[50vh]">
-                  <div className="space-y-4 pr-4">
-                    {editableUnmatched.map((form) => (
-                      <div
-                        key={form.flight_id}
-                        className="group relative rounded-2xl border border-gray-200 bg-white/80 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="mb-3 flex items-center space-x-2">
-                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100">
-                                <svg
-                                  className="h-4 w-4 text-teal-600"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                                  />
-                                </svg>
-                              </div>
-                              <h4 className="text-lg font-semibold text-gray-800">
-                                Flight Request
-                              </h4>
-                            </div>
-                            <div className="space-y-2 text-gray-700">
-                              <p>
-                                <span className="font-medium">Flight:</span>{' '}
-                                {form.airline_iata} {form.flight_no}
-                              </p>
-                              <p>
-                                <span className="font-medium">Date:</span>{' '}
-                                {formatDate(form.date)}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="ml-4 flex items-center space-x-2">
-                            <RedirectButton
-                              label="Edit"
-                              route={`/editForm/${form.flight_id}`}
-                              color="bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700"
-                              size="px-4 py-2 text-sm font-medium"
-                            />
-                            <button
-                              onClick={() => handleDelete(form.flight_id)}
-                              className="flex items-center justify-center rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
-                            >
-                              <Image
-                                src="/images/trashIcon.webp"
-                                alt="Delete Form"
-                                width={20}
-                                height={20}
-                                className="object-contain"
-                              />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              ) : (
-                <div className="rounded-2xl bg-white/80 p-8 text-center shadow-lg backdrop-blur-sm">
-                  <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
-                    <svg
-                      className="h-8 w-8 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
-                    </svg>
-                  </div>
-                  <h3 className="mb-2 text-lg font-semibold text-gray-800">
-                    No Forms Yet
-                  </h3>
-                  <p className="text-gray-600">
-                    Create your first flight request to get started!
-                  </p>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>
