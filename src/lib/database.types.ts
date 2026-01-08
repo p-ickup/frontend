@@ -46,6 +46,7 @@ export type Database = {
           earliest_time: string
           latest_time: string
           date: string
+          latest_date: string
           to_airport: boolean
           terminal: string
           matched: boolean | null

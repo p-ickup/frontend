@@ -36,6 +36,7 @@ export interface FlightData {
   airline_iata: string
   flight_no: string
   dateOfFlight: string
+  latestDate: string // Latest date for overnight time ranges
   bag_no_personal: number
   bag_no: number
   bag_no_large: number
@@ -64,7 +65,8 @@ export default function FlightForm({
   const [flight_no, setFlightNumber] = useState('')
   const [airline_iata, setAirlineIata] = useState('')
   const [flightValidationError, setFlightValidationError] = useState('')
-  const [dateOfFlight, setDateOfFlight] = useState('')
+  const [dateOfFlight, setDateOfFlight] = useState('') // Earliest date
+  const [latestDate, setLatestDate] = useState('') // Latest date (for overnight ranges)
   const [bag_no_personal, setBagNoPersonal] = useState(0)
   const [bag_no, setBagNo] = useState(0)
   const [bag_no_large, setBagNoLarge] = useState(0)
@@ -86,7 +88,7 @@ export default function FlightForm({
 
   // Multi-page wizard state
   const [currentStep, setCurrentStep] = useState(1)
-  const totalSteps = 4
+  const totalSteps = 5 // Updated to 5 steps: 1=Direction/Airport, 2=Date/Time, 3=Flight Details, 4=Luggage, 5=Review
 
   // Use ref for immediate submission lock (prevents race conditions)
   const isSubmittingRef = useRef(false)
@@ -314,7 +316,7 @@ export default function FlightForm({
         const { data, error } = await supabase
           .from('Flights')
           .select(
-            'flight_id, flight_no, airline_iata, date, matched, to_airport, airport, bag_no_personal, bag_no, bag_no_large, earliest_time, latest_time, terminal',
+            'flight_id, flight_no, airline_iata, date, latest_date, matched, to_airport, airport, bag_no_personal, bag_no, bag_no_large, earliest_time, latest_time, terminal',
           )
           .eq('flight_id', flightId)
           .single()
@@ -331,6 +333,7 @@ export default function FlightForm({
           setAirlineIata(data.airline_iata)
           setFlightNumber(String(data.flight_no))
           setDateOfFlight(data.date)
+          setLatestDate(data.latest_date || data.date) // Use latest_date from DB, fallback to date if not set
           setBagNoPersonal(data.bag_no_personal || 0)
           setBagNo(data.bag_no || 0)
           setBagNoLarge(data.bag_no_large || 0)
@@ -503,6 +506,7 @@ export default function FlightForm({
         flight_no: flight_no,
         airline_iata: airline_iata,
         date: dateOfFlight,
+        latest_date: latestDate, // Store the latest date for overnight ranges
         bag_no_personal: bag_no_personal,
         bag_no: bag_no,
         bag_no_large: bag_no_large,
@@ -624,6 +628,24 @@ export default function FlightForm({
     return hours + minutes / 60
   }
 
+  // Helper function to calculate time range duration with dates
+  const calculateTimeRangeWithDates = (): string => {
+    if (!dateOfFlight || !latestDate || !earliestArrival || !latestArrival)
+      return '0.0'
+
+    // Create date objects
+    const earliestDateTime = new Date(`${dateOfFlight}T${earliestArrival}:00`)
+    const latestDateTime = new Date(`${latestDate}T${latestArrival}:00`)
+
+    // Calculate difference in milliseconds
+    const diffMs = latestDateTime.getTime() - earliestDateTime.getTime()
+
+    // Convert to hours
+    const diffHours = diffMs / (1000 * 60 * 60)
+
+    return diffHours.toFixed(1)
+  }
+
   // Helper function to convert 24-hour time to 12-hour format with AM/PM
   const formatTime12Hour = (time24: string): string => {
     if (!time24) return ''
@@ -663,9 +685,14 @@ export default function FlightForm({
           return false
         }
         return true
-      case 2: // Date, times, and flight details
+      case 2: // Date & Time only
         if (!dateOfFlight) {
-          setMessage('Please enter your flight date')
+          setMessage('Please enter your earliest date')
+          setIsValidationError(true)
+          return false
+        }
+        if (!latestDate) {
+          setMessage('Please enter your latest date')
           setIsValidationError(true)
           return false
         }
@@ -680,10 +707,12 @@ export default function FlightForm({
           return false
         }
         if (!earliestArrival || !latestArrival) {
-          setMessage('Please enter your time range')
+          setMessage('Please enter your complete time range')
           setIsValidationError(true)
           return false
         }
+        return true
+      case 3: // Flight details
         if (!airline_iata || !flight_no) {
           setMessage('Please enter your flight information')
           setIsValidationError(true)
@@ -707,14 +736,14 @@ export default function FlightForm({
           return false
         }
         return true
-      case 3: // Luggage
+      case 4: // Luggage
         if (bag_no_personal < 0 || bag_no < 0 || bag_no_large < 0) {
           setMessage('Please enter valid luggage counts (0 or more)')
           setIsValidationError(true)
           return false
         }
         return true
-      case 4: // Review - no validation needed
+      case 5: // Review - no validation needed
         return true
       default:
         return true
@@ -726,10 +755,12 @@ export default function FlightForm({
       case 1:
         return 'Trip Direction & Airport'
       case 2:
-        return 'Flight Details'
+        return 'Date & Time Range'
       case 3:
-        return 'Luggage Information'
+        return 'Flight Details'
       case 4:
+        return 'Luggage Information'
+      case 5:
         return 'Review & Submit'
       default:
         return ''
@@ -790,9 +821,9 @@ export default function FlightForm({
 
         {/* Progress indicator */}
         <div className="border-b bg-white px-4 py-6 md:px-8">
-          <div className="mb-4 flex items-center justify-between">
-            {[1, 2, 3, 4].map((step) => (
-              <div key={step} className="flex flex-1 items-center">
+          <div className="mb-4 flex items-center justify-center gap-2">
+            {[1, 2, 3, 4, 5].map((step) => (
+              <div key={step} className="flex items-center">
                 <div
                   className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border-2 font-semibold transition-colors ${
                     step < currentStep
@@ -820,9 +851,9 @@ export default function FlightForm({
                     step
                   )}
                 </div>
-                {step < 4 && (
+                {step < 5 && (
                   <div
-                    className={`mx-2 h-1 flex-1 transition-colors ${
+                    className={`h-1 w-12 transition-colors md:w-16 ${
                       step < currentStep ? 'bg-teal-500' : 'bg-gray-300'
                     }`}
                   ></div>
@@ -947,134 +978,123 @@ export default function FlightForm({
               </div>
             )}
 
-            {/* Step 2: Flight Details (Date, Times, Flight Info) */}
+            {/* Step 2: Date and Time Range */}
             {currentStep === 2 && (
               <div className="space-y-6">
                 <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
-                  <p className="mb-2 font-medium">Flight Information:</p>
-                  <p>
-                    Enter your flight date, time range when you can{' '}
-                    {tripType ? 'leave to' : 'leave from'} the airport, and
-                    flight details.
+                  <p className="mb-2 font-medium">
+                    📅 Time Range Instructions:
+                  </p>
+                  <p className="mb-2">
+                    Specify the <strong>earliest</strong> and{' '}
+                    <strong>latest</strong> date/time you&apos;re available to{' '}
+                    {tripType
+                      ? 'depart from campus'
+                      : 'be picked up from the airport'}
+                    .
+                  </p>
+                  <p className="text-xs">
+                    💡 <strong>Tip:</strong> A wider time range increases your
+                    chances of being matched with other riders. You must be
+                    available for the entire range you provide.
                   </p>
                 </div>
 
-                <div className="space-y-4">
-                  {/* Ride Date */}
+                <div className="space-y-6">
+                  {/* Earliest Date/Time - Side by Side */}
                   <div>
-                    <label className="mb-2 block text-lg font-bold text-gray-800">
-                      Date You Need the Ride
+                    <label className="mb-3 block text-lg font-bold text-gray-800">
+                      Earliest Date & Time Available
                     </label>
-                    <p className="mb-2 text-sm text-gray-600">
-                      Choose the day you want to{' '}
+                    <p className="mb-3 text-sm text-gray-600">
+                      When is the earliest you can{' '}
                       {tripType
                         ? 'leave campus'
                         : 'be picked up from the airport'}
-                      . This might be different from your flight date if
-                      traveling overnight or early morning.
+                      ?
                     </p>
-                    <input
-                      type="date"
-                      value={dateOfFlight}
-                      onChange={(e) => setDateOfFlight(e.target.value)}
-                      className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
-                      required
-                    />
-                  </div>
-
-                  {/* Earliest Time */}
-                  <div>
-                    <label className="mb-2 block text-lg font-bold text-gray-800">
-                      Earliest Time You&apos;re Able to Leave{' '}
-                      {tripType ? 'from Campus' : 'from Airport'} (PST)
-                    </label>
-                    <input
-                      type="time"
-                      value={earliestArrival}
-                      onChange={(e) => setEarliestArrival(e.target.value)}
-                      className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
-                      required
-                    />
-                  </div>
-
-                  {/* Latest Time */}
-                  <div>
-                    <div className="mb-2 flex items-center gap-2">
-                      <label className="text-lg font-bold text-gray-800">
-                        Latest Time You&apos;re Able to Leave{' '}
-                        {tripType ? 'from Campus' : 'from Airport'} (PST)
-                      </label>
-                      <div className="hidden md:block">
-                        <Tooltip {...timeRangeTooltip}>
-                          <TooltipTrigger asChild>
-                            <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
-                              <svg
-                                className="h-3 w-3 text-blue-600"
-                                fill="currentColor"
-                                viewBox="0 0 20 20"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="max-w-xs">
-                            <p>
-                              The wider the range, the more likely you are to
-                              get matched with others. You must be available for
-                              the entire range.
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">
+                          Date
+                        </label>
+                        <input
+                          type="date"
+                          value={dateOfFlight}
+                          onChange={(e) => setDateOfFlight(e.target.value)}
+                          className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                          required
+                        />
                       </div>
-                      <div className="block md:hidden">
-                        <button
-                          type="button"
-                          className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            showMobileInfoModal(
-                              'Time Range: The wider the range, the more likely you are to get matched with others. You must be available for the entire range.',
-                            )
-                          }}
-                        >
-                          <svg
-                            className="h-3 w-3 text-blue-600"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </button>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">
+                          Time (PST)
+                        </label>
+                        <input
+                          type="time"
+                          value={earliestArrival}
+                          onChange={(e) => setEarliestArrival(e.target.value)}
+                          className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                          required
+                        />
                       </div>
                     </div>
-                    <input
-                      type="time"
-                      value={latestArrival}
-                      onChange={(e) => setLatestArrival(e.target.value)}
-                      className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
-                      required
-                    />
+                  </div>
+
+                  {/* Latest Date/Time - Side by Side */}
+                  <div>
+                    <label className="mb-3 block text-lg font-bold text-gray-800">
+                      Latest Date & Time Available
+                    </label>
+                    <p className="mb-3 text-sm text-gray-600">
+                      When is the latest you can{' '}
+                      {tripType
+                        ? 'leave campus'
+                        : 'be picked up from the airport'}
+                      ? (May be the following day if time range is overnight)
+                    </p>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">
+                          Date
+                        </label>
+                        <input
+                          type="date"
+                          value={latestDate}
+                          onChange={(e) => setLatestDate(e.target.value)}
+                          className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">
+                          Time (PST)
+                        </label>
+                        <input
+                          type="time"
+                          value={latestArrival}
+                          onChange={(e) => setLatestArrival(e.target.value)}
+                          className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                          required
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   {/* Time Range Duration Display */}
-                  {earliestArrival && latestArrival && (
-                    <div className="rounded-lg bg-teal-50 p-3 text-center">
-                      <p className="text-sm font-medium text-teal-800">
-                        Your provided time range is{' '}
-                        <span className="font-bold">
-                          {calculateTimeRange().toFixed(1)} hours
-                        </span>
-                      </p>
-                    </div>
-                  )}
+                  {earliestArrival &&
+                    latestArrival &&
+                    dateOfFlight &&
+                    latestDate && (
+                      <div className="rounded-lg bg-teal-50 p-3 text-center">
+                        <p className="text-sm font-medium text-teal-800">
+                          Your provided time range is{' '}
+                          <span className="font-bold">
+                            {calculateTimeRangeWithDates()} hours
+                          </span>
+                        </p>
+                      </div>
+                    )}
 
                   {/* Deadline Error */}
                   {isPastDeadline && deadlineErrorMessage && (
@@ -1101,7 +1121,22 @@ export default function FlightForm({
                         </a>
                       </div>
                     )}
+                </div>
+              </div>
+            )}
 
+            {/* Step 3: Flight Details (Airline, Flight Number, Terminal) */}
+            {currentStep === 3 && (
+              <div className="space-y-6">
+                <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
+                  <p className="mb-2 font-medium">Flight Information:</p>
+                  <p>
+                    Enter your airline code, flight number, and terminal
+                    information.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-3">
                     <label className="block">
                       <span className="mb-2 block text-lg font-bold text-gray-800">
@@ -1174,8 +1209,8 @@ export default function FlightForm({
               </div>
             )}
 
-            {/* Step 3: Luggage Information */}
-            {currentStep === 3 && (
+            {/* Step 4: Luggage Information */}
+            {currentStep === 4 && (
               <div className="space-y-6">
                 <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
                   <p className="mb-2 font-medium">Luggage Details:</p>
@@ -1384,8 +1419,8 @@ export default function FlightForm({
               </div>
             )}
 
-            {/* Step 4: Review & Submit */}
-            {currentStep === 4 && (
+            {/* Step 5: Review & Submit */}
+            {currentStep === 5 && (
               <div className="space-y-6">
                 <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
                   <p className="mb-2 font-medium">Review Your Information:</p>
@@ -1444,12 +1479,37 @@ export default function FlightForm({
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-600">
-                        Time Range (PST)
+                        Availability Window
                       </p>
                       <p className="mt-1 text-lg font-semibold text-gray-900">
-                        {formatTime12Hour(earliestArrival)} -{' '}
-                        {formatTime12Hour(latestArrival)}
+                        {dateOfFlight && formatTime12Hour(earliestArrival)
+                          ? `${new Date(dateOfFlight).toLocaleDateString(
+                              'en-US',
+                              {
+                                month: 'short',
+                                day: 'numeric',
+                              },
+                            )} ${formatTime12Hour(earliestArrival)}`
+                          : 'Not set'}{' '}
+                        -{' '}
+                        {latestDate && formatTime12Hour(latestArrival)
+                          ? `${new Date(latestDate).toLocaleDateString(
+                              'en-US',
+                              {
+                                month: 'short',
+                                day: 'numeric',
+                              },
+                            )} ${formatTime12Hour(latestArrival)}`
+                          : 'Not set'}
                       </p>
+                      {dateOfFlight &&
+                        latestDate &&
+                        earliestArrival &&
+                        latestArrival && (
+                          <p className="mt-1 text-sm text-gray-500">
+                            ({calculateTimeRangeWithDates()} hour window)
+                          </p>
+                        )}
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-600">
@@ -1623,8 +1683,8 @@ export default function FlightForm({
                       </TooltipContent>
                     </Tooltip>
                   </div>
-            <div className="block md:hidden">
-                <button
+                  <div className="block md:hidden">
+                    <button
                       type="button"
                       className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
                       onClick={(e) => {
@@ -1645,9 +1705,9 @@ export default function FlightForm({
                           clipRule="evenodd"
                         />
                       </svg>
-                </button>
+                    </button>
+                  </div>
                 </div>
-              </div>
                 <strong>{dropoff} mi</strong>
                 <input
                   type="range"
