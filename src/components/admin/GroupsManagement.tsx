@@ -6,6 +6,7 @@ import { User } from '@supabase/supabase-js'
 import {
   Briefcase,
   Calendar,
+  Clock,
   Luggage,
   Plane,
   PlaneLanding,
@@ -146,6 +147,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     useState<string>('')
   const [isSubsidized, setIsSubsidized] = useState<boolean>(false)
   const [isCreatingGroup, setIsCreatingGroup] = useState(false)
+  const [deleteGroupConfirmation, setDeleteGroupConfirmation] = useState<{
+    rider: Rider
+    groupId: number
+    callback: () => Promise<void>
+  } | null>(null)
   const [leftSidebarTabs] = useState<Array<'filters' | 'createGroup'>>([
     'filters',
     'createGroup',
@@ -248,75 +254,15 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       setLoading(true)
       const currentUser = authUser || user
 
-      // Fetch all flights with user data
-      const { data: flightsData } = await supabase.from('Flights').select(`
-          flight_id,
-          airport,
-          date,
-          earliest_time,
-          latest_time,
-          to_airport,
-          bag_no,
-          bag_no_large,
-          bag_no_personal,
-          user_id,
-          matched,
-          flight_no,
-          airline_iata,
-          Users:Users!Flights_user_id_fkey(firstname, lastname, phonenumber)
-        `)
+      // Fetch all flights first (without Users join to avoid RLS issues)
+      // Use pagination to fetch all flights (Supabase defaults to 1000 row limit)
+      let allFlightsData: any[] = []
+      let from = 0
+      const pageSize = 1000
+      let hasMore = true
 
-      if (flightsData) {
-        // Extract unique airports
-        const airports = Array.from(
-          new Set(flightsData.map((f: any) => f.airport).filter(Boolean)),
-        )
-        setAvailableAirports(airports)
-        setSelectedAirports(airports) // Select all by default
-
-        // Fetch matches first to get all ride_ids and flight_ids
-        const { data: matchesData } = await supabase
-          .from('Matches')
-          .select('ride_id, flight_id, user_id, voucher, time, uber_type')
-
-        if (!matchesData || matchesData.length === 0) {
-          setGroups([])
-          setUnmatchedRiders(
-            flightsData
-              .filter((f: any) => !f.matched)
-              .map((flight: any) => {
-                const userData = Array.isArray(flight.Users)
-                  ? flight.Users[0]
-                  : flight.Users
-                return {
-                  user_id: flight.user_id,
-                  flight_id: flight.flight_id,
-                  name:
-                    `${userData?.firstname || ''} ${userData?.lastname || ''}`.trim() ||
-                    'Unknown',
-                  phone: userData?.phonenumber || 'N/A',
-                  checked_bags: flight.bag_no_large || 0,
-                  carry_on_bags: flight.bag_no || 0,
-                  time_range: `${flight.earliest_time} - ${flight.latest_time}`,
-                  airport: flight.airport,
-                  to_airport: flight.to_airport,
-                  date: flight.date,
-                  reason: 'unmatched',
-                  flight_no: flight.flight_no || '',
-                  airline_iata: flight.airline_iata || '',
-                }
-              }),
-          )
-          return
-        }
-
-        // Get all unique flight_ids from matches
-        const matchFlightIds = Array.from(
-          new Set(matchesData.map((m: any) => m.flight_id)),
-        )
-
-        // Fetch flights for all matches (this ensures we get all flights even if RLS filtered some out)
-        const { data: matchFlightsData } = await supabase
+      while (hasMore) {
+        const { data: flightsPage, error: flightsError } = await supabase
           .from('Flights')
           .select(
             `
@@ -333,58 +279,283 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             matched,
             flight_no,
             airline_iata,
-            Users:Users!Flights_user_id_fkey(firstname, lastname, phonenumber)
+            opt_in
           `,
           )
-          .in('flight_id', matchFlightIds)
+          .range(from, from + pageSize - 1)
 
-        // Create a map of flight_id to flight data for quick lookup
-        const flightsMap = new Map<number, any>()
-        matchFlightsData?.forEach((flight: any) => {
+        if (flightsError) {
+          console.error('Error fetching flights:', flightsError.message)
+          break
+        }
+
+        if (flightsPage && flightsPage.length > 0) {
+          allFlightsData = [...allFlightsData, ...flightsPage]
+          from += pageSize
+          hasMore = flightsPage.length === pageSize
+        } else {
+          hasMore = false
+        }
+      }
+
+      const flightsData = allFlightsData
+
+      // Fetch Users separately to avoid RLS blocking the Flights query
+      const userIds = Array.from(
+        new Set(flightsData.map((f: any) => f.user_id).filter(Boolean)),
+      )
+
+      if (userIds.length === 0) {
+        console.warn('No user_ids found in flights data')
+      }
+
+      // Batch Users query to avoid URL length limits (Supabase .in() has limits)
+      const batchSize = 100
+      let allUsersData: any[] = []
+
+      for (let i = 0; i < userIds.length; i += batchSize) {
+        const batch = userIds.slice(i, i + batchSize)
+        const { data: usersBatch, error: usersError } = await supabase
+          .from('Users')
+          .select('user_id, firstname, lastname, phonenumber')
+          .in('user_id', batch)
+
+        if (usersError) {
+          console.error(
+            `Error fetching Users batch ${i / batchSize + 1}:`,
+            usersError,
+          )
+        } else if (usersBatch) {
+          allUsersData = [...allUsersData, ...usersBatch]
+        }
+      }
+
+      // Create a map of user_id to user data (ensure both keys and lookups use string format)
+      const usersMap = new Map(
+        allUsersData.map((user: any) => [
+          String(user.user_id), // Ensure key is string
+          {
+            firstname: user.firstname,
+            lastname: user.lastname,
+            phonenumber: user.phonenumber,
+          },
+        ]),
+      )
+
+      // Attach Users data to flights
+      const flightsWithUsers = flightsData.map((flight: any) => {
+        // Ensure we use string format for lookup to match the map key
+        const userData = flight.user_id
+          ? usersMap.get(String(flight.user_id))
+          : null
+        return {
+          ...flight,
+          Users: userData || null,
+        }
+      })
+
+      // Note: Some flights may have null matched or missing Users - this is expected for unmatched flights
+
+      // Use flightsWithUsers instead of flightsData from now on
+      const flightsDataToUse = flightsWithUsers
+      // Extract unique airports
+      const airports = Array.from(
+        new Set(flightsDataToUse.map((f: any) => f.airport).filter(Boolean)),
+      )
+      setAvailableAirports(airports)
+      setSelectedAirports(airports) // Select all by default
+
+      // Fetch matches first to get all ride_ids and flight_ids
+      const { data: matchesData } = await supabase
+        .from('Matches')
+        .select('ride_id, flight_id, user_id, voucher, time, uber_type')
+
+      if (!matchesData || matchesData.length === 0) {
+        setGroups([])
+        setUnmatchedRiders(
+          flightsDataToUse
+            .filter((f: any) => f.matched === false)
+            .map((flight: any) => {
+              const userData = Array.isArray(flight.Users)
+                ? flight.Users[0]
+                : flight.Users
+              return {
+                user_id: flight.user_id,
+                flight_id: flight.flight_id,
+                name:
+                  `${userData?.firstname || ''} ${userData?.lastname || ''}`.trim() ||
+                  'Unknown',
+                phone: userData?.phonenumber || 'N/A',
+                checked_bags: flight.bag_no_large || 0,
+                carry_on_bags: flight.bag_no || 0,
+                time_range: `${flight.earliest_time} - ${flight.latest_time}`,
+                airport: flight.airport,
+                to_airport: flight.to_airport,
+                date: flight.date,
+                reason: 'unmatched',
+                flight_no: flight.flight_no || '',
+                airline_iata: flight.airline_iata || '',
+              }
+            }),
+        )
+        return
+      }
+
+      // Get all unique flight_ids from matches
+      const matchFlightIds = Array.from(
+        new Set(matchesData.map((m: any) => m.flight_id)),
+      )
+
+      // Fetch flights for all matches (without Users join to avoid RLS issues)
+      const { data: matchFlightsData } = await supabase
+        .from('Flights')
+        .select(
+          `
+            flight_id,
+            airport,
+            date,
+            earliest_time,
+            latest_time,
+            to_airport,
+            bag_no,
+            bag_no_large,
+            bag_no_personal,
+            user_id,
+            matched,
+            flight_no,
+            airline_iata
+          `,
+        )
+        .in('flight_id', matchFlightIds)
+
+      // Create a map of flight_id to flight data for quick lookup
+      const flightsMap = new Map<number, any>()
+
+      // Also add flights from initial fetch that might not be in matches
+      // Fetch Users for match flights separately (with batching)
+      const matchFlightUserIds = Array.from(
+        new Set(
+          matchFlightsData?.map((f: any) => f.user_id).filter(Boolean) || [],
+        ),
+      )
+
+      // Batch Users query to avoid URL length limits
+      const matchBatchSize = 100
+      let allMatchUsersData: any[] = []
+
+      for (let i = 0; i < matchFlightUserIds.length; i += matchBatchSize) {
+        const batch = matchFlightUserIds.slice(i, i + matchBatchSize)
+        const { data: matchUsersBatch, error: matchUsersError } = await supabase
+          .from('Users')
+          .select('user_id, firstname, lastname, phonenumber')
+          .in('user_id', batch)
+
+        if (matchUsersError) {
+          console.error(
+            `Error fetching match Users batch ${i / matchBatchSize + 1}:`,
+            matchUsersError,
+          )
+        } else if (matchUsersBatch) {
+          allMatchUsersData = [...allMatchUsersData, ...matchUsersBatch]
+        }
+      }
+
+      const matchUsersData = allMatchUsersData
+
+      const matchUsersMap = new Map(
+        (matchUsersData || []).map((user: any) => [
+          user.user_id,
+          {
+            firstname: user.firstname,
+            lastname: user.lastname,
+            phonenumber: user.phonenumber,
+          },
+        ]),
+      )
+
+      // Attach Users to match flights
+      matchFlightsData?.forEach((flight: any) => {
+        const flightWithUsers = {
+          ...flight,
+          Users: matchUsersMap.get(flight.user_id) || null,
+        }
+        flightsMap.set(flight.flight_id, flightWithUsers)
+      })
+
+      // Also add flights from initial fetch that might not be in matches
+      flightsDataToUse.forEach((flight: any) => {
+        if (!flightsMap.has(flight.flight_id)) {
           flightsMap.set(flight.flight_id, flight)
+        }
+      })
+
+      // Build groups from matches
+      const groupsMap = new Map<number, Group>()
+      const matchedFlightIds = new Set<number>()
+
+      matchesData.forEach((match: any) => {
+        const flight = flightsMap.get(match.flight_id)
+        if (!flight) {
+          console.warn(
+            `Match has no associated flight (flight_id: ${match.flight_id}, ride_id: ${match.ride_id}). This match will not appear in groups. Check if: 1) Flight exists in Flights table, 2) RLS policies allow access to this flight, 3) Flight has Users relationship data.`,
+          )
+          return
+        }
+
+        matchedFlightIds.add(match.flight_id)
+
+        if (!groupsMap.has(match.ride_id)) {
+          groupsMap.set(match.ride_id, {
+            ride_id: match.ride_id,
+            airport: flight.airport,
+            date: flight.date,
+            time_range: `${flight.earliest_time} - ${flight.latest_time}`,
+            match_time: match.time || undefined,
+            to_airport: flight.to_airport,
+            riders: [],
+            group_voucher: match.voucher || undefined,
+            uber_type: match.uber_type || undefined,
+          })
+        }
+
+        const group = groupsMap.get(match.ride_id)!
+        // Users is now an object (not an array) since we fetch separately
+        const userData = (flight as any).Users || null
+        group.riders.push({
+          user_id: flight.user_id,
+          flight_id: flight.flight_id,
+          name:
+            `${userData?.firstname || ''} ${userData?.lastname || ''}`.trim() ||
+            'Unknown',
+          phone: userData?.phonenumber || 'N/A',
+          checked_bags: flight.bag_no_large || 0,
+          carry_on_bags: flight.bag_no || 0,
+          time_range: `${flight.earliest_time} - ${flight.latest_time}`,
+          airport: flight.airport,
+          to_airport: flight.to_airport,
+          date: flight.date,
+          flight_no: flight.flight_no || '',
+          airline_iata: flight.airline_iata || '',
         })
+      })
 
-        // Also add flights from initial fetch that might not be in matches
-        flightsData.forEach((flight: any) => {
-          if (!flightsMap.has(flight.flight_id)) {
-            flightsMap.set(flight.flight_id, flight)
-          }
+      setGroups(Array.from(groupsMap.values()))
+
+      // Get unmatched riders
+      const unmatched = flightsDataToUse
+        .filter((f: any) => {
+          // A flight is unmatched if:
+          // 1. It's not in any match (not in matchedFlightIds)
+          // 2. AND matched is explicitly false (not null, not true)
+          const isNotInMatches = !matchedFlightIds.has(f.flight_id)
+          const isNotMatched = f.matched === false
+          return isNotInMatches && isNotMatched
         })
-
-        // Build groups from matches
-        const groupsMap = new Map<number, Group>()
-        const matchedFlightIds = new Set<number>()
-
-        matchesData.forEach((match: any) => {
-          const flight = flightsMap.get(match.flight_id)
-          if (!flight) {
-            console.warn(
-              `Match has no associated flight (flight_id: ${match.flight_id}, ride_id: ${match.ride_id}). This match will not appear in groups. Check if: 1) Flight exists in Flights table, 2) RLS policies allow access to this flight, 3) Flight has Users relationship data.`,
-            )
-            return
-          }
-
-          matchedFlightIds.add(match.flight_id)
-
-          if (!groupsMap.has(match.ride_id)) {
-            groupsMap.set(match.ride_id, {
-              ride_id: match.ride_id,
-              airport: flight.airport,
-              date: flight.date,
-              time_range: `${flight.earliest_time} - ${flight.latest_time}`,
-              match_time: match.time || undefined,
-              to_airport: flight.to_airport,
-              riders: [],
-              group_voucher: match.voucher || undefined,
-              uber_type: match.uber_type || undefined,
-            })
-          }
-
-          const group = groupsMap.get(match.ride_id)!
+        .map((flight: any) => {
           const userData = Array.isArray(flight.Users)
             ? flight.Users[0]
             : flight.Users
-          group.riders.push({
+          return {
             user_id: flight.user_id,
             flight_id: flight.flight_id,
             name:
@@ -397,41 +568,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             airport: flight.airport,
             to_airport: flight.to_airport,
             date: flight.date,
+            reason: 'unmatched',
             flight_no: flight.flight_no || '',
             airline_iata: flight.airline_iata || '',
-          })
+          }
         })
 
-        setGroups(Array.from(groupsMap.values()))
-
-        // Get unmatched riders
-        const unmatched = flightsData
-          .filter((f: any) => !matchedFlightIds.has(f.flight_id) && !f.matched)
-          .map((flight: any) => {
-            const userData = Array.isArray(flight.Users)
-              ? flight.Users[0]
-              : flight.Users
-            return {
-              user_id: flight.user_id,
-              flight_id: flight.flight_id,
-              name:
-                `${userData?.firstname || ''} ${userData?.lastname || ''}`.trim() ||
-                'Unknown',
-              phone: userData?.phonenumber || 'N/A',
-              checked_bags: flight.bag_no_large || 0,
-              carry_on_bags: flight.bag_no || 0,
-              time_range: `${flight.earliest_time} - ${flight.latest_time}`,
-              airport: flight.airport,
-              to_airport: flight.to_airport,
-              date: flight.date,
-              reason: 'unmatched',
-              flight_no: flight.flight_no || '',
-              airline_iata: flight.airline_iata || '',
-            }
-          })
-
-        setUnmatchedRiders(unmatched)
-      }
+      setUnmatchedRiders(unmatched)
     } catch (error) {
       console.error('Error fetching groups data:', error)
     } finally {
@@ -735,6 +878,83 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             (r) => r.user_id !== rider.user_id,
           )
 
+          // Check if this is the last person in the group
+          if (updatedRiders.length === 0) {
+            // Show confirmation modal
+            setDeleteGroupConfirmation({
+              rider,
+              groupId: fromGroupId,
+              callback: async () => {
+                // Get all flight_ids for this group before deleting
+                const allFlightIds = group.riders.map((r) => r.flight_id)
+
+                // Delete all matches for this group
+                const { error: deleteAllMatchesError } = await supabase
+                  .from('Matches')
+                  .delete()
+                  .eq('ride_id', fromGroupId)
+
+                if (deleteAllMatchesError) {
+                  console.error(
+                    'Error deleting all matches:',
+                    deleteAllMatchesError,
+                  )
+                  setErrorMessage('Failed to delete group')
+                  setTimeout(() => setErrorMessage(null), 3000)
+                  return
+                }
+
+                // Delete the ride
+                const { error: deleteRideError } = await supabase
+                  .from('Rides')
+                  .delete()
+                  .eq('ride_id', fromGroupId)
+
+                if (deleteRideError) {
+                  console.error('Error deleting ride:', deleteRideError)
+                  setErrorMessage('Failed to delete group')
+                  setTimeout(() => setErrorMessage(null), 3000)
+                  return
+                }
+
+                // Update Flights table to mark all flights in the group as unmatched
+                if (allFlightIds.length > 0) {
+                  const { error: flightsError } = await supabase
+                    .from('Flights')
+                    .update({ matched: false })
+                    .in('flight_id', allFlightIds)
+
+                  if (flightsError) {
+                    console.error('Error updating flights:', flightsError)
+                  }
+                }
+
+                // Log to ChangeLog
+                await logToChangeLog(
+                  'DELETE_GROUP',
+                  {
+                    ride_id: fromGroupId,
+                    rider_name: rider.name,
+                    rider_user_id: rider.user_id,
+                  },
+                  fromGroupId,
+                )
+
+                // Update local state - remove group and add rider to corral
+                setGroups((prev) =>
+                  prev.filter((g) => g.ride_id !== fromGroupId),
+                )
+                const riderWithOrigin: Rider = {
+                  ...rider,
+                  originType: 'group' as 'group' | 'unmatched',
+                  originGroupId: fromGroupId,
+                }
+                setCorralRiders((prev) => [...prev, riderWithOrigin])
+              },
+            })
+            return
+          }
+
           // Delete the match from database
           const { error: deleteError } = await supabase
             .from('Matches')
@@ -878,6 +1098,76 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           const updatedRiders = group.riders.filter(
             (r) => r.user_id !== rider.user_id,
           )
+
+          // Check if this is the last person in the group
+          if (updatedRiders.length === 0) {
+            // Show confirmation modal
+            setDeleteGroupConfirmation({
+              rider,
+              groupId,
+              callback: async () => {
+                // Get all flight_ids for this group before deleting
+                const allFlightIds = group.riders.map((r) => r.flight_id)
+
+                // Delete all matches for this group
+                const { error: deleteAllMatchesError } = await supabase
+                  .from('Matches')
+                  .delete()
+                  .eq('ride_id', groupId)
+
+                if (deleteAllMatchesError) {
+                  console.error(
+                    'Error deleting all matches:',
+                    deleteAllMatchesError,
+                  )
+                  setErrorMessage('Failed to delete group')
+                  setTimeout(() => setErrorMessage(null), 3000)
+                  return
+                }
+
+                // Delete the ride
+                const { error: deleteRideError } = await supabase
+                  .from('Rides')
+                  .delete()
+                  .eq('ride_id', groupId)
+
+                if (deleteRideError) {
+                  console.error('Error deleting ride:', deleteRideError)
+                  setErrorMessage('Failed to delete group')
+                  setTimeout(() => setErrorMessage(null), 3000)
+                  return
+                }
+
+                // Update Flights table to mark all flights in the group as unmatched
+                if (allFlightIds.length > 0) {
+                  const { error: flightsError } = await supabase
+                    .from('Flights')
+                    .update({ matched: false })
+                    .in('flight_id', allFlightIds)
+
+                  if (flightsError) {
+                    console.error('Error updating flights:', flightsError)
+                  }
+                }
+
+                // Log to ChangeLog
+                await logToChangeLog(
+                  'DELETE_GROUP',
+                  {
+                    ride_id: groupId,
+                    rider_name: rider.name,
+                    rider_user_id: rider.user_id,
+                  },
+                  groupId,
+                )
+
+                // Update local state - remove group and add rider to unmatched
+                setGroups((prev) => prev.filter((g) => g.ride_id !== groupId))
+                setUnmatchedRiders((prev) => [...prev, rider])
+              },
+            })
+            return
+          }
 
           // Only update if there are remaining riders (groups need at least 1 rider)
           if (updatedRiders.length > 0) {
@@ -1060,6 +1350,17 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         return
       }
 
+      // Determine source (corral or unmatched) and remove from corral immediately
+      const isFromCorral = corralRiders.some((r) => r.user_id === rider.user_id)
+      const source = isFromCorral ? 'corral' : 'unmatched'
+
+      // Remove from corral immediately to prevent duplicate groups
+      if (isFromCorral) {
+        setCorralRiders((prev) =>
+          prev.filter((r) => r.user_id !== rider.user_id),
+        )
+      }
+
       try {
         // Get the group's match_time and date for the new match
         let matchTime = group.match_time
@@ -1151,19 +1452,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           ),
         )
 
-        // Determine source (corral or unmatched)
-        const isFromCorral = corralRiders.some(
-          (r) => r.user_id === rider.user_id,
-        )
-        const source = isFromCorral ? 'corral' : 'unmatched'
-
-        // Remove from corral if it was there
-        if (isFromCorral) {
-          setCorralRiders((prev) =>
-            prev.filter((r) => r.user_id !== rider.user_id),
-          )
-        }
-
         // Log to ChangeLog
         // Note: target_group_id expects UUID, but ride_id is a number
         // Storing ride_id in metadata as well for reference
@@ -1200,12 +1488,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     ],
   )
 
-  const isDatePassed = (dateString: string) => {
+  const isDatePassed = useCallback((dateString: string) => {
     const groupDate = new Date(dateString)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     return groupDate < today
-  }
+  }, [])
 
   const handleFiltersToggle = useCallback(() => {
     const isMobile = window.innerWidth < 768
@@ -1588,6 +1876,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         calculatedIsSubsidized,
         uberType,
       })
+
+      // Remove riders from corral immediately to prevent duplicates
+      const selectedUserIds = new Set(
+        selectedRidersForNewGroup.map((r) => r.user_id),
+      )
+      setCorralRiders((prev) =>
+        prev.filter((r) => !selectedUserIds.has(r.user_id)),
+      )
 
       // Clear form and refresh data
       setSelectedRidersForNewGroup([])
@@ -2005,10 +2301,18 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   )
 
   // Apply sorting to filtered unmatched riders
-  const sortedUnmatchedRiders = useMemo(
-    () => sortRiders(filteredUnmatchedRiders),
-    [filteredUnmatchedRiders, sortRiders],
-  )
+  const sortedUnmatchedRiders = useMemo(() => {
+    // First, separate past date and non-past date riders
+    const nonPastDateRiders = filteredUnmatchedRiders.filter(
+      (rider) => !isDatePassed(rider.date),
+    )
+    const pastDateRiders = filteredUnmatchedRiders.filter((rider) =>
+      isDatePassed(rider.date),
+    )
+
+    // Sort each group separately, then combine (non-past first)
+    return [...sortRiders(nonPastDateRiders), ...sortRiders(pastDateRiders)]
+  }, [filteredUnmatchedRiders, sortRiders, isDatePassed])
 
   // Apply sorting to corral riders
   const sortedCorralRiders = useMemo(
@@ -2349,7 +2653,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             type="date"
             value={newGroupDate}
             onChange={(e) => setNewGroupDate(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-10 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-10 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+            style={
+              {
+                WebkitAppearance: 'none',
+              } as React.CSSProperties
+            }
           />
           <button
             type="button"
@@ -2358,7 +2667,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 .previousElementSibling as HTMLInputElement
               input?.showPicker?.()
             }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-teal-600"
             title="Open calendar"
           >
             <Calendar className="h-4 w-4" />
@@ -2371,12 +2680,31 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         <label className="mb-1 block text-sm font-medium text-gray-700">
           Time <span className="text-red-500">*</span>
         </label>
-        <input
-          type="time"
-          value={newGroupTime}
-          onChange={(e) => setNewGroupTime(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-        />
+        <div className="relative">
+          <input
+            type="time"
+            value={newGroupTime}
+            onChange={(e) => setNewGroupTime(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-10 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+            style={
+              {
+                WebkitAppearance: 'none',
+              } as React.CSSProperties
+            }
+          />
+          <button
+            type="button"
+            onClick={(e) => {
+              const input = e.currentTarget
+                .previousElementSibling as HTMLInputElement
+              input?.showPicker?.()
+            }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-teal-600"
+            title="Open time picker"
+          >
+            <Clock className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Voucher */}
@@ -2776,7 +3104,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       value={dateRangeStart}
                       onChange={(e) => setDateRangeStart(e.target.value)}
                       placeholder="Start date"
-                      className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 pr-8 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 pr-8 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                      style={
+                        {
+                          WebkitAppearance: 'none',
+                        } as React.CSSProperties
+                      }
                     />
                     <button
                       type="button"
@@ -2785,10 +3118,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           .previousElementSibling as HTMLInputElement
                         input?.showPicker?.()
                       }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-teal-600"
                       title="Open calendar"
                     >
-                      <Calendar className="h-4 w-4" />
+                      <Calendar className="h-3.5 w-3.5" />
                     </button>
                   </div>
                   <div className="relative">
@@ -2797,7 +3130,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       value={dateRangeEnd}
                       onChange={(e) => setDateRangeEnd(e.target.value)}
                       placeholder="End date"
-                      className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 pr-8 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 pr-8 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                      style={
+                        {
+                          WebkitAppearance: 'none',
+                        } as React.CSSProperties
+                      }
                     />
                     <button
                       type="button"
@@ -2806,10 +3144,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           .previousElementSibling as HTMLInputElement
                         input?.showPicker?.()
                       }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-teal-600"
                       title="Open calendar"
                     >
-                      <Calendar className="h-4 w-4" />
+                      <Calendar className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
@@ -2821,19 +3159,57 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   Time Range
                 </label>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="time"
-                    value={timeRangeStart}
-                    onChange={(e) => setTimeRangeStart(e.target.value)}
-                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                  />
+                  <div className="relative flex-1">
+                    <input
+                      type="time"
+                      value={timeRangeStart}
+                      onChange={(e) => setTimeRangeStart(e.target.value)}
+                      className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 pr-8 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                      style={
+                        {
+                          WebkitAppearance: 'none',
+                        } as React.CSSProperties
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        const input = e.currentTarget
+                          .previousElementSibling as HTMLInputElement
+                        input?.showPicker?.()
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-teal-600"
+                      title="Open time picker"
+                    >
+                      <Clock className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                   <span className="text-xs text-gray-500">-</span>
-                  <input
-                    type="time"
-                    value={timeRangeEnd}
-                    onChange={(e) => setTimeRangeEnd(e.target.value)}
-                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                  />
+                  <div className="relative flex-1">
+                    <input
+                      type="time"
+                      value={timeRangeEnd}
+                      onChange={(e) => setTimeRangeEnd(e.target.value)}
+                      className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 pr-8 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                      style={
+                        {
+                          WebkitAppearance: 'none',
+                        } as React.CSSProperties
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        const input = e.currentTarget
+                          .previousElementSibling as HTMLInputElement
+                        input?.showPicker?.()
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 transition-colors hover:text-teal-600"
+                      title="Open time picker"
+                    >
+                      <Clock className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -3582,7 +3958,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
           {/* Unmatched Tab */}
           {activeTab === 'unmatched' && (
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {sortedUnmatchedRiders.length === 0 ? (
                 <div className="col-span-full rounded-lg border-2 border-dashed border-gray-300 bg-white p-12 text-center">
                   <p className="text-gray-500">No unmatched riders</p>
@@ -3667,19 +4043,18 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           {rider.to_airport ? (
                             <>
                               <PlaneTakeoff className="h-3 w-3" />
-                              TO Airport
+                              TO {rider.airport}
                             </>
                           ) : (
                             <>
                               <PlaneLanding className="h-3 w-3" />
-                              FROM Airport
+                              FROM {rider.airport}
                             </>
                           )}
                         </span>
                       </div>
                       <p className="mt-1 text-xs text-gray-500">
-                        {rider.airport} • {rider.date} •{' '}
-                        {formatTimeRange(rider.time_range)}
+                        {rider.date} • {formatTimeRange(rider.time_range)}
                       </p>
                       {/* Add to corral and new group links at bottom */}
                       <div className="mt-2 flex gap-3">
@@ -3901,10 +4276,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                     </div>
                                   </div>
                                 )}
-                                <p className="mt-1 text-xs text-gray-500">
-                                  {rider.airport} • {rider.date} •{' '}
-                                  {formatTimeRange(rider.time_range)}
-                                </p>
                                 <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
                                   <div className="group relative flex items-center gap-1">
                                     <Luggage className="h-3 w-3" />
@@ -3922,7 +4293,30 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                       <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
                                     </div>
                                   </div>
+                                  <span
+                                    className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                      rider.to_airport
+                                        ? 'bg-teal-100 text-teal-800'
+                                        : 'bg-orange-100 text-orange-800'
+                                    }`}
+                                  >
+                                    {rider.to_airport ? (
+                                      <>
+                                        <PlaneTakeoff className="h-3 w-3" />
+                                        TO {rider.airport}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <PlaneLanding className="h-3 w-3" />
+                                        FROM {rider.airport}
+                                      </>
+                                    )}
+                                  </span>
                                 </div>
+                                <p className="mt-1 text-xs text-gray-500">
+                                  {rider.date} •{' '}
+                                  {formatTimeRange(rider.time_range)}
+                                </p>
                               </div>
                               {!corralSelectionMode && (
                                 <div className="flex flex-shrink-0 gap-1">
@@ -4521,6 +4915,38 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                     )}
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Group Confirmation Modal */}
+        {deleteGroupConfirmation && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+              <h3 className="mb-4 text-lg font-semibold text-gray-900">
+                Delete Group?
+              </h3>
+              <p className="mb-6 text-sm text-gray-600">
+                By deleting the last person from the group, the group will be
+                deleted.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setDeleteGroupConfirmation(null)}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    await deleteGroupConfirmation.callback()
+                    setDeleteGroupConfirmation(null)
+                  }}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                >
+                  Okay
+                </button>
               </div>
             </div>
           </div>
