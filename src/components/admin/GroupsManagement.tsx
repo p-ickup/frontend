@@ -5,6 +5,7 @@ import { createBrowserClient } from '@/utils/supabase'
 import { User } from '@supabase/supabase-js'
 import {
   Briefcase,
+  Calendar,
   Luggage,
   Plane,
   PlaneLanding,
@@ -39,10 +40,12 @@ interface Group {
   airport: string
   date: string
   time_range: string
+  match_time?: string // Time from Matches table
   to_airport: boolean
   riders: Rider[]
   recommended_time?: string
   group_voucher?: string
+  uber_type?: string | null // Uber type from Matches table
 }
 
 interface ChangeLogEntry {
@@ -120,6 +123,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const [isResizingChangeLog, setIsResizingChangeLog] = useState(false)
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null)
   const [draggedRider, setDraggedRider] = useState<Rider | null>(null)
+  const [isDraggingOverCorral, setIsDraggingOverCorral] = useState(false)
+  const [dragOverGroupId, setDragOverGroupId] = useState<number | null>(null)
   // Start collapsed by default (will expand on desktop)
   const [filtersCollapsed, setFiltersCollapsed] = useState(true)
   const [corralCollapsed, setCorralCollapsed] = useState(true)
@@ -131,6 +136,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const [selectedRidersForNewGroup, setSelectedRidersForNewGroup] = useState<
     Rider[]
   >([])
+  const [recentlyAddedToNewGroup, setRecentlyAddedToNewGroup] = useState<
+    Set<string>
+  >(new Set())
   const [newGroupDate, setNewGroupDate] = useState<string>('')
   const [newGroupTime, setNewGroupTime] = useState<string>('')
   const [newGroupVoucher, setNewGroupVoucher] = useState<string>('')
@@ -269,7 +277,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         // Fetch matches first to get all ride_ids and flight_ids
         const { data: matchesData } = await supabase
           .from('Matches')
-          .select('ride_id, flight_id, user_id, voucher')
+          .select('ride_id, flight_id, user_id, voucher, time, uber_type')
 
         if (!matchesData || matchesData.length === 0) {
           setGroups([])
@@ -287,9 +295,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                     `${userData?.firstname || ''} ${userData?.lastname || ''}`.trim() ||
                     'Unknown',
                   phone: userData?.phonenumber || 'N/A',
-                  checked_bags:
-                    (flight.bag_no || 0) + (flight.bag_no_large || 0),
-                  carry_on_bags: flight.bag_no_personal || 0,
+                  checked_bags: flight.bag_no_large || 0,
+                  carry_on_bags: flight.bag_no || 0,
                   time_range: `${flight.earliest_time} - ${flight.latest_time}`,
                   airport: flight.airport,
                   to_airport: flight.to_airport,
@@ -352,7 +359,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           const flight = flightsMap.get(match.flight_id)
           if (!flight) {
             console.warn(
-              `Match has no associated flight (flight_id: ${match.flight_id}, ride_id: ${match.ride_id})`,
+              `Match has no associated flight (flight_id: ${match.flight_id}, ride_id: ${match.ride_id}). This match will not appear in groups. Check if: 1) Flight exists in Flights table, 2) RLS policies allow access to this flight, 3) Flight has Users relationship data.`,
             )
             return
           }
@@ -365,9 +372,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               airport: flight.airport,
               date: flight.date,
               time_range: `${flight.earliest_time} - ${flight.latest_time}`,
+              match_time: match.time || undefined,
               to_airport: flight.to_airport,
               riders: [],
               group_voucher: match.voucher || undefined,
+              uber_type: match.uber_type || undefined,
             })
           }
 
@@ -382,8 +391,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               `${userData?.firstname || ''} ${userData?.lastname || ''}`.trim() ||
               'Unknown',
             phone: userData?.phonenumber || 'N/A',
-            checked_bags: (flight.bag_no || 0) + (flight.bag_no_large || 0),
-            carry_on_bags: flight.bag_no_personal || 0,
+            checked_bags: flight.bag_no_large || 0,
+            carry_on_bags: flight.bag_no || 0,
             time_range: `${flight.earliest_time} - ${flight.latest_time}`,
             airport: flight.airport,
             to_airport: flight.to_airport,
@@ -409,8 +418,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 `${userData?.firstname || ''} ${userData?.lastname || ''}`.trim() ||
                 'Unknown',
               phone: userData?.phonenumber || 'N/A',
-              checked_bags: (flight.bag_no || 0) + (flight.bag_no_large || 0),
-              carry_on_bags: flight.bag_no_personal || 0,
+              checked_bags: flight.bag_no_large || 0,
+              carry_on_bags: flight.bag_no || 0,
               time_range: `${flight.earliest_time} - ${flight.latest_time}`,
               airport: flight.airport,
               to_airport: flight.to_airport,
@@ -430,7 +439,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     }
   }
 
-  const fetchChangeLog = async () => {
+  const fetchChangeLog = useCallback(async () => {
     try {
       const { data: changeLogData, error } = await supabase
         .from('ChangeLog')
@@ -445,8 +454,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           target_user_id,
           ignored_error,
           metadata,
-          created_at,
-          Users:Users!ChangeLog_actor_user_id_fkey(firstname, lastname)
+          created_at
         `,
         )
         .order('created_at', { ascending: false })
@@ -457,32 +465,100 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       }
 
       if (changeLogData) {
-        const entries: ChangeLogEntry[] = changeLogData.map((entry: any) => {
-          const userData = Array.isArray(entry.Users)
-            ? entry.Users[0]
-            : entry.Users
-          return {
-            id: entry.id,
-            actor_user_id: entry.actor_user_id,
-            actor_role: entry.actor_role,
-            action: entry.action,
-            algorithm_run_id: entry.algorithm_run_id,
-            target_group_id: entry.target_group_id,
-            target_user_id: entry.target_user_id,
-            ignored_error: entry.ignored_error,
-            metadata: entry.metadata,
-            created_at: entry.created_at,
-            actor_name: userData
-              ? `${userData.firstname || ''} ${userData.lastname || ''}`.trim()
-              : 'Unknown',
-          }
-        })
-        setChangeLog(entries)
+        // Fetch user names separately
+        const actorUserIds = Array.from(
+          new Set(changeLogData.map((entry: any) => entry.actor_user_id)),
+        )
+
+        const { data: usersData } = await supabase
+          .from('Users')
+          .select('user_id, firstname, lastname')
+          .in('user_id', actorUserIds)
+
+        const usersMap = new Map(
+          (usersData || []).map((user: any) => [
+            user.user_id,
+            `${user.firstname || ''} ${user.lastname || ''}`.trim() ||
+              'Unknown',
+          ]),
+        )
+
+        const entries: ChangeLogEntry[] = changeLogData.map((entry: any) => ({
+          id: entry.id,
+          actor_user_id: entry.actor_user_id,
+          actor_role: entry.actor_role,
+          action: entry.action,
+          algorithm_run_id: entry.algorithm_run_id,
+          target_group_id: entry.target_group_id,
+          target_user_id: entry.target_user_id,
+          ignored_error: entry.ignored_error,
+          metadata: entry.metadata,
+          created_at: entry.created_at,
+          actor_name: usersMap.get(entry.actor_user_id) || 'Unknown',
+        }))
+
+        // Deduplicate entries by id (in case of duplicates)
+        const uniqueEntries = Array.from(
+          new Map(entries.map((entry) => [entry.id, entry])).values(),
+        )
+
+        setChangeLog(uniqueEntries)
       }
     } catch (error) {
       console.error('Error fetching changelog:', error)
     }
-  }
+  }, [supabase])
+
+  // Helper function to log changes to ChangeLog
+  const logToChangeLog = useCallback(
+    async (
+      action: ChangeLogEntry['action'],
+      metadata?: any,
+      targetGroupId?: number,
+      targetUserId?: string,
+    ) => {
+      try {
+        const currentUser = authUser || user
+        if (!currentUser) {
+          return
+        }
+
+        // Fetch user's role from Users table
+        const { data: userProfile } = await supabase
+          .from('Users')
+          .select('role')
+          .eq('user_id', currentUser.id)
+          .single()
+
+        const actorRole = userProfile?.role || 'Admin'
+
+        const changeLogData = {
+          actor_user_id: currentUser.id,
+          actor_role: actorRole,
+          action,
+          // target_group_id is UUID type, but ride_id is a number, so we store ride_id in metadata instead
+          target_group_id: null,
+          target_user_id: targetUserId || null,
+          metadata: metadata || null,
+          ignored_error: false,
+        }
+
+        // Insert into ChangeLog
+        const { error } = await supabase.from('ChangeLog').insert(changeLogData)
+
+        if (error) {
+          console.error('Error logging to ChangeLog:', error)
+        } else {
+          // Refresh changelog - add small delay to ensure database commit
+          await new Promise((resolve) => setTimeout(resolve, 200))
+          await fetchChangeLog()
+        }
+      } catch (error) {
+        console.error('Error in logToChangeLog:', error)
+      }
+    },
+    [authUser, user, supabase, fetchChangeLog],
+  )
 
   const toggleAirport = (airport: string) => {
     setSelectedAirports((prev) =>
@@ -525,10 +601,94 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     return 'XXL'
   }, [])
 
+  // Helper function to determine if a group is subsidized
+  // ONT: at least 2 riders = subsidized
+  // LAX: at least 3 riders = subsidized
+  const isGroupSubsidized = useCallback(
+    (airport: string, riderCount: number): boolean => {
+      if (airport === 'ONT') {
+        return riderCount >= 2
+      } else if (airport === 'LAX') {
+        return riderCount >= 3
+      }
+      // Default: use 3+ for other airports
+      return riderCount >= 3
+    },
+    [],
+  )
+
+  // Helper function to convert time string to minutes
+  const timeToMinutes = useCallback((timeStr: string): number => {
+    const [hours, minutes] = timeStr.split(':').map(Number)
+    return hours * 60 + (minutes || 0)
+  }, [])
+
+  // Calculate overlapping time range for a group from all riders
+  const calculateGroupTimeRange = useCallback(
+    (riders: Rider[]): string => {
+      if (riders.length === 0) return ''
+      if (riders.length === 1) return riders[0].time_range
+
+      let latestStart = ''
+      let earliestEnd = ''
+
+      for (const rider of riders) {
+        const [startTime, endTime] = rider.time_range
+          .split(' - ')
+          .map((t) => t.trim())
+
+        if (!startTime || !endTime) continue
+
+        const startMinutes = timeToMinutes(startTime)
+        const endMinutes = timeToMinutes(endTime)
+
+        if (!latestStart || startMinutes > timeToMinutes(latestStart)) {
+          latestStart = startTime
+        }
+
+        if (!earliestEnd || endMinutes < timeToMinutes(earliestEnd)) {
+          earliestEnd = endTime
+        }
+      }
+
+      // If there's no valid overlap, return empty or the first rider's range
+      if (!latestStart || !earliestEnd) {
+        return riders[0]?.time_range || ''
+      }
+
+      const latestStartMinutes = timeToMinutes(latestStart)
+      const earliestEndMinutes = timeToMinutes(earliestEnd)
+
+      // Check if any rider has a cross-midnight range (end time is earlier in the day than start time)
+      const hasCrossMidnight = riders.some((rider) => {
+        const [start, end] = rider.time_range.split(' - ').map((t) => t.trim())
+        if (!start || !end) return false
+        return timeToMinutes(end) < timeToMinutes(start)
+      })
+
+      // Check if there's actually an overlap
+      if (latestStartMinutes > earliestEndMinutes) {
+        // If times cross midnight, this is still valid (end is on next day)
+        if (hasCrossMidnight) {
+          // For cross-midnight ranges, the overlap is valid
+          return `${latestStart} - ${earliestEnd}`
+        }
+        // No overlap for same-day ranges, return the first rider's range as fallback
+        return riders[0]?.time_range || ''
+      }
+
+      return `${latestStart} - ${earliestEnd}`
+    },
+    [timeToMinutes],
+  )
+
   const validateTimeCompatibility = useCallback(
     (group: Group, rider: Rider): boolean => {
-      // Check if rider's time range overlaps with group's time range
-      const groupTimes = group.time_range.split(' - ').map((t) => t.trim())
+      // Check if rider's time range overlaps with group's calculated overlapping time range
+      const calculatedGroupTimeRange = calculateGroupTimeRange(group.riders)
+      const groupTimes = calculatedGroupTimeRange
+        .split(' - ')
+        .map((t) => t.trim())
       const riderTimes = rider.time_range.split(' - ').map((t) => t.trim())
 
       if (groupTimes.length !== 2 || riderTimes.length !== 2) return false
@@ -545,7 +705,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       // Times overlap if: (riderStart <= groupEnd && riderEnd >= groupStart)
       return riderStart <= groupEnd && riderEnd >= groupStart
     },
-    [],
+    [calculateGroupTimeRange],
   )
 
   const validateBagConstraints = useCallback(
@@ -561,35 +721,227 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   )
 
   const handleAddToCorral = useCallback(
-    (rider: Rider, fromGroupId?: number) => {
-      const riderWithOrigin: Rider = {
-        ...rider,
-        originType: (fromGroupId ? 'group' : 'unmatched') as
-          | 'group'
-          | 'unmatched',
-        originGroupId: fromGroupId,
-      }
-      setCorralRiders((prev) => [...prev, riderWithOrigin])
+    async (rider: Rider, fromGroupId?: number) => {
       if (fromGroupId) {
-        // Remove from group
-        setGroups((prev) =>
-          prev.map((g) =>
-            g.ride_id === fromGroupId
-              ? {
-                  ...g,
-                  riders: g.riders.filter((r) => r.user_id !== rider.user_id),
-                }
-              : g,
-          ),
-        )
+        try {
+          // Find the group to get updated rider list
+          const group = groups.find((g) => g.ride_id === fromGroupId)
+          if (!group) {
+            console.error('Group not found:', fromGroupId)
+            return
+          }
+
+          const updatedRiders = group.riders.filter(
+            (r) => r.user_id !== rider.user_id,
+          )
+
+          // Delete the match from database
+          const { error: deleteError } = await supabase
+            .from('Matches')
+            .delete()
+            .eq('ride_id', fromGroupId)
+            .eq('user_id', rider.user_id)
+
+          if (deleteError) {
+            console.error('Error removing match from database:', deleteError)
+            setErrorMessage('Failed to remove rider from group')
+            setTimeout(() => setErrorMessage(null), 3000)
+            return
+          }
+
+          // Update Flights table to mark as unmatched
+          const { error: flightsError } = await supabase
+            .from('Flights')
+            .update({ matched: false })
+            .eq('flight_id', rider.flight_id)
+
+          if (flightsError) {
+            console.error('Error updating flight:', flightsError)
+          }
+
+          // Only update if there are remaining riders (groups need at least 1 rider)
+          let newUberType: string | null = null
+          let newIsSubsidized: boolean | null = null
+          if (updatedRiders.length > 0) {
+            // Calculate new bag units and uber_type
+            const bagUnits = calculateBagUnits(updatedRiders)
+            const uberType = determineUberType(updatedRiders.length, bagUnits)
+            const isSubsidized = isGroupSubsidized(
+              group.airport,
+              updatedRiders.length,
+            )
+
+            if (uberType) {
+              // Update all matches in the group with new uber_type and is_subsidized
+              const { error: updateError } = await supabase
+                .from('Matches')
+                .update({ uber_type: uberType, is_subsidized: isSubsidized })
+                .eq('ride_id', fromGroupId)
+
+              if (updateError) {
+                console.error(
+                  'Error updating uber_type when removing rider:',
+                  updateError,
+                )
+              } else {
+                newUberType = uberType
+                newIsSubsidized = isSubsidized
+              }
+            }
+          }
+
+          // Log to ChangeLog
+          await logToChangeLog(
+            'REMOVE_FROM_GROUP',
+            {
+              from_group: fromGroupId,
+              to: 'corral',
+              rider_name: rider.name,
+              rider_user_id: rider.user_id,
+            },
+            fromGroupId,
+            rider.user_id,
+          )
+
+          // Only update local state after successful database operations
+          const riderWithOrigin: Rider = {
+            ...rider,
+            originType: 'group' as 'group' | 'unmatched',
+            originGroupId: fromGroupId,
+          }
+          setCorralRiders((prev) => [...prev, riderWithOrigin])
+
+          // Remove from group (local state)
+          setGroups((prev) =>
+            prev.map((g) =>
+              g.ride_id === fromGroupId
+                ? {
+                    ...g,
+                    riders: g.riders.filter((r) => r.user_id !== rider.user_id),
+                    uber_type: newUberType !== null ? newUberType : g.uber_type, // Update uber_type if calculated
+                  }
+                : g,
+            ),
+          )
+        } catch (error) {
+          console.error('Error in handleAddToCorral:', error)
+          setErrorMessage('Failed to remove rider from group')
+          setTimeout(() => setErrorMessage(null), 3000)
+        }
       } else {
-        // Remove from unmatched
+        // Remove from unmatched (no database operations needed)
+        const riderWithOrigin: Rider = {
+          ...rider,
+          originType: 'unmatched' as 'group' | 'unmatched',
+          originGroupId: undefined,
+        }
+        setCorralRiders((prev) => [...prev, riderWithOrigin])
         setUnmatchedRiders((prev) =>
           prev.filter((r) => r.user_id !== rider.user_id),
         )
       }
     },
-    [],
+    [groups, supabase, logToChangeLog, isGroupSubsidized],
+  )
+
+  const handleRemoveFromGroupToUnmatched = useCallback(
+    async (rider: Rider, groupId: number) => {
+      try {
+        // Delete the match from database
+        const { error: deleteError } = await supabase
+          .from('Matches')
+          .delete()
+          .eq('ride_id', groupId)
+          .eq('user_id', rider.user_id)
+
+        if (deleteError) {
+          console.error('Error removing match from database:', deleteError)
+          setErrorMessage('Failed to remove rider from group')
+          setTimeout(() => setErrorMessage(null), 3000)
+          return
+        }
+
+        // Update Flights table to mark as unmatched
+        const { error: flightsError } = await supabase
+          .from('Flights')
+          .update({ matched: false })
+          .eq('flight_id', rider.flight_id)
+
+        if (flightsError) {
+          console.error('Error updating flight:', flightsError)
+        }
+
+        // Find the group to get updated rider list
+        const group = groups.find((g) => g.ride_id === groupId)
+        let newUberType: string | null = null
+        if (group) {
+          const updatedRiders = group.riders.filter(
+            (r) => r.user_id !== rider.user_id,
+          )
+
+          // Only update if there are remaining riders (groups need at least 1 rider)
+          if (updatedRiders.length > 0) {
+            // Calculate new bag units and uber_type
+            const bagUnits = calculateBagUnits(updatedRiders)
+            const uberType = determineUberType(updatedRiders.length, bagUnits)
+            const isSubsidized = isGroupSubsidized(
+              group.airport,
+              updatedRiders.length,
+            )
+
+            if (uberType) {
+              // Update all matches in the group with new uber_type and is_subsidized
+              const { error: updateError } = await supabase
+                .from('Matches')
+                .update({ uber_type: uberType, is_subsidized: isSubsidized })
+                .eq('ride_id', groupId)
+
+              if (updateError) {
+                console.error(
+                  'Error updating uber_type when removing rider:',
+                  updateError,
+                )
+              } else {
+                newUberType = uberType
+              }
+            }
+          }
+        }
+
+        // Update local state - remove from group and add to unmatched
+        setGroups((prev) =>
+          prev.map((g) =>
+            g.ride_id === groupId
+              ? {
+                  ...g,
+                  riders: g.riders.filter((r) => r.user_id !== rider.user_id),
+                  uber_type: newUberType !== null ? newUberType : g.uber_type, // Update uber_type if calculated
+                }
+              : g,
+          ),
+        )
+
+        setUnmatchedRiders((prev) => [...prev, rider])
+
+        // Log to ChangeLog
+        await logToChangeLog(
+          'REMOVE_FROM_GROUP',
+          {
+            from_group: groupId,
+            to: 'unmatched',
+            rider_name: rider.name,
+            rider_user_id: rider.user_id,
+          },
+          groupId,
+          rider.user_id,
+        )
+      } catch (error) {
+        console.error('Error removing rider from group to unmatched:', error)
+        setErrorMessage('Failed to remove rider from group')
+        setTimeout(() => setErrorMessage(null), 3000)
+      }
+    },
+    [groups, supabase, logToChangeLog, isGroupSubsidized],
   )
 
   const handleRemoveFromCorral = useCallback((rider: Rider) => {
@@ -615,6 +967,55 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     }
   }, [])
 
+  const handleRemoveFromCorralToUnmatched = useCallback(
+    async (rider: Rider) => {
+      // If rider came from a group, remove the match from database
+      if (rider.originType === 'group' && rider.originGroupId) {
+        try {
+          // Delete the match from database
+          const { error: deleteError } = await supabase
+            .from('Matches')
+            .delete()
+            .eq('ride_id', rider.originGroupId)
+            .eq('user_id', rider.user_id)
+
+          if (deleteError) {
+            console.error('Error removing match from database:', deleteError)
+          }
+
+          // Update Flights table to mark as unmatched
+          const { error: flightsError } = await supabase
+            .from('Flights')
+            .update({ matched: false })
+            .eq('flight_id', rider.flight_id)
+
+          if (flightsError) {
+            console.error('Error updating flight:', flightsError)
+          }
+
+          // Update local state - remove from group
+          setGroups((prev) =>
+            prev.map((g) =>
+              g.ride_id === rider.originGroupId
+                ? {
+                    ...g,
+                    riders: g.riders.filter((r) => r.user_id !== rider.user_id),
+                  }
+                : g,
+            ),
+          )
+        } catch (error) {
+          console.error('Error removing rider from group:', error)
+        }
+      }
+
+      // Remove from corral and add to unmatched
+      setCorralRiders((prev) => prev.filter((r) => r.user_id !== rider.user_id))
+      setUnmatchedRiders((prev) => [...prev, rider])
+    },
+    [supabase],
+  )
+
   const handleAddFromCorral = useCallback(
     (group: Group) => {
       if (corralRiders.length === 0) return
@@ -627,9 +1028,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   )
 
   const handleSelectFromCorral = useCallback(
-    (rider: Rider, group: Group) => {
+    async (rider: Rider, group: Group) => {
       // Validate time compatibility
-      if (!validateTimeCompatibility(group, rider)) {
+      const timeCompatible = validateTimeCompatibility(group, rider)
+      if (!timeCompatible) {
         const errorKey = `${rider.user_id}-${group.ride_id}`
         setCorralCardErrors((prev) => {
           const newMap = new Map(prev)
@@ -648,7 +1050,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       }
 
       // Validate bag constraints
-      if (!validateBagConstraints(group, rider)) {
+      const bagValid = validateBagConstraints(group, rider)
+      if (!bagValid) {
         setErrorMessage(
           'You are creating a group over the recommended bag size',
         )
@@ -657,26 +1060,144 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         return
       }
 
-      // Add rider to group
-      setGroups((prev) =>
-        prev.map((g) =>
-          g.ride_id === group.ride_id
-            ? {
-                ...g,
-                riders: [...g.riders, rider],
-              }
-            : g,
-        ),
-      )
+      try {
+        // Get the group's match_time and date for the new match
+        let matchTime = group.match_time
+        if (!matchTime && group.riders.length > 0) {
+          // If no match_time, use the first rider's earliest time
+          const firstRiderTimeRange = group.riders[0]?.time_range
+          if (firstRiderTimeRange) {
+            matchTime =
+              firstRiderTimeRange.split(' - ')[0]?.trim() || '00:00:00'
+          }
+        }
+        matchTime = matchTime || '00:00:00'
 
-      // Remove from corral
-      setCorralRiders((prev) => prev.filter((r) => r.user_id !== rider.user_id))
+        // Format time to HH:MM:SS
+        const formattedTime =
+          matchTime.includes(':') && matchTime.split(':').length === 2
+            ? `${matchTime}:00`
+            : matchTime
 
-      // Clear selection mode
-      setCorralSelectionMode(null)
-      setErrorMessage(null)
+        // Calculate bag units and uber_type for the updated group
+        const updatedRiders = [...group.riders, rider]
+        const bagUnits = calculateBagUnits(updatedRiders)
+        const uberType = determineUberType(updatedRiders.length, bagUnits)
+
+        if (!uberType) {
+          setErrorMessage('Invalid group size and bag combination')
+          setCorralSelectionMode(null)
+          setTimeout(() => setErrorMessage(null), 3000)
+          return
+        }
+
+        // Insert new Match row
+        const isSubsidized = isGroupSubsidized(
+          group.airport,
+          updatedRiders.length,
+        )
+        const { error: matchError } = await supabase.from('Matches').insert({
+          ride_id: group.ride_id,
+          user_id: rider.user_id,
+          flight_id: rider.flight_id,
+          date: group.date,
+          time: formattedTime,
+          source: 'manual',
+          voucher: group.group_voucher || '',
+          contingency_voucher: null,
+          is_verified: false,
+          is_subsidized: isSubsidized,
+          uber_type: uberType,
+        })
+
+        if (matchError) {
+          console.error('Error adding rider to group:', matchError)
+          setErrorMessage('Failed to add rider to group')
+          setCorralSelectionMode(null)
+          setTimeout(() => setErrorMessage(null), 3000)
+          return
+        }
+
+        // Update all existing matches in the group with the new uber_type and is_subsidized
+        const { error: updateMatchesError } = await supabase
+          .from('Matches')
+          .update({ uber_type: uberType, is_subsidized: isSubsidized })
+          .eq('ride_id', group.ride_id)
+
+        if (updateMatchesError) {
+          console.error('Error updating existing matches:', updateMatchesError)
+        }
+
+        // Update Flights table to mark as matched (if not already)
+        const { error: flightsError } = await supabase
+          .from('Flights')
+          .update({ matched: true })
+          .eq('flight_id', rider.flight_id)
+
+        if (flightsError) {
+          console.error('Error updating flight:', flightsError)
+        }
+
+        // Update local state
+        setGroups((prev) =>
+          prev.map((g) =>
+            g.ride_id === group.ride_id
+              ? {
+                  ...g,
+                  riders: [...g.riders, rider],
+                  uber_type: uberType, // Update uber_type in local state
+                }
+              : g,
+          ),
+        )
+
+        // Determine source (corral or unmatched)
+        const isFromCorral = corralRiders.some(
+          (r) => r.user_id === rider.user_id,
+        )
+        const source = isFromCorral ? 'corral' : 'unmatched'
+
+        // Remove from corral if it was there
+        if (isFromCorral) {
+          setCorralRiders((prev) =>
+            prev.filter((r) => r.user_id !== rider.user_id),
+          )
+        }
+
+        // Log to ChangeLog
+        // Note: target_group_id expects UUID, but ride_id is a number
+        // Storing ride_id in metadata as well for reference
+        await logToChangeLog(
+          'ADD_TO_GROUP',
+          {
+            from: source,
+            to_group: group.ride_id,
+            ride_id: group.ride_id, // Store as number in metadata
+            rider_name: rider.name,
+            rider_user_id: rider.user_id,
+          },
+          undefined, // Don't set target_group_id if it's UUID type and we have a number
+          rider.user_id,
+        )
+
+        // Clear selection mode
+        setCorralSelectionMode(null)
+        setErrorMessage(null)
+      } catch (error) {
+        console.error('Error adding rider from corral to group:', error)
+        setErrorMessage('Failed to add rider to group')
+        setCorralSelectionMode(null)
+        setTimeout(() => setErrorMessage(null), 3000)
+      }
     },
-    [validateTimeCompatibility, validateBagConstraints],
+    [
+      validateTimeCompatibility,
+      validateBagConstraints,
+      supabase,
+      logToChangeLog,
+      corralRiders,
+      isGroupSubsidized,
+    ],
   )
 
   const isDatePassed = (dateString: string) => {
@@ -709,19 +1230,20 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   }, [corralCollapsed])
 
   // Handle section drop
+  const formatTime = (timeStr: string): string => {
+    // timeStr can be "HH:MM:SS" or "HH:MM" format
+    const [hours, minutes] = timeStr.split(':').map(Number)
+    // Convert 24-hour to 12-hour format
+    const hour12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours
+    const ampm = hours < 12 ? 'AM' : 'PM'
+    const minStr = minutes ? `:${minutes.toString().padStart(2, '0')}` : ''
+    return `${hour12}${minStr} ${ampm}`
+  }
+
   const formatTimeRange = (timeRange: string): string => {
     // timeRange is in format "HH:MM - HH:MM" (24-hour format)
     const [startTime, endTime] = timeRange.split(' - ').map((t) => t.trim())
     if (!startTime || !endTime) return timeRange
-
-    const formatTime = (timeStr: string): string => {
-      const [hours, minutes] = timeStr.split(':').map(Number)
-      // Convert 24-hour to 12-hour format
-      const hour12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours
-      const ampm = hours < 12 ? 'AM' : 'PM'
-      const minStr = minutes ? `:${minutes.toString().padStart(2, '0')}` : ''
-      return `${hour12}${minStr} ${ampm}`
-    }
 
     return `${formatTime(startTime)} - ${formatTime(endTime)} PT`
   }
@@ -810,16 +1332,39 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
   // Create new group in database
   const createNewGroup = async () => {
+    console.log('=== Starting createNewGroup ===')
+    console.log('Initial state:', {
+      selectedRidersCount: selectedRidersForNewGroup.length,
+      newGroupDate,
+      newGroupTime,
+      newGroupVoucher,
+      isSubsidized,
+      selectedRiders: selectedRidersForNewGroup.map((r) => ({
+        name: r.name,
+        user_id: r.user_id,
+        flight_id: r.flight_id,
+        airport: r.airport,
+      })),
+    })
+
     if (
       selectedRidersForNewGroup.length < 2 ||
       selectedRidersForNewGroup.length > 6
     ) {
+      console.warn(
+        'Validation failed: Group must have 2-6 riders, got:',
+        selectedRidersForNewGroup.length,
+      )
       setErrorMessage('Group must have 2-6 riders')
       setTimeout(() => setErrorMessage(null), 3000)
       return
     }
 
     if (!newGroupDate || !newGroupTime) {
+      console.warn('Validation failed: Date and time are required', {
+        newGroupDate,
+        newGroupTime,
+      })
       setErrorMessage('Date and time are required')
       setTimeout(() => setErrorMessage(null), 3000)
       return
@@ -844,8 +1389,48 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
       // Format date for database (YYYY-MM-DD)
       const rideDate = new Date(newGroupDate).toISOString().split('T')[0]
+      console.log('Creating new group:', {
+        rideDate,
+        riderCount: selectedRidersForNewGroup.length,
+        riders: selectedRidersForNewGroup.map((r) => ({
+          name: r.name,
+          flight_id: r.flight_id,
+          airport: r.airport,
+        })),
+        newGroupDate,
+        newGroupTime,
+      })
 
       // Step 1: Create Rides row and get ride_id
+      // Check authentication status
+      const {
+        data: { user: currentUser },
+        error: authError,
+      } = await supabase.auth.getUser()
+      console.log('Step 1: Client-side authentication check:', {
+        isAuthenticated: !!currentUser,
+        userId: currentUser?.id,
+        email: currentUser?.email,
+        authError,
+      })
+
+      // Note: auth.uid() and auth.role() are only available in database context (RLS policies, functions)
+      // To check these, run in Supabase SQL Editor while logged in as the same user:
+      // SELECT auth.uid(), auth.role();
+      // Expected: auth.role() should return 'authenticated'
+      console.log('Step 1: Database auth context (from client perspective):', {
+        clientUserId: currentUser?.id,
+        expectedAuthRole: 'authenticated',
+        note: 'To verify auth.uid() and auth.role() in database context, run: SELECT auth.uid(), auth.role(); in Supabase SQL Editor',
+      })
+
+      console.log(
+        'Step 1: Inserting into Rides table with ride_date:',
+        rideDate,
+      )
+      console.log(
+        'Step 1: Purpose - Creating a group container. This ride_id will link all Matches for this group together.',
+      )
       const { data: rideData, error: rideError } = await supabase
         .from('Rides')
         .insert({ ride_date: rideDate })
@@ -853,12 +1438,29 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         .single()
 
       if (rideError || !rideData) {
-        console.error('Error creating ride:', rideError)
-        setErrorMessage('Failed to create ride')
-        setTimeout(() => setErrorMessage(null), 3000)
+        console.error('Error creating ride - Full error details:', {
+          error: rideError,
+          errorCode: rideError?.code,
+          errorMessage: rideError?.message,
+          errorDetails: rideError?.details,
+          errorHint: rideError?.hint,
+          rideData,
+          rideDate,
+        })
+        const errorMessage = rideError?.message || 'Unknown error'
+        const errorDetails = rideError?.details || rideError?.hint || ''
+        setErrorMessage(
+          `Failed to create ride: ${errorMessage}${errorDetails ? ` (${errorDetails})` : ''}`,
+        )
+        setTimeout(() => setErrorMessage(null), 5000)
         setIsCreatingGroup(false)
         return
       }
+
+      console.log(
+        'Step 1: Successfully created ride with ride_id:',
+        rideData.ride_id,
+      )
 
       const rideId = rideData.ride_id
 
@@ -868,7 +1470,23 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           ? `${newGroupTime}:00`
           : newGroupTime
 
+      // Calculate is_subsidized based on airport and rider count
+      // All riders in a group should have the same airport
+      const groupAirport = selectedRidersForNewGroup[0]?.airport || 'LAX'
+      const calculatedIsSubsidized = isGroupSubsidized(
+        groupAirport,
+        selectedRidersForNewGroup.length,
+      )
+
       // Step 2: Create Matches rows for each rider
+      console.log('Step 2: Preparing matches to insert:', {
+        rideId,
+        matchCount: selectedRidersForNewGroup.length,
+        groupAirport,
+        calculatedIsSubsidized,
+        uberType,
+        formattedTime,
+      })
       const matchesToInsert = selectedRidersForNewGroup.map((rider) => ({
         ride_id: rideId,
         user_id: rider.user_id,
@@ -876,36 +1494,100 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         date: rideDate,
         time: formattedTime,
         source: 'manual', // Admin-created groups
-        voucher: isSubsidized ? newGroupVoucher || '' : '',
+        voucher: calculatedIsSubsidized ? newGroupVoucher || '' : '',
         contingency_voucher: null, // Not handling contingency vouchers for now
         is_verified: false,
-        is_subsidized: isSubsidized,
+        is_subsidized: calculatedIsSubsidized,
         uber_type: uberType,
       }))
+
+      console.log(
+        'Step 2: Inserting matches:',
+        matchesToInsert.map((m) => ({
+          ride_id: m.ride_id,
+          user_id: m.user_id,
+          flight_id: m.flight_id,
+          date: m.date,
+          time: m.time,
+          is_subsidized: m.is_subsidized,
+          uber_type: m.uber_type,
+        })),
+      )
 
       const { error: matchesError } = await supabase
         .from('Matches')
         .insert(matchesToInsert)
 
       if (matchesError) {
-        console.error('Error creating matches:', matchesError)
-        setErrorMessage('Failed to create matches')
-        setTimeout(() => setErrorMessage(null), 3000)
+        console.error('Error creating matches - Full error details:', {
+          error: matchesError,
+          errorCode: matchesError?.code,
+          errorMessage: matchesError?.message,
+          errorDetails: matchesError?.details,
+          errorHint: matchesError?.hint,
+          matchesToInsert: matchesToInsert.map((m) => ({
+            ride_id: m.ride_id,
+            user_id: m.user_id,
+            flight_id: m.flight_id,
+          })),
+        })
+        const errorMessage = matchesError?.message || 'Unknown error'
+        const errorDetails = matchesError?.details || matchesError?.hint || ''
+        setErrorMessage(
+          `Failed to create matches: ${errorMessage}${errorDetails ? ` (${errorDetails})` : ''}`,
+        )
+        setTimeout(() => setErrorMessage(null), 5000)
         setIsCreatingGroup(false)
         return
       }
 
+      console.log('Step 2: Successfully created matches')
+
       // Step 3: Update Flights table to mark as matched
       const flightIds = selectedRidersForNewGroup.map((r) => r.flight_id)
+      console.log('Step 3: Updating flights to matched:', { flightIds })
       const { error: flightsError } = await supabase
         .from('Flights')
         .update({ matched: true })
         .in('flight_id', flightIds)
 
       if (flightsError) {
-        console.error('Error updating flights:', flightsError)
+        console.error('Error updating flights - Full error details:', {
+          error: flightsError,
+          errorCode: flightsError?.code,
+          errorMessage: flightsError?.message,
+          errorDetails: flightsError?.details,
+          errorHint: flightsError?.hint,
+          flightIds,
+        })
         // Don't fail the whole operation, just log it
+      } else {
+        console.log('Step 3: Successfully updated flights to matched')
       }
+
+      // Log to ChangeLog
+      await logToChangeLog(
+        'CREATE_GROUP',
+        {
+          ride_id: rideId,
+          rider_count: selectedRidersForNewGroup.length,
+          rider_names: selectedRidersForNewGroup.map((r) => r.name),
+          rider_user_ids: selectedRidersForNewGroup.map((r) => r.user_id),
+          date: rideDate,
+          time: formattedTime,
+          uber_type: uberType,
+          is_subsidized: calculatedIsSubsidized,
+        },
+        rideId,
+      )
+
+      console.log('Group creation completed successfully:', {
+        rideId,
+        riderCount: selectedRidersForNewGroup.length,
+        groupAirport,
+        calculatedIsSubsidized,
+        uberType,
+      })
 
       // Clear form and refresh data
       setSelectedRidersForNewGroup([])
@@ -941,6 +1623,28 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     }
     setSelectedRidersForNewGroup((prev) => [...prev, rider])
 
+    // Visual feedback: Add to recently added set for animation
+    setRecentlyAddedToNewGroup((prev) => new Set(prev).add(rider.user_id))
+    // Clear animation after 1 second
+    setTimeout(() => {
+      setRecentlyAddedToNewGroup((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(rider.user_id)
+        return newSet
+      })
+    }, 1000)
+
+    // On desktop, open the Create new group section
+    if (window.innerWidth >= 768) {
+      if (filtersCollapsed) {
+        setFiltersCollapsed(false)
+      }
+      if (leftSidebarTabs.includes('createGroup')) {
+        setActiveLeftTab('createGroup')
+      }
+      setNewGroupSectionExpanded(true)
+    }
+
     // Auto-calculate date/time if not set
     if (!newGroupDate || !newGroupTime) {
       const calculated = matchDatetimeFromEarliest([
@@ -975,22 +1679,31 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         }
 
         // Date range filter
-        if (dateRangeStart && dateRangeEnd) {
+        if (dateRangeStart || dateRangeEnd) {
           const groupDate = new Date(group.date)
-          const startDate = new Date(dateRangeStart)
-          const endDate = new Date(dateRangeEnd)
-          startDate.setHours(0, 0, 0, 0)
-          endDate.setHours(23, 59, 59, 999)
           groupDate.setHours(0, 0, 0, 0)
 
-          if (groupDate < startDate || groupDate > endDate) {
-            return false
+          if (dateRangeStart) {
+            const startDate = new Date(dateRangeStart)
+            startDate.setHours(0, 0, 0, 0)
+            if (groupDate < startDate) {
+              return false
+            }
+          }
+
+          if (dateRangeEnd) {
+            const endDate = new Date(dateRangeEnd)
+            endDate.setHours(23, 59, 59, 999)
+            if (groupDate > endDate) {
+              return false
+            }
           }
         }
 
         // Time range filter (optional)
         if (timeRangeStart && timeRangeEnd) {
-          const groupTimeRange = group.time_range.split(' - ')
+          const calculatedTimeRange = calculateGroupTimeRange(group.riders)
+          const groupTimeRange = calculatedTimeRange.split(' - ')
           const groupStart = groupTimeRange[0]?.trim()
           const groupEnd = groupTimeRange[1]?.trim()
 
@@ -1007,7 +1720,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
         // Subsidy filter
         const riderCount = group.riders.length
-        const isSubsidized = riderCount >= 3
+        const isSubsidized = isGroupSubsidized(group.airport, riderCount)
         if (subsidyFilter === 'subsidized' && !isSubsidized) return false
         if (subsidyFilter === 'unsubsidized' && isSubsidized) return false
 
@@ -1081,6 +1794,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       maxBags,
       searchQuery,
       getTotalBags,
+      calculateGroupTimeRange,
+      isGroupSubsidized,
     ],
   )
 
@@ -1088,6 +1803,22 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const sortedGroups = useMemo(
     () =>
       [...filteredGroups].sort((a, b) => {
+        // Default: prioritize non-past date groups over past date groups
+        const dateA = new Date(a.date)
+        const dateB = new Date(b.date)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        dateA.setHours(0, 0, 0, 0)
+        dateB.setHours(0, 0, 0, 0)
+
+        const aIsPast = dateA < today
+        const bIsPast = dateB < today
+
+        // If one is past and the other isn't, non-past comes first
+        if (aIsPast && !bIsPast) return 1
+        if (!aIsPast && bIsPast) return -1
+
+        // If both are past or both are not past, continue with user-defined sorting
         for (const rule of sortingRules) {
           let comparison = 0
 
@@ -1195,16 +1926,24 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         }
 
         // Date range filter for unmatched
-        if (dateRangeStart && dateRangeEnd) {
+        if (dateRangeStart || dateRangeEnd) {
           const riderDate = new Date(rider.date)
-          const startDate = new Date(dateRangeStart)
-          const endDate = new Date(dateRangeEnd)
-          startDate.setHours(0, 0, 0, 0)
-          endDate.setHours(23, 59, 59, 999)
           riderDate.setHours(0, 0, 0, 0)
 
-          if (riderDate < startDate || riderDate > endDate) {
-            return false
+          if (dateRangeStart) {
+            const startDate = new Date(dateRangeStart)
+            startDate.setHours(0, 0, 0, 0)
+            if (riderDate < startDate) {
+              return false
+            }
+          }
+
+          if (dateRangeEnd) {
+            const endDate = new Date(dateRangeEnd)
+            endDate.setHours(23, 59, 59, 999)
+            if (riderDate > endDate) {
+              return false
+            }
           }
         }
 
@@ -1275,6 +2014,144 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const sortedCorralRiders = useMemo(
     () => sortRiders(corralRiders),
     [corralRiders, sortRiders],
+  )
+
+  // Interface for formatted changelog entry parts
+  interface FormattedChangeLogEntry {
+    role: string
+    actorName: string
+    actionText: string
+    personName: string | null
+    groupId: string | null
+    formattedDateTime: string
+  }
+
+  // Helper function to format changelog entry as human-readable text
+  const formatChangeLogEntry = useCallback(
+    (entry: ChangeLogEntry): FormattedChangeLogEntry => {
+      const actorName = entry.actor_name || 'Unknown'
+      const role = entry.actor_role || 'Admin'
+
+      // Format date and time
+      const date = new Date(entry.created_at)
+      const formattedDateTime =
+        date.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+          timeZone: 'America/Los_Angeles',
+        }) + ' PT'
+
+      // Extract person name from metadata or use target_user_id
+      let personName: string | null = null
+      if (entry.metadata?.rider_name) {
+        personName = entry.metadata.rider_name
+      } else if (entry.target_user_id) {
+        // Try to find the user in our data
+        const allRiders = [...unmatchedRiders, ...corralRiders]
+        const groupRiders = groups.flatMap((g) => g.riders)
+        const foundRider = [...allRiders, ...groupRiders].find(
+          (r) => r.user_id === entry.target_user_id,
+        )
+        personName = foundRider?.name || null
+      }
+
+      // Extract group ID from metadata (ride_id) or target_group_id
+      // For REMOVE_FROM_GROUP, prioritize from_group
+      let groupId: string | null = null
+      if (entry.action === 'REMOVE_FROM_GROUP' && entry.metadata?.from_group) {
+        groupId = `#${entry.metadata.from_group}`
+      } else if (entry.metadata?.ride_id) {
+        groupId = `#${entry.metadata.ride_id}`
+      } else if (entry.metadata?.to_group) {
+        groupId = `#${entry.metadata.to_group}`
+      } else if (entry.metadata?.from_group) {
+        groupId = `#${entry.metadata.from_group}`
+      } else if (entry.target_group_id) {
+        groupId = `#${entry.target_group_id}`
+      }
+
+      // Format action based on type
+      let actionText = ''
+      switch (entry.action) {
+        case 'ADD_TO_GROUP':
+          const fromSource =
+            entry.metadata?.from === 'unmatched' ? 'unmatched' : null
+          if (personName && groupId) {
+            actionText = `added user ${personName} to group ${groupId}${fromSource ? ` from ${fromSource}` : ''}`
+          } else if (personName) {
+            actionText = `added user ${personName} to a group${fromSource ? ` from ${fromSource}` : ''}`
+          } else if (groupId) {
+            actionText = `added a rider to group ${groupId}${fromSource ? ` from ${fromSource}` : ''}`
+          } else {
+            actionText = `added a rider to a group${fromSource ? ` from ${fromSource}` : ''}`
+          }
+          break
+        case 'REMOVE_FROM_GROUP':
+          if (entry.metadata?.to === 'corral') {
+            if (personName && groupId) {
+              actionText = `moved user ${personName} from group ${groupId} to corral`
+            } else if (personName) {
+              actionText = `moved user ${personName} to corral`
+            } else {
+              actionText = 'moved a rider to corral'
+            }
+          } else if (entry.metadata?.to === 'unmatched') {
+            if (personName && groupId) {
+              actionText = `removed user ${personName} from group ${groupId} and left them as unmatched`
+            } else if (personName) {
+              actionText = `removed user ${personName} from a group and left them as unmatched`
+            } else {
+              actionText =
+                'removed a rider from a group and left them as unmatched'
+            }
+          } else {
+            if (personName && groupId) {
+              actionText = `removed user ${personName} from group ${groupId}`
+            } else if (personName) {
+              actionText = `removed user ${personName} from a group`
+            } else {
+              actionText = 'removed a rider from a group'
+            }
+          }
+          break
+        case 'CREATE_GROUP':
+          if (groupId) {
+            actionText = `created group ${groupId}`
+          } else {
+            actionText = 'created a new group'
+          }
+          break
+        case 'DELETE_GROUP':
+          if (groupId) {
+            actionText = `deleted group ${groupId}`
+          } else {
+            actionText = 'deleted a group'
+          }
+          break
+        case 'RUN_ALGORITHM':
+          const target = entry.metadata?.target || 'all targets'
+          const mode = entry.metadata?.mode || 'manual'
+          actionText = `ran the matching algorithm for ${target} (${mode} mode)`
+          break
+        case 'IGNORE_ERROR':
+          actionText = 'ignored an error'
+          break
+      }
+
+      return {
+        role,
+        actorName,
+        actionText,
+        personName,
+        groupId,
+        formattedDateTime,
+      }
+    },
+    [unmatchedRiders, corralRiders, groups],
   )
 
   // Filter and sort changelog
@@ -1369,8 +2246,36 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   <p className="truncate text-sm font-medium text-gray-900">
                     {rider.name}
                   </p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="inline-flex items-center justify-center rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">
+                      {rider.to_airport ? 'TO' : 'FROM'} {rider.airport}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <div className="group relative flex items-center gap-1">
+                        <Luggage className="h-3 w-3 text-gray-600" />
+                        <span className="text-xs text-gray-600">
+                          {rider.checked_bags}
+                        </span>
+                        <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
+                          Checked Bags (2 Units Each)
+                          <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                        </div>
+                      </div>
+                      <div className="group relative flex items-center gap-1">
+                        <Briefcase className="h-3 w-3 text-gray-600" />
+                        <span className="text-xs text-gray-600">
+                          {rider.carry_on_bags}
+                        </span>
+                        <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
+                          Carry-On Bags (1 Unit Each)
+                          <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">{rider.date}</p>
                   <p className="text-xs text-gray-500">
-                    {rider.airline_iata} {rider.flight_no} • {rider.date}
+                    {formatTimeRange(rider.time_range)}
                   </p>
                 </div>
                 <button
@@ -1439,12 +2344,26 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             </div>
           )}
         </div>
-        <input
-          type="date"
-          value={newGroupDate}
-          onChange={(e) => setNewGroupDate(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-        />
+        <div className="relative">
+          <input
+            type="date"
+            value={newGroupDate}
+            onChange={(e) => setNewGroupDate(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 pr-10 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+          />
+          <button
+            type="button"
+            onClick={(e) => {
+              const input = e.currentTarget
+                .previousElementSibling as HTMLInputElement
+              input?.showPicker?.()
+            }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            title="Open calendar"
+          >
+            <Calendar className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Time Input */}
@@ -1851,26 +2770,48 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   Date Range
                 </label>
                 <div className="space-y-2">
-                  <input
-                    type="date"
-                    value={dateRangeStart}
-                    onChange={(e) => setDateRangeStart(e.target.value)}
-                    onClick={(e) =>
-                      (e.target as HTMLInputElement).showPicker?.()
-                    }
-                    placeholder="Start date"
-                    className="w-full cursor-pointer rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                  />
-                  <input
-                    type="date"
-                    value={dateRangeEnd}
-                    onChange={(e) => setDateRangeEnd(e.target.value)}
-                    onClick={(e) =>
-                      (e.target as HTMLInputElement).showPicker?.()
-                    }
-                    placeholder="End date"
-                    className="w-full cursor-pointer rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type="date"
+                      value={dateRangeStart}
+                      onChange={(e) => setDateRangeStart(e.target.value)}
+                      placeholder="Start date"
+                      className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 pr-8 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        const input = e.currentTarget
+                          .previousElementSibling as HTMLInputElement
+                        input?.showPicker?.()
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      title="Open calendar"
+                    >
+                      <Calendar className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      value={dateRangeEnd}
+                      onChange={(e) => setDateRangeEnd(e.target.value)}
+                      placeholder="End date"
+                      className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 pr-8 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        const input = e.currentTarget
+                          .previousElementSibling as HTMLInputElement
+                        input?.showPicker?.()
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      title="Open calendar"
+                    >
+                      <Calendar className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1879,24 +2820,19 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 <label className="mb-2 block text-xs font-medium text-gray-700">
                   Time Range
                 </label>
-                <div className="space-y-2">
+                <div className="flex items-center gap-2">
                   <input
                     type="time"
                     value={timeRangeStart}
                     onChange={(e) => setTimeRangeStart(e.target.value)}
-                    onClick={(e) =>
-                      (e.target as HTMLInputElement).showPicker?.()
-                    }
-                    className="w-full cursor-pointer rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                   />
+                  <span className="text-xs text-gray-500">-</span>
                   <input
                     type="time"
                     value={timeRangeEnd}
                     onChange={(e) => setTimeRangeEnd(e.target.value)}
-                    onClick={(e) =>
-                      (e.target as HTMLInputElement).showPicker?.()
-                    }
-                    className="w-full cursor-pointer rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                   />
                 </div>
               </div>
@@ -1921,10 +2857,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 </select>
               </div>
 
-              {/* Bag Amount */}
+              {/* Bag Units */}
               <div>
                 <label className="mb-2 block text-xs font-medium text-gray-700">
-                  Bag Amount
+                  Bag Units
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -2188,7 +3124,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               ) : (
                 sortedGroups.map((group) => {
                   const isExpanded = expandedGroups.has(group.ride_id)
-                  const totalBags = getTotalBags(group.riders)
+                  const totalBagUnits = calculateBagUnits(group.riders)
                   const riderCount = group.riders.length
                   const datePassed = isDatePassed(group.date)
 
@@ -2212,11 +3148,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                               <p className="font-semibold text-gray-900">
                                 Group #{group.ride_id}
                               </p>
-                              {group.group_voucher && riderCount >= 3 && (
-                                <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-800">
-                                  {formatVoucher(group.group_voucher)}
-                                </span>
-                              )}
                               {datePassed && (
                                 <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
                                   Past Date
@@ -2226,24 +3157,61 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             {/* Desktop: single line */}
                             <p className="hidden text-sm text-gray-600 md:block">
                               {group.airport} • {group.date} •{' '}
-                              {formatTimeRange(group.time_range)}
+                              {group.match_time ? (
+                                <>
+                                  {formatTime(group.match_time)}
+                                  <span className="ml-1 text-xs italic text-gray-500">
+                                    ({formatTimeRange(group.time_range)})
+                                  </span>
+                                </>
+                              ) : (
+                                formatTimeRange(
+                                  calculateGroupTimeRange(group.riders),
+                                )
+                              )}
                             </p>
                             {/* Mobile: stacked lines */}
                             <div className="space-y-0.5 text-sm text-gray-600 md:hidden">
                               <p>{group.airport}</p>
                               <p>{group.date}</p>
-                              <p>{formatTimeRange(group.time_range)}</p>
+                              <p>
+                                {group.match_time ? (
+                                  <>
+                                    {formatTime(group.match_time)}
+                                    <span className="ml-1 text-xs italic text-gray-500">
+                                      ({formatTimeRange(group.time_range)})
+                                    </span>
+                                  </>
+                                ) : (
+                                  formatTimeRange(
+                                    calculateGroupTimeRange(group.riders),
+                                  )
+                                )}
+                              </p>
                             </div>
+                            {/* Uber Voucher - Below date/time */}
+                            <p className="mt-1 text-xs text-gray-600">
+                              Uber Voucher:{' '}
+                              {group.group_voucher ? (
+                                <span className="font-bold text-gray-900">
+                                  {formatVoucher(group.group_voucher)}
+                                </span>
+                              ) : (
+                                'N/A'
+                              )}
+                            </p>
                           </div>
-                          {/* Desktop: inline badge */}
-                          <span className="hidden rounded-full bg-teal-100 px-3 py-1 text-xs font-semibold text-teal-800 md:block">
-                            {riderCount} {riderCount === 1 ? 'rider' : 'riders'}
-                          </span>
                         </div>
 
-                        <div className="flex flex-shrink-0 items-center gap-3">
+                        <div className="flex flex-shrink-0 items-center gap-2">
                           {/* Desktop: horizontal badges */}
-                          <div className="hidden items-center gap-3 md:flex">
+                          <div className="hidden items-center gap-2 md:flex">
+                            {/* Riders Badge */}
+                            <span className="rounded-full bg-teal-100 px-3 py-1 text-xs font-semibold text-teal-800">
+                              {riderCount}{' '}
+                              {riderCount === 1 ? 'rider' : 'riders'}
+                            </span>
+
                             {/* Direction Badge */}
                             <span
                               className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
@@ -2268,19 +3236,19 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             {/* Subsidy Badge */}
                             <span
                               className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                riderCount >= 3
+                                isGroupSubsidized(group.airport, riderCount)
                                   ? 'bg-green-100 text-green-800'
                                   : 'bg-gray-100 text-gray-800'
                               }`}
                             >
-                              {riderCount >= 3
+                              {isGroupSubsidized(group.airport, riderCount)
                                 ? 'Subsidized'
                                 : 'Not Subsidized'}
                             </span>
 
                             {/* Uber Type Badge */}
                             <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
-                              Uber {getUberType(riderCount)}
+                              Uber {group.uber_type || getUberType(riderCount)}
                             </span>
                           </div>
 
@@ -2316,17 +3284,18 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             <div className="flex flex-col gap-1">
                               <span
                                 className={`w-fit rounded-full px-2 py-0.5 text-xs font-semibold ${
-                                  riderCount >= 3
+                                  isGroupSubsidized(group.airport, riderCount)
                                     ? 'bg-green-100 text-green-800'
                                     : 'bg-gray-100 text-gray-800'
                                 }`}
                               >
-                                {riderCount >= 3
+                                {isGroupSubsidized(group.airport, riderCount)
                                   ? 'Subsidized'
                                   : 'Not Subsidized'}
                               </span>
                               <span className="w-fit rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">
-                                Uber {getUberType(riderCount)}
+                                Uber{' '}
+                                {group.uber_type || getUberType(riderCount)}
                               </span>
                             </div>
                           </div>
@@ -2354,14 +3323,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       <div className="border-b border-gray-200 bg-white px-4 py-2">
                         <div className="mb-1 flex items-center justify-between">
                           <span className="text-xs text-gray-600">
-                            Bags: {totalBags}/10
+                            Bag Units: {totalBagUnits}/10
                           </span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
                           <div
-                            className={`h-full ${getCapacityBarColor(totalBags)} transition-all`}
+                            className={`h-full ${getCapacityBarColor(totalBagUnits)} transition-all`}
                             style={{
-                              width: `${Math.min((totalBags / 10) * 100, 100)}%`,
+                              width: `${Math.min((totalBagUnits / 10) * 100, 100)}%`,
                             }}
                           ></div>
                         </div>
@@ -2369,7 +3338,72 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
                       {/* Group Content (Expanded) */}
                       {isExpanded && (
-                        <div className="p-4">
+                        <div
+                          className={`p-4 transition-colors ${
+                            dragOverGroupId === group.ride_id && draggedRider
+                              ? 'bg-teal-50'
+                              : ''
+                          }`}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            if (draggedRider && !datePassed) {
+                              e.dataTransfer.dropEffect = 'move'
+                              setDragOverGroupId(group.ride_id)
+                            } else {
+                              e.dataTransfer.dropEffect = 'none'
+                            }
+                          }}
+                          onDragLeave={(e) => {
+                            // Only clear if we're leaving the group area (not just moving to a child element)
+                            const rect = e.currentTarget.getBoundingClientRect()
+                            const x = e.clientX
+                            const y = e.clientY
+                            if (
+                              x < rect.left ||
+                              x > rect.right ||
+                              y < rect.top ||
+                              y > rect.bottom
+                            ) {
+                              setDragOverGroupId(null)
+                            }
+                          }}
+                          onDrop={async (e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            setDragOverGroupId(null)
+                            if (draggedRider && !datePassed) {
+                              // Check if rider is from corral
+                              const isFromCorral = corralRiders.some(
+                                (r) => r.user_id === draggedRider.user_id,
+                              )
+                              // Check if rider is from unmatched
+                              const isFromUnmatched = unmatchedRiders.some(
+                                (r) => r.user_id === draggedRider.user_id,
+                              )
+
+                              if (isFromCorral) {
+                                await handleSelectFromCorral(
+                                  draggedRider,
+                                  group,
+                                )
+                              } else if (isFromUnmatched) {
+                                // Add unmatched rider directly to group
+                                await handleSelectFromCorral(
+                                  draggedRider,
+                                  group,
+                                )
+                                // Remove from unmatched
+                                setUnmatchedRiders((prev) =>
+                                  prev.filter(
+                                    (r) => r.user_id !== draggedRider.user_id,
+                                  ),
+                                )
+                              }
+                              setDraggedRider(null)
+                            }
+                          }}
+                        >
                           <button
                             onClick={() => handleAddFromCorral(group)}
                             disabled={corralRiders.length === 0 || datePassed}
@@ -2403,12 +3437,47 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                   }}
                                 >
                                   <div className="flex items-center gap-4">
-                                    <div>
-                                      <p className="font-medium text-gray-900">
-                                        {rider.name}
-                                      </p>
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-3">
+                                        <p className="font-medium text-gray-900">
+                                          {rider.name}
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                          <div className="group relative flex items-center gap-1">
+                                            <Luggage className="h-4 w-4 text-gray-600" />
+                                            <span className="text-sm text-gray-600">
+                                              {rider.checked_bags}
+                                            </span>
+                                            <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
+                                              Checked Bags (2 Units Each)
+                                              <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                            </div>
+                                          </div>
+                                          <div className="group relative flex items-center gap-1">
+                                            <Briefcase className="h-4 w-4 text-gray-600" />
+                                            <span className="text-sm text-gray-600">
+                                              {rider.carry_on_bags}
+                                            </span>
+                                            <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
+                                              Carry-On Bags (1 Unit Each)
+                                              <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
                                       <p className="text-sm text-gray-600">
                                         {rider.phone}
+                                      </p>
+                                      <p className="mt-1 text-sm text-gray-600">
+                                        <span className="inline-flex items-center justify-center rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">
+                                          {rider.airport}
+                                        </span>
+                                        <span className="ml-3">
+                                          {rider.date}
+                                        </span>
+                                        <span className="ml-3">
+                                          {formatTimeRange(rider.time_range)}
+                                        </span>
                                       </p>
                                       {rider.airline_iata &&
                                         rider.flight_no && (
@@ -2425,64 +3494,79 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                           </div>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                      <div className="group relative flex items-center gap-1">
-                                        <Luggage className="h-4 w-4 text-gray-600" />
-                                        <span className="text-sm text-gray-600">
-                                          {rider.checked_bags}
-                                        </span>
-                                        <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                                          Checked Bags
-                                          <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                                        </div>
-                                      </div>
-                                      <div className="group relative flex items-center gap-1">
-                                        <Briefcase className="h-4 w-4 text-gray-600" />
-                                        <span className="text-sm text-gray-600">
-                                          {rider.carry_on_bags}
-                                        </span>
-                                        <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                                          Carry-On Bags
-                                          <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <p className="text-sm text-gray-600">
-                                      {formatTimeRange(rider.time_range)}
-                                    </p>
                                   </div>
-                                  <button
-                                    onClick={() => {
-                                      if (!datePassed) {
-                                        handleAddToCorral(rider, group.ride_id)
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={() => {
+                                        if (!datePassed) {
+                                          handleAddToCorral(
+                                            rider,
+                                            group.ride_id,
+                                          )
+                                        }
+                                      }}
+                                      disabled={datePassed}
+                                      className={`rounded p-1 ${
+                                        datePassed
+                                          ? 'cursor-not-allowed text-gray-400'
+                                          : 'text-teal-500 hover:bg-teal-50'
+                                      }`}
+                                      title={
+                                        datePassed
+                                          ? 'Cannot modify past groups'
+                                          : 'Move to corral'
                                       }
-                                    }}
-                                    disabled={datePassed}
-                                    className={`rounded p-1 ${
-                                      datePassed
-                                        ? 'cursor-not-allowed text-gray-400'
-                                        : 'text-red-500 hover:bg-red-50'
-                                    }`}
-                                    title={
-                                      datePassed
-                                        ? 'Cannot modify past groups'
-                                        : 'Remove rider'
-                                    }
-                                  >
-                                    <svg
-                                      className="h-5 w-5"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      stroke="currentColor"
                                     >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M6 18L18 6M6 6l12 12"
-                                      />
-                                    </svg>
-                                  </button>
+                                      <svg
+                                        className="h-5 w-5"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
+                                        />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if (!datePassed) {
+                                          handleRemoveFromGroupToUnmatched(
+                                            rider,
+                                            group.ride_id,
+                                          )
+                                        }
+                                      }}
+                                      disabled={datePassed}
+                                      className={`rounded p-1 ${
+                                        datePassed
+                                          ? 'cursor-not-allowed text-gray-400'
+                                          : 'text-red-500 hover:bg-red-50'
+                                      }`}
+                                      title={
+                                        datePassed
+                                          ? 'Cannot modify past groups'
+                                          : 'Remove from group and make unmatched'
+                                      }
+                                    >
+                                      <svg
+                                        className="h-5 w-5"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth={2}
+                                          d="M6 18L18 6M6 6l12 12"
+                                        />
+                                      </svg>
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -2504,90 +3588,137 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   <p className="text-gray-500">No unmatched riders</p>
                 </div>
               ) : (
-                sortedUnmatchedRiders.map((rider) => (
-                  <div
-                    key={rider.user_id}
-                    className="relative rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
-                    draggable
-                    onDragStart={() => setDraggedRider(rider)}
-                  >
-                    <p className="font-medium text-gray-900">{rider.name}</p>
-                    <p className="text-sm text-gray-600">{rider.phone}</p>
-                    {rider.airline_iata && rider.flight_no && (
-                      <div className="group relative mt-1 flex items-center gap-1">
-                        <Plane className="h-4 w-4 text-gray-600" />
-                        <span className="text-sm text-gray-600">
-                          {rider.airline_iata} {rider.flight_no}
-                        </span>
-                        <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                          Flight Number
-                          <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                        </div>
-                      </div>
-                    )}
-                    <div className="mt-2 flex items-center gap-3 text-sm text-gray-600">
-                      <div className="group relative flex items-center gap-1">
-                        <Luggage className="h-4 w-4" />
-                        <span>{rider.checked_bags}</span>
-                        <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                          Checked Bags
-                          <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                        </div>
-                      </div>
-                      <div className="group relative flex items-center gap-1">
-                        <Briefcase className="h-4 w-4" />
-                        <span>{rider.carry_on_bags}</span>
-                        <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                          Carry-On Bags
-                          <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                        </div>
-                      </div>
-                      <span
-                        className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          rider.to_airport
-                            ? 'bg-teal-100 text-teal-800'
-                            : 'bg-orange-100 text-orange-800'
-                        }`}
-                      >
-                        {rider.to_airport ? (
-                          <>
-                            <PlaneTakeoff className="h-3 w-3" />
-                            TO Airport
-                          </>
-                        ) : (
-                          <>
-                            <PlaneLanding className="h-3 w-3" />
-                            FROM Airport
-                          </>
+                sortedUnmatchedRiders.map((rider) => {
+                  const riderDatePassed = isDatePassed(rider.date)
+                  const isSelectedForNewGroup = selectedRidersForNewGroup.some(
+                    (r) => r.user_id === rider.user_id,
+                  )
+                  const isRecentlyAdded = recentlyAddedToNewGroup.has(
+                    rider.user_id,
+                  )
+                  return (
+                    <div
+                      key={rider.user_id}
+                      className={`relative rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-all duration-300 ${
+                        riderDatePassed ? 'opacity-50' : ''
+                      } ${
+                        isSelectedForNewGroup || isRecentlyAdded
+                          ? 'border-gray-300 bg-gray-100 opacity-60'
+                          : ''
+                      } ${isRecentlyAdded ? 'animate-pulse' : ''}`}
+                      draggable={!riderDatePassed}
+                      onDragStart={() => {
+                        if (!riderDatePassed) {
+                          setDraggedRider(rider)
+                        }
+                      }}
+                      onDragEnd={() => {
+                        setDraggedRider(null)
+                        setDragOverGroupId(null)
+                      }}
+                    >
+                      <div className="flex items-start gap-2">
+                        <p className="flex-1 font-medium text-gray-900">
+                          {rider.name}
+                        </p>
+                        {riderDatePassed && (
+                          <span className="inline-flex flex-shrink-0 items-center justify-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
+                            PAST DATE
+                          </span>
                         )}
-                      </span>
+                      </div>
+                      <p className="text-sm text-gray-600">{rider.phone}</p>
+                      {rider.airline_iata && rider.flight_no && (
+                        <div className="group relative mt-1 flex items-center gap-1">
+                          <Plane className="h-4 w-4 text-gray-600" />
+                          <span className="text-sm text-gray-600">
+                            {rider.airline_iata} {rider.flight_no}
+                          </span>
+                          <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
+                            Flight Number
+                            <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                          </div>
+                        </div>
+                      )}
+                      <div className="mt-2 flex items-center gap-3 text-sm text-gray-600">
+                        <div className="group relative flex items-center gap-1">
+                          <Luggage className="h-4 w-4" />
+                          <span>{rider.checked_bags}</span>
+                          <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
+                            Checked Bags (2 Units Each)
+                            <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                          </div>
+                        </div>
+                        <div className="group relative flex items-center gap-1">
+                          <Briefcase className="h-4 w-4" />
+                          <span>{rider.carry_on_bags}</span>
+                          <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
+                            Carry-On Bags (1 Unit Each)
+                            <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                          </div>
+                        </div>
+                        <span
+                          className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            rider.to_airport
+                              ? 'bg-teal-100 text-teal-800'
+                              : 'bg-orange-100 text-orange-800'
+                          }`}
+                        >
+                          {rider.to_airport ? (
+                            <>
+                              <PlaneTakeoff className="h-3 w-3" />
+                              TO Airport
+                            </>
+                          ) : (
+                            <>
+                              <PlaneLanding className="h-3 w-3" />
+                              FROM Airport
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {rider.airport} • {rider.date} •{' '}
+                        {formatTimeRange(rider.time_range)}
+                      </p>
+                      {/* Add to corral and new group links at bottom */}
+                      <div className="mt-2 flex gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!riderDatePassed) {
+                              handleAddToCorral(rider)
+                            }
+                          }}
+                          disabled={riderDatePassed}
+                          className={`text-xs underline ${
+                            riderDatePassed
+                              ? 'cursor-not-allowed text-gray-400'
+                              : 'text-teal-600 hover:text-teal-800'
+                          }`}
+                        >
+                          Add to corral
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!riderDatePassed) {
+                              addRiderToNewGroup(rider)
+                            }
+                          }}
+                          disabled={riderDatePassed}
+                          className={`text-xs underline ${
+                            riderDatePassed
+                              ? 'cursor-not-allowed text-gray-400'
+                              : 'text-purple-600 hover:text-purple-800'
+                          }`}
+                        >
+                          Add to new group
+                        </button>
+                      </div>
                     </div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {formatTimeRange(rider.time_range)} • {rider.airport}
-                    </p>
-                    {/* Add to corral and new group links at bottom */}
-                    <div className="mt-2 flex gap-3">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleAddToCorral(rider)
-                        }}
-                        className="text-xs text-teal-600 underline hover:text-teal-800"
-                      >
-                        Add to corral
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          addRiderToNewGroup(rider)
-                        }}
-                        className="text-xs text-purple-600 underline hover:text-purple-800"
-                      >
-                        Add to new group
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           )}
@@ -2652,14 +3783,53 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto px-4 pb-4">
+              <div
+                className={`flex-1 overflow-y-auto px-4 pb-4 transition-colors ${
+                  isDraggingOverCorral ? 'bg-teal-50' : ''
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (draggedRider) {
+                    setIsDraggingOverCorral(true)
+                  }
+                }}
+                onDragLeave={(e) => {
+                  // Only clear if we're leaving the corral area (not just moving to a child element)
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const x = e.clientX
+                  const y = e.clientY
+                  if (
+                    x < rect.left ||
+                    x > rect.right ||
+                    y < rect.top ||
+                    y > rect.bottom
+                  ) {
+                    setIsDraggingOverCorral(false)
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setIsDraggingOverCorral(false)
+                  if (draggedRider) {
+                    // Check if rider is not already in corral
+                    const isAlreadyInCorral = corralRiders.some(
+                      (r) => r.user_id === draggedRider.user_id,
+                    )
+                    if (!isAlreadyInCorral) {
+                      handleAddToCorral(draggedRider)
+                    }
+                    setDraggedRider(null)
+                  }
+                }}
+              >
                 <div className="space-y-2">
                   {sortedCorralRiders.length === 0 ? (
                     <p className="text-center text-sm text-gray-500">
                       Corral is empty
                     </p>
                   ) : (
-                    sortedCorralRiders.map((rider) => {
+                    sortedCorralRiders.map((rider, riderIndex) => {
                       const group = corralSelectionMode
                         ? groups.find((g) => g.ride_id === corralSelectionMode)
                         : null
@@ -2667,6 +3837,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         selectedRidersForNewGroup.some(
                           (r) => r.user_id === rider.user_id,
                         )
+                      const isRecentlyAdded = recentlyAddedToNewGroup.has(
+                        rider.user_id,
+                      )
                       const errorKey = group
                         ? `${rider.user_id}-${group.ride_id}`
                         : null
@@ -2675,25 +3848,32 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         : null
 
                       return (
-                        <div key={rider.user_id} className="space-y-1">
+                        <div
+                          key={`corral-${rider.user_id}-${riderIndex}`}
+                          className="space-y-1"
+                        >
                           {cardError && (
                             <p className="px-1 text-xs text-red-600">
                               {cardError}
                             </p>
                           )}
                           <div
-                            className={`rounded-lg border p-3 ${
-                              isSelectedForNewGroup
-                                ? 'border-gray-300 bg-gray-100 opacity-50'
+                            className={`rounded-lg border p-3 transition-all duration-300 ${
+                              isSelectedForNewGroup || isRecentlyAdded
+                                ? 'border-gray-300 bg-gray-100 opacity-60'
                                 : corralSelectionMode
                                   ? 'cursor-pointer border-teal-400 bg-teal-50 hover:bg-teal-100'
                                   : 'border-gray-200 bg-gray-50'
-                            }`}
+                            } ${isRecentlyAdded ? 'animate-pulse' : ''}`}
                             draggable={!corralSelectionMode}
                             onDragStart={() => {
                               if (!corralSelectionMode) {
                                 setDraggedRider(rider)
                               }
+                            }}
+                            onDragEnd={() => {
+                              setDraggedRider(null)
+                              setDragOverGroupId(null)
                             }}
                             onClick={() => {
                               if (corralSelectionMode && group) {
@@ -2722,7 +3902,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                   </div>
                                 )}
                                 <p className="mt-1 text-xs text-gray-500">
-                                  {rider.date} •{' '}
+                                  {rider.airport} • {rider.date} •{' '}
                                   {formatTimeRange(rider.time_range)}
                                 </p>
                                 <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
@@ -2730,7 +3910,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                     <Luggage className="h-3 w-3" />
                                     <span>{rider.checked_bags}</span>
                                     <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                                      Checked Bags
+                                      Checked Bags (2 Units Each)
                                       <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
                                     </div>
                                   </div>
@@ -2738,7 +3918,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                     <Briefcase className="h-3 w-3" />
                                     <span>{rider.carry_on_bags}</span>
                                     <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                                      Carry-On Bags
+                                      Carry-On Bags (1 Unit Each)
                                       <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
                                     </div>
                                   </div>
@@ -2773,8 +3953,30 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                       e.stopPropagation()
                                       handleRemoveFromCorral(rider)
                                     }}
+                                    className="rounded p-1 text-blue-500 hover:bg-blue-50"
+                                    title="Remove from corral (return to origin)"
+                                  >
+                                    <svg
+                                      className="h-4 w-4"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
+                                      />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleRemoveFromCorralToUnmatched(rider)
+                                    }}
                                     className="rounded p-1 text-red-500 hover:bg-red-50"
-                                    title="Remove from corral"
+                                    title="Remove from corral and make unmatched"
                                   >
                                     <svg
                                       className="h-4 w-4"
@@ -3042,27 +4244,55 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         <label className="mb-1 block text-xs font-medium text-gray-700">
                           From
                         </label>
-                        <input
-                          type="date"
-                          value={changeLogFilterDateFrom}
-                          onChange={(e) =>
-                            setChangeLogFilterDateFrom(e.target.value)
-                          }
-                          className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                        />
+                        <div className="relative">
+                          <input
+                            type="date"
+                            value={changeLogFilterDateFrom}
+                            onChange={(e) =>
+                              setChangeLogFilterDateFrom(e.target.value)
+                            }
+                            className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 pr-8 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              const input = e.currentTarget
+                                .previousElementSibling as HTMLInputElement
+                              input?.showPicker?.()
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            title="Open calendar"
+                          >
+                            <Calendar className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                       <div>
                         <label className="mb-1 block text-xs font-medium text-gray-700">
                           To
                         </label>
-                        <input
-                          type="date"
-                          value={changeLogFilterDateTo}
-                          onChange={(e) =>
-                            setChangeLogFilterDateTo(e.target.value)
-                          }
-                          className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                        />
+                        <div className="relative">
+                          <input
+                            type="date"
+                            value={changeLogFilterDateTo}
+                            onChange={(e) =>
+                              setChangeLogFilterDateTo(e.target.value)
+                            }
+                            className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 pr-8 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              const input = e.currentTarget
+                                .previousElementSibling as HTMLInputElement
+                              input?.showPicker?.()
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            title="Open calendar"
+                          >
+                            <Calendar className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -3194,63 +4424,96 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           : 'No entries match the filters'}
                       </p>
                     ) : (
-                      sortedChangeLog.map((entry) => {
-                        const date = new Date(entry.created_at)
-                        const formattedDate =
-                          date.toLocaleString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true,
-                            timeZone: 'America/Los_Angeles',
-                          }) + ' PT'
+                      sortedChangeLog.map((entry, entryIndex) => {
+                        const formatted = formatChangeLogEntry(entry)
+
+                        // Parse actionText to apply styling
+                        let actionText = formatted.actionText
+
+                        // Replace person name with styled version if it exists
+                        if (formatted.personName) {
+                          actionText = actionText.replace(
+                            formatted.personName,
+                            `__PERSON_NAME__${formatted.personName}__PERSON_NAME__`,
+                          )
+                        }
+
+                        // Split by person name marker and style each part
+                        const parts: (string | JSX.Element)[] = []
+                        const segments = actionText.split('__PERSON_NAME__')
+
+                        segments.forEach((segment, segmentIndex) => {
+                          if (segmentIndex % 2 === 1) {
+                            // This is the person name
+                            parts.push(
+                              <span
+                                key={`person-${entryIndex}-${segmentIndex}`}
+                                className="font-semibold text-gray-900"
+                              >
+                                {segment}
+                              </span>,
+                            )
+                          } else {
+                            // This is regular text - bold action words and "unmatched"
+                            const actionWords = [
+                              'added',
+                              'removed',
+                              'moved',
+                              'created',
+                              'deleted',
+                              'ran',
+                              'ignored',
+                              'left',
+                            ]
+                            const words = segment.split(/(\s+)/)
+                            words.forEach((word, wordIndex) => {
+                              const cleanWord = word.trim().toLowerCase()
+                              if (actionWords.includes(cleanWord)) {
+                                parts.push(
+                                  <span
+                                    key={`word-${entryIndex}-${segmentIndex}-${wordIndex}`}
+                                    className="font-bold"
+                                  >
+                                    {word}
+                                  </span>,
+                                )
+                              } else if (cleanWord === 'unmatched') {
+                                parts.push(
+                                  <span
+                                    key={`word-${entryIndex}-${segmentIndex}-${wordIndex}`}
+                                    className="font-bold"
+                                  >
+                                    {word}
+                                  </span>,
+                                )
+                              } else {
+                                parts.push(word)
+                              }
+                            })
+                          }
+                        })
 
                         return (
                           <div
-                            key={entry.id}
+                            key={`changelog-${entry.id}-${entryIndex}`}
                             className="rounded-lg bg-gray-50 p-3 text-sm"
                           >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-xs text-gray-500">
-                                {formattedDate}
+                            <p className="text-gray-800">
+                              <span className="font-semibold">
+                                {formatted.role}
+                              </span>{' '}
+                              <span className="font-bold text-red-900">
+                                {formatted.actorName}
+                              </span>{' '}
+                              {parts}{' '}
+                              <span className="text-gray-500">
+                                at {formatted.formattedDateTime}
                               </span>
-                              <span className="font-medium text-gray-700">
-                                {entry.actor_name || 'Unknown'}
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                ({entry.actor_role})
-                              </span>
-                              {entry.ignored_error && (
-                                <span className="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-600">
-                                  Ignored Error
-                                </span>
-                              )}
-                            </div>
-                            <p className="mt-1 font-medium text-gray-600">
-                              {entry.action}
                             </p>
-                            {entry.metadata && (
-                              <div className="mt-1 text-xs text-gray-500">
-                                <pre className="whitespace-pre-wrap font-sans">
-                                  {JSON.stringify(entry.metadata, null, 2)}
-                                </pre>
-                              </div>
-                            )}
-                            {(entry.target_group_id ||
-                              entry.target_user_id) && (
-                              <div className="mt-1 text-xs text-gray-500">
-                                {entry.target_group_id && (
-                                  <span>Group: {entry.target_group_id}</span>
-                                )}
-                                {entry.target_group_id &&
-                                  entry.target_user_id &&
-                                  ' • '}
-                                {entry.target_user_id && (
-                                  <span>User: {entry.target_user_id}</span>
-                                )}
-                              </div>
+                            {entry.ignored_error && (
+                              <span className="mt-2 inline-block rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-600">
+                                Ignored Error
+                              </span>
                             )}
                           </div>
                         )

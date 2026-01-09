@@ -63,6 +63,10 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   const [dryRunResults, setDryRunResults] = useState<DryRunResult[]>([])
   const [showDryRunTable, setShowDryRunTable] = useState(false)
   const [changesCount, setChangesCount] = useState<number | null>(null)
+  const [unmatchedFlightsCount, setUnmatchedFlightsCount] = useState<number>(0)
+  const [unmatchedDateStart, setUnmatchedDateStart] =
+    useState<string>('2025-01-08')
+  const [unmatchedDateEnd, setUnmatchedDateEnd] = useState<string>('')
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -239,6 +243,36 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     fetchDashboardData()
   }, [authUser, user, supabase])
 
+  // Fetch unmatched flights count (where matched is NULL)
+  useEffect(() => {
+    const fetchUnmatchedFlights = async () => {
+      try {
+        const startDate = unmatchedDateStart || '2025-01-08'
+        let query = supabase
+          .from('Flights')
+          .select('flight_id', { count: 'exact', head: true })
+          .is('matched', null)
+          .gte('date', startDate)
+
+        if (unmatchedDateEnd) {
+          query = query.lte('date', unmatchedDateEnd)
+        }
+
+        const { count, error: unmatchedError } = await query
+
+        if (unmatchedError) {
+          console.error('Error fetching unmatched flights:', unmatchedError)
+        } else {
+          setUnmatchedFlightsCount(count || 0)
+        }
+      } catch (error) {
+        console.error('Error fetching unmatched flights:', error)
+      }
+    }
+
+    fetchUnmatchedFlights()
+  }, [supabase, unmatchedDateStart, unmatchedDateEnd])
+
   const handleRunDryRun = async () => {
     try {
       setLoading(true)
@@ -324,8 +358,8 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           Pickup Dashboard
         </h1>
 
-        {/* Stats Cards - 4 Column Grid */}
-        <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {/* Stats Cards - 5 Column Grid */}
+        <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-5">
           {/* Card 1: Last Run */}
           <div className="overflow-hidden rounded-lg bg-white shadow-md">
             <div className="h-1 bg-gradient-to-r from-teal-500 to-teal-600"></div>
@@ -382,7 +416,44 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             </div>
           </div>
 
-          {/* Card 4: School */}
+          {/* Card 4: Unmatched Flight Forms */}
+          <div className="overflow-hidden rounded-lg bg-white shadow-md">
+            <div className="h-1 bg-gradient-to-r from-purple-500 to-purple-600"></div>
+            <div className="p-6">
+              <p className="mb-2 text-sm text-gray-500">
+                Unmatched Flight Forms
+              </p>
+              <p className="mb-2 text-3xl font-bold text-gray-900">
+                {unmatchedFlightsCount}
+              </p>
+              <div className="mt-4 space-y-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                    From Date
+                  </label>
+                  <input
+                    type="date"
+                    value={unmatchedDateStart}
+                    onChange={(e) => setUnmatchedDateStart(e.target.value)}
+                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                    To Date (optional)
+                  </label>
+                  <input
+                    type="date"
+                    value={unmatchedDateEnd}
+                    onChange={(e) => setUnmatchedDateEnd(e.target.value)}
+                    className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 5: School */}
           <div className="overflow-hidden rounded-lg bg-white shadow-md">
             <div className="h-1 bg-gradient-to-r from-lime-500 to-lime-600"></div>
             <div className="p-6">
@@ -398,19 +469,16 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         <div className="mb-8 flex flex-wrap justify-center gap-4">
           <button
             onClick={handleRunDryRun}
-            disabled={dryRunComplete}
-            className={`rounded-lg border-2 px-6 py-3 font-medium transition-all ${
-              dryRunComplete
-                ? 'cursor-not-allowed border-gray-300 bg-gray-100 text-gray-500'
-                : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-            }`}
+            disabled={true}
+            className="cursor-not-allowed rounded-lg border-2 border-gray-300 bg-gray-100 px-6 py-3 font-medium text-gray-500 opacity-50 transition-all"
           >
-            {dryRunComplete ? 'Dry Run Complete ✓' : 'Run Dry Run'}
+            Run Dry Run
           </button>
 
           <button
             onClick={handleShowChanges}
-            className="flex items-center gap-2 rounded-lg border-2 border-gray-300 bg-white px-6 py-3 font-medium text-gray-700 transition-all hover:bg-gray-50"
+            disabled={true}
+            className="flex cursor-not-allowed items-center gap-2 rounded-lg border-2 border-gray-300 bg-gray-100 px-6 py-3 font-medium text-gray-500 opacity-50 transition-all"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -428,7 +496,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             </svg>
             Show Changed Since Last Run
             {changesCount !== null && (
-              <span className="ml-2 rounded-full bg-teal-100 px-2 py-1 text-xs font-semibold text-teal-800">
+              <span className="ml-2 rounded-full bg-gray-200 px-2 py-1 text-xs font-semibold text-gray-500">
                 {changesCount}
               </span>
             )}
@@ -436,7 +504,8 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 
           <button
             onClick={handleSendEmail}
-            className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 px-6 py-3 font-medium text-white transition-all hover:from-orange-600 hover:to-red-600"
+            disabled={true}
+            className="flex cursor-not-allowed items-center gap-2 rounded-lg bg-gray-300 px-6 py-3 font-medium text-gray-500 opacity-50 transition-all"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
