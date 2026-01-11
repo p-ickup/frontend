@@ -7,7 +7,11 @@ import {
   Briefcase,
   Calendar,
   Clock,
+  Copy,
+  Info,
   Luggage,
+  Mail,
+  Pencil,
   Plane,
   PlaneLanding,
   PlaneTakeoff,
@@ -60,14 +64,297 @@ interface ChangeLogEntry {
     | 'CREATE_GROUP'
     | 'DELETE_GROUP'
     | 'IGNORE_ERROR'
+    | 'UPDATE_GROUP_TIME'
+    | 'UPDATE_VOUCHER'
+    | 'EMAIL_CONFIRMED'
   algorithm_run_id?: string | null
   target_group_id?: string | null
   target_user_id?: string | null
   ignored_error: boolean
+  confirmed?: boolean
   metadata?: any
   created_at: string
   // Computed fields
   actor_name?: string
+}
+
+// Component for displaying changed groups
+const ChangedGroupCard = ({
+  changedGroup,
+  onConfirmEmail,
+  supabase,
+}: {
+  changedGroup: {
+    group: Group
+    changeType: 'modified' | 'deleted'
+    changedAt: string
+    emailsSent: boolean
+  }
+  onConfirmEmail: () => Promise<void>
+  supabase: any
+}) => {
+  const [showEmails, setShowEmails] = useState(false)
+  const [memberEmails, setMemberEmails] = useState<string[]>([])
+  const [loadingEmails, setLoadingEmails] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const fetchMemberEmails = async () => {
+    if (memberEmails.length > 0) {
+      setShowEmails(!showEmails)
+      return
+    }
+
+    setLoadingEmails(true)
+    try {
+      const userIds = changedGroup.group.riders.map((r) => r.user_id)
+      const { data: users, error } = await supabase
+        .from('Users')
+        .select('email')
+        .in('user_id', userIds)
+
+      if (error) {
+        console.error('Error fetching emails:', error)
+        setLoadingEmails(false)
+        return
+      }
+
+      const emails = users?.map((u: any) => u.email).filter(Boolean) || []
+      setMemberEmails(emails)
+      setShowEmails(true)
+    } catch (error) {
+      console.error('Error fetching emails:', error)
+    } finally {
+      setLoadingEmails(false)
+    }
+  }
+
+  const copyEmailsToClipboard = async () => {
+    if (memberEmails.length === 0) return
+
+    try {
+      const emailsText = memberEmails.join('\n')
+      await navigator.clipboard.writeText(emailsText)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy emails:', error)
+    }
+  }
+
+  return (
+    <div
+      className={`rounded-lg border ${
+        changedGroup.emailsSent
+          ? 'border-gray-200 bg-gray-50'
+          : 'border-yellow-300 bg-yellow-50'
+      } ${showEmails ? 'p-0' : 'p-3'}`}
+    >
+      <div
+        className={`flex items-start justify-between ${showEmails ? 'p-3 pb-0' : ''}`}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-gray-900">
+              Group #{changedGroup.group.ride_id}
+            </p>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                changedGroup.changeType === 'deleted'
+                  ? 'bg-red-100 text-red-800'
+                  : 'bg-blue-100 text-blue-800'
+              }`}
+            >
+              {changedGroup.changeType === 'deleted' ? 'Deleted' : 'Modified'}
+            </span>
+            {changedGroup.emailsSent && (
+              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">
+                Emailed
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-gray-600">
+            {changedGroup.group.riders.length} rider
+            {changedGroup.group.riders.length !== 1 ? 's' : ''} •{' '}
+            {new Date(changedGroup.changedAt).toLocaleString()}
+          </p>
+        </div>
+        <div className="ml-4 flex flex-shrink-0 flex-col gap-1">
+          <button
+            onClick={fetchMemberEmails}
+            disabled={loadingEmails}
+            className="rounded p-1 text-gray-600 hover:bg-gray-200"
+            title="View member emails"
+          >
+            <Mail className="h-4 w-4" />
+          </button>
+          {!changedGroup.emailsSent && (
+            <button
+              onClick={onConfirmEmail}
+              className="rounded bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
+            >
+              Confirm
+            </button>
+          )}
+        </div>
+      </div>
+      {showEmails && (
+        <div className="mt-3 w-full rounded-b-lg bg-white p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-semibold text-gray-700">
+              Member Emails:
+            </p>
+            {memberEmails.length > 0 && (
+              <button
+                onClick={copyEmailsToClipboard}
+                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                title="Copy emails to clipboard"
+              >
+                <Copy className="h-3 w-3" />
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            )}
+          </div>
+          <div className="max-h-96 overflow-y-auto">
+            {memberEmails.length > 0 ? (
+              <div className="space-y-1">
+                {memberEmails.map((email, idx) => (
+                  <p key={idx} className="break-words text-xs text-gray-600">
+                    {email}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">No emails found</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Component for displaying unmatched individuals
+const UnmatchedIndividualCard = ({
+  item,
+  onConfirmEmail,
+  supabase,
+}: {
+  item: {
+    rider: Rider
+    becameUnmatchedAt: string
+    emailSent: boolean
+  }
+  onConfirmEmail: () => Promise<void>
+  supabase: any
+}) => {
+  const [showEmail, setShowEmail] = useState(false)
+  const [email, setEmail] = useState<string>('')
+  const [loadingEmail, setLoadingEmail] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const fetchEmail = async () => {
+    if (email) {
+      setShowEmail(!showEmail)
+      return
+    }
+
+    setLoadingEmail(true)
+    try {
+      const { data: user, error } = await supabase
+        .from('Users')
+        .select('email')
+        .eq('user_id', item.rider.user_id)
+        .single()
+
+      if (error) {
+        console.error('Error fetching email:', error)
+        setLoadingEmail(false)
+        return
+      }
+
+      setEmail(user?.email || 'No email found')
+      setShowEmail(true)
+    } catch (error) {
+      console.error('Error fetching email:', error)
+    } finally {
+      setLoadingEmail(false)
+    }
+  }
+
+  const copyEmailToClipboard = async () => {
+    if (!email || email === 'No email found') return
+
+    try {
+      await navigator.clipboard.writeText(email)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy email:', error)
+    }
+  }
+
+  return (
+    <div
+      className={`rounded-lg border p-3 ${
+        item.emailSent
+          ? 'border-gray-200 bg-gray-50'
+          : 'border-orange-300 bg-orange-50'
+      }`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="font-semibold text-gray-900">{item.rider.name}</p>
+            {item.emailSent && (
+              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">
+                Emailed
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-gray-600">
+            Became unmatched:{' '}
+            {new Date(item.becameUnmatchedAt).toLocaleString()}
+          </p>
+          {showEmail && (
+            <div className="mt-2 rounded bg-white p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-700">Email:</p>
+                {email && email !== 'No email found' && (
+                  <button
+                    onClick={copyEmailToClipboard}
+                    className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100"
+                    title="Copy email to clipboard"
+                  >
+                    <Copy className="h-3 w-3" />
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                )}
+              </div>
+              <p className="break-words text-xs text-gray-600">{email}</p>
+            </div>
+          )}
+        </div>
+        <div className="ml-4 flex flex-shrink-0 flex-col gap-1">
+          <button
+            onClick={fetchEmail}
+            disabled={loadingEmail}
+            className="rounded p-1 text-gray-600 hover:bg-gray-200"
+            title="View email"
+          >
+            <Mail className="h-4 w-4" />
+          </button>
+          {!item.emailSent && (
+            <button
+              onClick={onConfirmEmail}
+              className="rounded bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
+            >
+              Confirm
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function GroupsManagement({ user }: AdminDashboardProps) {
@@ -152,6 +439,39 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     groupId: number
     callback: () => Promise<void>
   } | null>(null)
+  const [editTimeModal, setEditTimeModal] = useState<{
+    group: Group
+  } | null>(null)
+  const [editTimeValue, setEditTimeValue] = useState<string>('')
+  const [isUpdatingTime, setIsUpdatingTime] = useState(false)
+  const [editVoucherModal, setEditVoucherModal] = useState<{
+    group: Group
+  } | null>(null)
+  const [editVoucherValue, setEditVoucherValue] = useState<string>('')
+  const [isUpdatingVoucher, setIsUpdatingVoucher] = useState(false)
+  const [timeConflictModal, setTimeConflictModal] = useState<{
+    rider: Rider
+    group: Group
+    onConfirm: () => Promise<void>
+  } | null>(null)
+  const [corralTab, setCorralTab] = useState<'riders' | 'changes'>('riders')
+  const [changedGroups, setChangedGroups] = useState<
+    Array<{
+      group: Group
+      changeType: 'modified' | 'deleted'
+      changedAt: string
+      emailsSent: boolean
+      changeLogId?: string
+    }>
+  >([])
+  const [unmatchedIndividuals, setUnmatchedIndividuals] = useState<
+    Array<{
+      rider: Rider
+      becameUnmatchedAt: string
+      emailSent: boolean
+      changeLogId?: string
+    }>
+  >([])
   const [leftSidebarTabs] = useState<Array<'filters' | 'createGroup'>>([
     'filters',
     'createGroup',
@@ -167,15 +487,506 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   )
   const [searchQuery, setSearchQuery] = useState<string>('')
 
+  // Load unconfirmed changes from ChangeLog
+  const loadUnconfirmedChanges = useCallback(async () => {
+    try {
+      // Fetch all unconfirmed change entries from ChangeLog
+      const { data: unconfirmedChanges, error } = await supabase
+        .from('ChangeLog')
+        .select('id, metadata, created_at, action, confirmed')
+        .eq('confirmed', false)
+        .in('action', [
+          'UPDATE_GROUP_TIME',
+          'ADD_TO_GROUP',
+          'REMOVE_FROM_GROUP',
+          'CREATE_GROUP',
+          'DELETE_GROUP',
+        ])
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching unconfirmed changes:', error)
+        return
+      }
+
+      // Also fetch email confirmation entries to check which groups/individuals have been confirmed
+      // Since EMAIL_CONFIRMED is not in the DB constraint, we look for entries with email_confirmed: true in metadata
+      // Query for entries where metadata contains email_confirmed: true (as string)
+      const { data: emailConfirmedEntries = [] } = await supabase
+        .from('ChangeLog')
+        .select('id, metadata, created_at, action')
+        .eq('metadata->>email_confirmed', 'true')
+        .order('created_at', { ascending: false })
+
+      // Also try to get entries where email_confirmed is boolean true (not string)
+      const { data: emailConfirmedEntriesBool = [] } = await supabase
+        .from('ChangeLog')
+        .select('id, metadata, created_at, action')
+        .eq('metadata->email_confirmed', true)
+        .order('created_at', { ascending: false })
+
+      // Combine and deduplicate
+      const allEmailConfirmedEntries = [
+        ...(emailConfirmedEntries || []),
+        ...(emailConfirmedEntriesBool || []),
+      ]
+      const uniqueEmailConfirmedEntries = Array.from(
+        new Map(allEmailConfirmedEntries.map((e: any) => [e.id, e])).values(),
+      )
+
+      // Create sets of confirmed group IDs and flight IDs
+      const confirmedGroupIds = new Set<number>()
+      const confirmedFlightIds = new Set<number>()
+
+      if (
+        uniqueEmailConfirmedEntries &&
+        uniqueEmailConfirmedEntries.length > 0
+      ) {
+        console.log(
+          '[loadUnconfirmedChanges] Found',
+          uniqueEmailConfirmedEntries.length,
+          'email confirmation entries',
+        )
+        uniqueEmailConfirmedEntries.forEach((entry) => {
+          const metadata = entry.metadata || {}
+          if (metadata.ride_id) {
+            confirmedGroupIds.add(metadata.ride_id)
+            console.log(
+              '[loadUnconfirmedChanges] Added confirmed group ID:',
+              metadata.ride_id,
+            )
+          }
+          if (metadata.rider_flight_id) {
+            confirmedFlightIds.add(metadata.rider_flight_id)
+            console.log(
+              '[loadUnconfirmedChanges] Added confirmed flight ID:',
+              metadata.rider_flight_id,
+            )
+          }
+        })
+        console.log(
+          '[loadUnconfirmedChanges] Confirmed group IDs:',
+          Array.from(confirmedGroupIds),
+        )
+        console.log(
+          '[loadUnconfirmedChanges] Confirmed flight IDs:',
+          Array.from(confirmedFlightIds),
+        )
+      } else {
+        console.log('[loadUnconfirmedChanges] No EMAIL_CONFIRMED entries found')
+      }
+
+      if (unconfirmedChanges && unconfirmedChanges.length > 0) {
+        // Group changes by ride_id
+        const groupChangesMap = new Map<
+          number,
+          {
+            ride_id: number
+            changeType: 'modified' | 'deleted'
+            changedAt: string
+            action: string
+            changeLogId: string
+          }
+        >()
+
+        const unmatchedChangesMap = new Map<
+          number,
+          {
+            flight_id: number
+            user_id: string
+            name: string
+            date: string
+            becameUnmatchedAt: string
+            changeLogId: string
+          }
+        >()
+
+        // Process each unconfirmed change - only keep the most recent per group/individual
+        for (const change of unconfirmedChanges) {
+          const metadata = change.metadata || {}
+
+          // Handle group changes - track both source and destination groups
+          if (change.action === 'ADD_TO_GROUP') {
+            const toGroupId = metadata.to_group || metadata.ride_id
+            if (toGroupId) {
+              const existing = groupChangesMap.get(toGroupId)
+              if (
+                !existing ||
+                new Date(change.created_at) > new Date(existing.changedAt)
+              ) {
+                groupChangesMap.set(toGroupId, {
+                  ride_id: toGroupId,
+                  changeType: 'modified' as const,
+                  changedAt: change.created_at,
+                  action: change.action,
+                  changeLogId: change.id,
+                })
+              }
+            }
+            // Also track source group if rider came from another group
+            const fromGroupId = metadata.from_group
+            if (fromGroupId) {
+              const existing = groupChangesMap.get(fromGroupId)
+              if (
+                !existing ||
+                new Date(change.created_at) > new Date(existing.changedAt)
+              ) {
+                groupChangesMap.set(fromGroupId, {
+                  ride_id: fromGroupId,
+                  changeType: 'modified' as const,
+                  changedAt: change.created_at,
+                  action: change.action,
+                  changeLogId: change.id,
+                })
+              }
+            }
+          } else if (change.action === 'REMOVE_FROM_GROUP') {
+            const fromGroupId = metadata.from_group
+            if (fromGroupId) {
+              const existing = groupChangesMap.get(fromGroupId)
+              if (
+                !existing ||
+                new Date(change.created_at) > new Date(existing.changedAt)
+              ) {
+                groupChangesMap.set(fromGroupId, {
+                  ride_id: fromGroupId,
+                  changeType: 'modified' as const,
+                  changedAt: change.created_at,
+                  action: change.action,
+                  changeLogId: change.id,
+                })
+              }
+            }
+            // If removed to unmatched, track as unmatched individual
+            if (metadata.to === 'unmatched') {
+              const flightId = metadata.rider_flight_id || metadata.flight_id
+              if (flightId) {
+                const existing = unmatchedChangesMap.get(flightId)
+                if (
+                  !existing ||
+                  new Date(change.created_at) >
+                    new Date(existing.becameUnmatchedAt)
+                ) {
+                  unmatchedChangesMap.set(flightId, {
+                    flight_id: flightId,
+                    user_id: metadata.rider_user_id || metadata.user_id || '',
+                    name: metadata.rider_name || 'Unknown',
+                    date: metadata.date || '',
+                    becameUnmatchedAt: change.created_at,
+                    changeLogId: change.id,
+                  })
+                }
+              }
+            }
+          } else if (
+            change.action === 'UPDATE_GROUP_TIME' ||
+            change.action === 'CREATE_GROUP'
+          ) {
+            const rideId = metadata.ride_id
+            if (rideId) {
+              const existing = groupChangesMap.get(rideId)
+              if (
+                !existing ||
+                new Date(change.created_at) > new Date(existing.changedAt)
+              ) {
+                groupChangesMap.set(rideId, {
+                  ride_id: rideId,
+                  changeType: 'modified' as const,
+                  changedAt: change.created_at,
+                  action: change.action,
+                  changeLogId: change.id,
+                })
+              }
+            }
+          } else if (change.action === 'DELETE_GROUP') {
+            const rideId = metadata.ride_id
+            if (rideId) {
+              const existing = groupChangesMap.get(rideId)
+              if (
+                !existing ||
+                new Date(change.created_at) > new Date(existing.changedAt)
+              ) {
+                groupChangesMap.set(rideId, {
+                  ride_id: rideId,
+                  changeType: 'deleted' as const,
+                  changedAt: change.created_at,
+                  action: change.action,
+                  changeLogId: change.id,
+                })
+              }
+            }
+          }
+        }
+
+        // Find corresponding groups from current state and verify changes are still valid
+        setGroups((prevGroups) => {
+          // Check for subsequent changes that would have reverted the original change
+          // Track which group changes have been reverted
+          const revertedGroupChanges = new Set<string>() // changeLogIds that have been reverted
+
+          // Group all changes by ride_id to check for reversals
+          const changesByRideId = new Map<number, typeof unconfirmedChanges>()
+          unconfirmedChanges.forEach((change) => {
+            const metadata = change.metadata || {}
+            const rideId =
+              metadata.ride_id || metadata.to_group || metadata.from_group
+            if (rideId) {
+              if (!changesByRideId.has(rideId)) {
+                changesByRideId.set(rideId, [])
+              }
+              changesByRideId.get(rideId)!.push(change)
+            }
+          })
+
+          // Check for reversals: if REMOVE_FROM_GROUP is followed by ADD_TO_GROUP for same group and same rider
+          // Also verify that the rider is currently in the group (check current state)
+          changesByRideId.forEach((changes, rideId) => {
+            const group = prevGroups.find((g) => g.ride_id === rideId)
+            if (!group) return // Group doesn't exist, skip
+
+            const sortedChanges = changes.sort(
+              (a, b) =>
+                new Date(a.created_at).getTime() -
+                new Date(b.created_at).getTime(),
+            )
+
+            // Track which riders were removed and then added back to the same group
+            const removedRiders = new Map<string, string>() // `${rideId}-${flightId}` -> changeLogId
+            sortedChanges.forEach((change) => {
+              const metadata = change.metadata || {}
+              const flightId = metadata.rider_flight_id || metadata.flight_id
+
+              if (
+                change.action === 'REMOVE_FROM_GROUP' &&
+                metadata.from_group === rideId &&
+                flightId
+              ) {
+                const key = `${rideId}-${flightId}`
+                removedRiders.set(key, change.id)
+              } else if (
+                change.action === 'ADD_TO_GROUP' &&
+                metadata.to_group === rideId &&
+                flightId
+              ) {
+                // If this rider was previously removed from this same group, check if they're currently in the group
+                const key = `${rideId}-${flightId}`
+                if (removedRiders.has(key)) {
+                  // Check if rider is currently in the group
+                  const isCurrentlyInGroup = group.riders.some(
+                    (r) => r.flight_id === flightId,
+                  )
+                  if (isCurrentlyInGroup) {
+                    // Rider was removed and then added back, and is currently in the group - mark removal as reverted
+                    revertedGroupChanges.add(removedRiders.get(key)!)
+                  }
+                }
+              }
+            })
+          })
+
+          const newChangedGroups: Array<{
+            group: Group
+            changeType: 'modified' | 'deleted'
+            changedAt: string
+            emailsSent: boolean
+            changeLogId?: string
+          }> = []
+
+          groupChangesMap.forEach((changeInfo) => {
+            // Skip if this change has been reverted
+            if (revertedGroupChanges.has(changeInfo.changeLogId)) {
+              return
+            }
+
+            // Skip if this group has been confirmed (has EMAIL_CONFIRMED entry)
+            if (confirmedGroupIds.has(changeInfo.ride_id)) {
+              console.log(
+                '[loadUnconfirmedChanges] Skipping group',
+                changeInfo.ride_id,
+                'because it has EMAIL_CONFIRMED entry',
+              )
+              return
+            }
+
+            const group = prevGroups.find(
+              (g) => g.ride_id === changeInfo.ride_id,
+            )
+            if (group) {
+              // For DELETE_GROUP, check if group still exists (if it does, it wasn't actually deleted)
+              if (changeInfo.changeType === 'deleted') {
+                return // Don't show deleted groups that still exist
+              }
+
+              newChangedGroups.push({
+                group,
+                changeType: changeInfo.changeType,
+                changedAt: changeInfo.changedAt,
+                emailsSent: false, // Should not reach here if confirmed, but set to false for safety
+                changeLogId: changeInfo.changeLogId,
+              })
+            }
+          })
+
+          if (newChangedGroups.length > 0) {
+            // Only keep the most recent change per group
+            const groupsMap = new Map<number, (typeof newChangedGroups)[0]>()
+            newChangedGroups.forEach((ncg) => {
+              const existing = groupsMap.get(ncg.group.ride_id)
+              if (
+                !existing ||
+                new Date(ncg.changedAt) > new Date(existing.changedAt)
+              ) {
+                groupsMap.set(ncg.group.ride_id, ncg)
+              }
+            })
+            setChangedGroups(Array.from(groupsMap.values()))
+          } else {
+            // If no unconfirmed group changes, clear the list
+            setChangedGroups([])
+          }
+
+          return prevGroups
+        })
+
+        // Load unmatched individuals - verify they're actually unmatched in the database
+        if (unmatchedChangesMap.size > 0) {
+          const flightIds = Array.from(unmatchedChangesMap.keys())
+
+          // Check which flights are actually matched in the database
+          const { data: matchesData } = await supabase
+            .from('Matches')
+            .select('flight_id')
+            .in('flight_id', flightIds)
+
+          // Create a set of flight_ids that are currently matched
+          const matchedFlightIds = new Set(
+            (matchesData || []).map((m: any) => m.flight_id),
+          )
+
+          // Fetch rider data for unmatched individuals
+          const { data: flightsData } = await supabase
+            .from('Flights')
+            .select('flight_id, user_id, date')
+            .in('flight_id', flightIds)
+
+          const flightsMap = new Map(
+            (flightsData || []).map((f: any) => [f.flight_id, f]),
+          )
+
+          const userIds = Array.from(
+            new Set(
+              Array.from(unmatchedChangesMap.values()).map((u) => u.user_id),
+            ),
+          )
+
+          const { data: usersData } = await supabase
+            .from('Users')
+            .select('user_id, firstname, lastname')
+            .in('user_id', userIds)
+
+          const usersMap = new Map(
+            (usersData || []).map((u: any) => [
+              u.user_id,
+              `${u.firstname || ''} ${u.lastname || ''}`.trim() || 'Unknown',
+            ]),
+          )
+
+          const newUnmatchedIndividuals: Array<{
+            rider: Rider
+            becameUnmatchedAt: string
+            emailSent: boolean
+            changeLogId?: string
+          }> = []
+
+          unmatchedChangesMap.forEach((changeInfo, flightId) => {
+            // Skip if this flight has been confirmed (has EMAIL_CONFIRMED entry)
+            if (confirmedFlightIds.has(flightId)) {
+              console.log(
+                '[loadUnconfirmedChanges] Skipping unmatched individual',
+                flightId,
+                'because it has EMAIL_CONFIRMED entry',
+              )
+              return
+            }
+
+            // Only include if they're actually unmatched (not in Matches table)
+            if (!matchedFlightIds.has(flightId)) {
+              const flight = flightsMap.get(flightId)
+              const name = usersMap.get(changeInfo.user_id) || changeInfo.name
+
+              if (flight) {
+                newUnmatchedIndividuals.push({
+                  rider: {
+                    user_id: changeInfo.user_id,
+                    flight_id: flightId,
+                    name,
+                    phone: 'N/A',
+                    checked_bags: 0,
+                    carry_on_bags: 0,
+                    time_range: '',
+                    airport: '',
+                    to_airport: false,
+                    date: flight.date || changeInfo.date,
+                  },
+                  becameUnmatchedAt: changeInfo.becameUnmatchedAt,
+                  emailSent: false, // Should not reach here if confirmed, but set to false for safety
+                  changeLogId: changeInfo.changeLogId,
+                })
+              }
+            }
+          })
+
+          if (newUnmatchedIndividuals.length > 0) {
+            // Only keep the most recent change per individual
+            const individualsMap = new Map<
+              number,
+              (typeof newUnmatchedIndividuals)[0]
+            >()
+            newUnmatchedIndividuals.forEach((nui) => {
+              const existing = individualsMap.get(nui.rider.flight_id)
+              if (
+                !existing ||
+                new Date(nui.becameUnmatchedAt) >
+                  new Date(existing.becameUnmatchedAt)
+              ) {
+                individualsMap.set(nui.rider.flight_id, nui)
+              }
+            })
+            setUnmatchedIndividuals(Array.from(individualsMap.values()))
+          } else {
+            // If no unconfirmed unmatched individuals, clear the list
+            setUnmatchedIndividuals([])
+          }
+        } else {
+          setUnmatchedIndividuals([])
+        }
+      }
+    } catch (error) {
+      console.error('Error loading unconfirmed changes:', error)
+    }
+  }, [supabase])
+
   useEffect(() => {
     const loadData = async () => {
       await fetchLastAlgorithmRun()
       await fetchData()
       await fetchChangeLog()
+      // Load unconfirmed changes after a short delay to ensure groups are loaded
+      setTimeout(async () => {
+        await loadUnconfirmedChanges()
+      }, 500)
     }
     loadData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Reload unconfirmed changes when groups change
+  useEffect(() => {
+    if (groups.length > 0) {
+      loadUnconfirmedChanges()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups.length])
 
   // Set initial collapsed state based on screen size
   useEffect(() => {
@@ -596,6 +1407,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           target_group_id,
           target_user_id,
           ignored_error,
+          confirmed,
           metadata,
           created_at
         `,
@@ -635,6 +1447,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           target_group_id: entry.target_group_id,
           target_user_id: entry.target_user_id,
           ignored_error: entry.ignored_error,
+          confirmed: entry.confirmed ?? false,
           metadata: entry.metadata,
           created_at: entry.created_at,
           actor_name: usersMap.get(entry.actor_user_id) || 'Unknown',
@@ -659,6 +1472,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       metadata?: any,
       targetGroupId?: number,
       targetUserId?: string,
+      confirmed: boolean = false,
     ) => {
       try {
         const currentUser = authUser || user
@@ -675,23 +1489,93 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
         const actorRole = userProfile?.role || 'Admin'
 
-        const changeLogData = {
+        // Insert into ChangeLog
+        // Ensure metadata is properly serialized (Supabase expects JSON)
+        // Use a try-catch to handle any circular references or invalid JSON
+        let serializedMetadata = null
+        try {
+          if (metadata) {
+            // Deep clone to avoid circular references
+            serializedMetadata = JSON.parse(JSON.stringify(metadata))
+          }
+        } catch (metadataError) {
+          console.error(
+            '[logToChangeLog] Error serializing metadata:',
+            metadataError,
+          )
+          console.error('[logToChangeLog] Original metadata:', metadata)
+          // Try to create a safe version
+          try {
+            serializedMetadata = {
+              error: 'Metadata serialization failed',
+              original_type: typeof metadata,
+            }
+          } catch {
+            serializedMetadata = null
+          }
+        }
+
+        const changeLogDataToInsert: any = {
           actor_user_id: currentUser.id,
           actor_role: actorRole,
           action,
-          // target_group_id is UUID type, but ride_id is a number, so we store ride_id in metadata instead
-          target_group_id: null,
+          target_group_id: targetGroupId ? targetGroupId.toString() : null,
           target_user_id: targetUserId || null,
-          metadata: metadata || null,
+          metadata: serializedMetadata,
           ignored_error: false,
         }
 
-        // Insert into ChangeLog
-        const { error } = await supabase.from('ChangeLog').insert(changeLogData)
+        // Only include confirmed if it's explicitly set (some databases might not have this column)
+        if (confirmed !== undefined) {
+          changeLogDataToInsert.confirmed = confirmed
+        }
+
+        console.log('[logToChangeLog] Attempting to insert ChangeLog entry:', {
+          action,
+          metadata: serializedMetadata,
+          targetGroupId,
+          targetUserId,
+          confirmed,
+          changeLogData: changeLogDataToInsert,
+        })
+
+        const { data, error } = await supabase
+          .from('ChangeLog')
+          .insert(changeLogDataToInsert)
+          .select()
 
         if (error) {
-          console.error('Error logging to ChangeLog:', error)
+          console.error('[logToChangeLog] Error logging to ChangeLog:', error)
+          console.error(
+            '[logToChangeLog] Full error object:',
+            JSON.stringify(error, null, 2),
+          )
+          console.error(
+            '[logToChangeLog] ChangeLog data attempted:',
+            JSON.stringify(changeLogDataToInsert, null, 2),
+          )
+          console.error('[logToChangeLog] Error details:', {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+          })
+
+          // Try to get more details from the error
+          if (error.details) {
+            console.error(
+              '[logToChangeLog] Error details (parsed):',
+              error.details,
+            )
+          }
+          if (error.hint) {
+            console.error('[logToChangeLog] Error hint:', error.hint)
+          }
         } else {
+          console.log(
+            '[logToChangeLog] ChangeLog entry created successfully:',
+            data,
+          )
           // Refresh changelog - add small delay to ensure database commit
           await new Promise((resolve) => setTimeout(resolve, 200))
           await fetchChangeLog()
@@ -701,6 +1585,197 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       }
     },
     [authUser, user, supabase, fetchChangeLog],
+  )
+
+  // Update group time for all members
+  const handleUpdateGroupTime = useCallback(
+    async (groupId: number, newTime: string) => {
+      if (!newTime || !newTime.includes(':')) {
+        setErrorMessage('Invalid time format. Please use HH:MM format.')
+        setTimeout(() => setErrorMessage(null), 3000)
+        return
+      }
+
+      setIsUpdatingTime(true)
+      try {
+        // Format time to HH:MM:SS
+        const formattedTime =
+          newTime.includes(':') && newTime.split(':').length === 2
+            ? `${newTime}:00`
+            : newTime
+
+        // Update all Matches for this group (set is_verified to false when time changes)
+        const { error: updateError } = await supabase
+          .from('Matches')
+          .update({ time: formattedTime, is_verified: false })
+          .eq('ride_id', groupId)
+
+        if (updateError) {
+          console.error('Error updating group time:', updateError)
+          setErrorMessage('Failed to update group time')
+          setTimeout(() => setErrorMessage(null), 3000)
+          return
+        }
+
+        // Update local state and track changes
+        setGroups((prev) => {
+          const oldGroup = prev.find((g) => g.ride_id === groupId)
+          const updatedGroups = prev.map((g) =>
+            g.ride_id === groupId ? { ...g, match_time: formattedTime } : g,
+          )
+          const updatedGroup = updatedGroups.find((g) => g.ride_id === groupId)
+
+          // Log to ChangeLog
+          if (oldGroup) {
+            logToChangeLog(
+              'UPDATE_GROUP_TIME',
+              {
+                ride_id: groupId, // Store as number in metadata
+                old_time: oldGroup.match_time || 'N/A',
+                new_time: formattedTime,
+                rider_count: oldGroup.riders.length,
+              },
+              undefined, // Don't set target_group_id if it's UUID type and we have a number
+            )
+          }
+
+          return updatedGroups
+        })
+
+        // Track this as a changed group - use updated group from state
+        setGroups((prevGroups) => {
+          const updatedGroup = prevGroups.find((g) => g.ride_id === groupId)
+          if (updatedGroup) {
+            setChangedGroups((prevChanged) => {
+              const existing = prevChanged.find(
+                (cg) => cg.group.ride_id === groupId,
+              )
+              if (existing) {
+                return prevChanged.map((cg) =>
+                  cg.group.ride_id === groupId
+                    ? {
+                        ...cg,
+                        group: updatedGroup, // Update with latest group data
+                        changedAt: new Date().toISOString(),
+                        emailsSent: false,
+                      }
+                    : cg,
+                )
+              }
+              return [
+                ...prevChanged,
+                {
+                  group: updatedGroup,
+                  changeType: 'modified',
+                  changedAt: new Date().toISOString(),
+                  emailsSent: false,
+                },
+              ]
+            })
+          }
+          return prevGroups
+        })
+
+        setEditTimeModal(null)
+        setErrorMessage(null)
+      } catch (error) {
+        console.error('Error in handleUpdateGroupTime:', error)
+        setErrorMessage('Failed to update group time')
+        setTimeout(() => setErrorMessage(null), 3000)
+      } finally {
+        setIsUpdatingTime(false)
+      }
+    },
+    [supabase, logToChangeLog],
+  )
+
+  // Update group voucher for all members
+  const handleUpdateGroupVoucher = useCallback(
+    async (groupId: number, newVoucher: string) => {
+      if (!authUser || !user) return
+
+      setIsUpdatingVoucher(true)
+      try {
+        // Update all Matches for this group with the new voucher
+        const { error: updateError } = await supabase
+          .from('Matches')
+          .update({ voucher: newVoucher || '' })
+          .eq('ride_id', groupId)
+
+        if (updateError) {
+          console.error('Error updating group voucher:', updateError)
+          setErrorMessage('Failed to update group voucher')
+          setTimeout(() => setErrorMessage(null), 3000)
+          return
+        }
+
+        // Update local state and track this as a changed group
+        setGroups((prev) => {
+          const updatedGroups = prev.map((g) =>
+            g.ride_id === groupId
+              ? { ...g, group_voucher: newVoucher || undefined }
+              : g,
+          )
+
+          // Track this as a changed group
+          const updatedGroup = updatedGroups.find((g) => g.ride_id === groupId)
+          if (updatedGroup) {
+            setChangedGroups((prevChanged) => {
+              const existing = prevChanged.find(
+                (cg) => cg.group.ride_id === groupId,
+              )
+              if (existing) {
+                return prevChanged.map((cg) =>
+                  cg.group.ride_id === groupId
+                    ? {
+                        ...cg,
+                        group: updatedGroup,
+                        changedAt: new Date().toISOString(),
+                        emailsSent: false,
+                      }
+                    : cg,
+                )
+              }
+              return [
+                ...prevChanged,
+                {
+                  group: updatedGroup,
+                  changeType: 'modified',
+                  changedAt: new Date().toISOString(),
+                  emailsSent: false,
+                },
+              ]
+            })
+          }
+
+          return updatedGroups
+        })
+
+        // Log to ChangeLog
+        // Note: target_group_id expects UUID, but ride_id is a number
+        // Storing ride_id in metadata instead
+        await logToChangeLog(
+          'UPDATE_VOUCHER',
+          {
+            group_id: groupId.toString(),
+            ride_id: groupId, // Store as number in metadata
+            voucher: newVoucher || '',
+          },
+          undefined, // Don't set target_group_id if it's UUID type and we have a number
+        )
+
+        setEditVoucherModal(null)
+        setEditVoucherValue('')
+        setErrorMessage(null)
+      } catch (error) {
+        console.error('Error in handleUpdateGroupVoucher:', error)
+        setErrorMessage('Failed to update group voucher')
+        setTimeout(() => setErrorMessage(null), 3000)
+      } finally {
+        setIsUpdatingVoucher(false)
+      }
+    },
+    [authUser, user, supabase, logToChangeLog],
   )
 
   const toggleAirport = (airport: string) => {
@@ -875,7 +1950,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           }
 
           const updatedRiders = group.riders.filter(
-            (r) => r.user_id !== rider.user_id,
+            (r) => r.flight_id !== rider.flight_id,
           )
 
           // Check if this is the last person in the group
@@ -930,14 +2005,20 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 }
 
                 // Log to ChangeLog
+                // Note: target_group_id expects UUID, but ride_id is a number
+                // Storing ride_id in metadata instead
                 await logToChangeLog(
-                  'DELETE_GROUP',
+                  'REMOVE_FROM_GROUP',
                   {
-                    ride_id: fromGroupId,
+                    from_group: fromGroupId,
+                    to: 'corral',
+                    ride_id: fromGroupId, // Store as number in metadata
                     rider_name: rider.name,
                     rider_user_id: rider.user_id,
+                    rider_flight_id: rider.flight_id,
                   },
-                  fromGroupId,
+                  undefined, // Don't set target_group_id if it's UUID type and we have a number
+                  rider.user_id,
                 )
 
                 // Update local state - remove group and add rider to corral
@@ -992,10 +2073,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             )
 
             if (uberType) {
-              // Update all matches in the group with new uber_type and is_subsidized
+              // Update all matches in the group with new uber_type, is_subsidized, and set is_verified to false
               const { error: updateError } = await supabase
                 .from('Matches')
-                .update({ uber_type: uberType, is_subsidized: isSubsidized })
+                .update({
+                  uber_type: uberType,
+                  is_subsidized: isSubsidized,
+                  is_verified: false,
+                })
                 .eq('ride_id', fromGroupId)
 
               if (updateError) {
@@ -1011,15 +2096,19 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           }
 
           // Log to ChangeLog
+          // Note: target_group_id expects UUID, but ride_id is a number
+          // Storing ride_id in metadata instead
           await logToChangeLog(
             'REMOVE_FROM_GROUP',
             {
               from_group: fromGroupId,
               to: 'corral',
+              ride_id: fromGroupId, // Store as number in metadata
               rider_name: rider.name,
               rider_user_id: rider.user_id,
+              rider_flight_id: rider.flight_id,
             },
-            fromGroupId,
+            undefined, // Don't set target_group_id if it's UUID type and we have a number
             rider.user_id,
           )
 
@@ -1031,18 +2120,61 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           }
           setCorralRiders((prev) => [...prev, riderWithOrigin])
 
-          // Remove from group (local state)
-          setGroups((prev) =>
-            prev.map((g) =>
+          // Remove from group (local state) and track changes
+          setGroups((prev) => {
+            const updatedGroups = prev.map((g) =>
               g.ride_id === fromGroupId
                 ? {
                     ...g,
-                    riders: g.riders.filter((r) => r.user_id !== rider.user_id),
+                    riders: g.riders.filter(
+                      (r) => r.flight_id !== rider.flight_id,
+                    ),
                     uber_type: newUberType !== null ? newUberType : g.uber_type, // Update uber_type if calculated
                   }
                 : g,
-            ),
-          )
+            )
+            const updatedGroup = updatedGroups.find(
+              (g) => g.ride_id === fromGroupId,
+            )
+
+            return updatedGroups
+          })
+
+          // Track this as a changed group
+          setGroups((prevGroups) => {
+            const updatedGroup = prevGroups.find(
+              (g) => g.ride_id === fromGroupId,
+            )
+            if (updatedGroup) {
+              setChangedGroups((prevChanged) => {
+                const existing = prevChanged.find(
+                  (cg) => cg.group.ride_id === fromGroupId,
+                )
+                if (existing) {
+                  return prevChanged.map((cg) =>
+                    cg.group.ride_id === fromGroupId
+                      ? {
+                          ...cg,
+                          group: updatedGroup, // Update with latest group data
+                          changedAt: new Date().toISOString(),
+                          emailsSent: false,
+                        }
+                      : cg,
+                  )
+                }
+                return [
+                  ...prevChanged,
+                  {
+                    group: updatedGroup,
+                    changeType: 'modified',
+                    changedAt: new Date().toISOString(),
+                    emailsSent: false,
+                  },
+                ]
+              })
+            }
+            return prevGroups
+          })
         } catch (error) {
           console.error('Error in handleAddToCorral:', error)
           setErrorMessage('Failed to remove rider from group')
@@ -1057,7 +2189,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         }
         setCorralRiders((prev) => [...prev, riderWithOrigin])
         setUnmatchedRiders((prev) =>
-          prev.filter((r) => r.user_id !== rider.user_id),
+          prev.filter((r) => r.flight_id !== rider.flight_id),
         )
       }
     },
@@ -1096,7 +2228,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         let newUberType: string | null = null
         if (group) {
           const updatedRiders = group.riders.filter(
-            (r) => r.user_id !== rider.user_id,
+            (r) => r.flight_id !== rider.flight_id,
           )
 
           // Check if this is the last person in the group
@@ -1154,12 +2286,60 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 await logToChangeLog(
                   'DELETE_GROUP',
                   {
-                    ride_id: groupId,
+                    ride_id: groupId, // Store as number in metadata
                     rider_name: rider.name,
                     rider_user_id: rider.user_id,
                   },
-                  groupId,
+                  undefined, // Don't set target_group_id if it's UUID type and we have a number
                 )
+
+                // Track as deleted group
+                setChangedGroups((prev) => {
+                  const existing = prev.find(
+                    (cg) => cg.group.ride_id === groupId,
+                  )
+                  if (existing) {
+                    return prev.map((cg) =>
+                      cg.group.ride_id === groupId
+                        ? {
+                            ...cg,
+                            changeType: 'deleted',
+                            changedAt: new Date().toISOString(),
+                            emailsSent: false,
+                          }
+                        : cg,
+                    )
+                  }
+                  return [
+                    ...prev,
+                    {
+                      group,
+                      changeType: 'deleted',
+                      changedAt: new Date().toISOString(),
+                      emailsSent: false,
+                    },
+                  ]
+                })
+
+                // Track all riders as unmatched individuals
+                group.riders.forEach((r) => {
+                  setUnmatchedIndividuals((prev) => {
+                    const existing = prev.find(
+                      (ui) => ui.rider.flight_id === r.flight_id,
+                    )
+                    if (!existing) {
+                      return [
+                        ...prev,
+                        {
+                          rider: r,
+                          becameUnmatchedAt: new Date().toISOString(),
+                          emailSent: false,
+                        },
+                      ]
+                    }
+                    return prev
+                  })
+                })
 
                 // Update local state - remove group and add rider to unmatched
                 setGroups((prev) => prev.filter((g) => g.ride_id !== groupId))
@@ -1180,10 +2360,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             )
 
             if (uberType) {
-              // Update all matches in the group with new uber_type and is_subsidized
+              // Update all matches in the group with new uber_type, is_subsidized, and set is_verified to false
               const { error: updateError } = await supabase
                 .from('Matches')
-                .update({ uber_type: uberType, is_subsidized: isSubsidized })
+                .update({
+                  uber_type: uberType,
+                  is_subsidized: isSubsidized,
+                  is_verified: false,
+                })
                 .eq('ride_id', groupId)
 
               if (updateError) {
@@ -1198,31 +2382,94 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           }
         }
 
-        // Update local state - remove from group and add to unmatched
-        setGroups((prev) =>
-          prev.map((g) =>
+        // Update local state - remove from group and add to unmatched, and track changes
+        setGroups((prev) => {
+          const updatedGroups = prev.map((g) =>
             g.ride_id === groupId
               ? {
                   ...g,
-                  riders: g.riders.filter((r) => r.user_id !== rider.user_id),
+                  riders: g.riders.filter(
+                    (r) => r.flight_id !== rider.flight_id,
+                  ),
                   uber_type: newUberType !== null ? newUberType : g.uber_type, // Update uber_type if calculated
                 }
               : g,
-          ),
-        )
+          )
+          const updatedGroup = updatedGroups.find((g) => g.ride_id === groupId)
+
+          return updatedGroups
+        })
+
+        // Track this as a changed group
+        setGroups((prevGroups) => {
+          const updatedGroup = prevGroups.find((g) => g.ride_id === groupId)
+          if (updatedGroup) {
+            setChangedGroups((prevChanged) => {
+              const existing = prevChanged.find(
+                (cg) => cg.group.ride_id === groupId,
+              )
+              if (existing) {
+                return prevChanged.map((cg) =>
+                  cg.group.ride_id === groupId
+                    ? {
+                        ...cg,
+                        group: updatedGroup, // Update with latest group data
+                        changedAt: new Date().toISOString(),
+                        emailsSent: false,
+                      }
+                    : cg,
+                )
+              }
+              return [
+                ...prevChanged,
+                {
+                  group: updatedGroup,
+                  changeType: 'modified',
+                  changedAt: new Date().toISOString(),
+                  emailsSent: false,
+                },
+              ]
+            })
+          }
+          return prevGroups
+        })
 
         setUnmatchedRiders((prev) => [...prev, rider])
 
+        // Track this individual as unmatched
+        setUnmatchedIndividuals((prev) => {
+          const existing = prev.find(
+            (ui) => ui.rider.flight_id === rider.flight_id,
+          )
+          if (!existing) {
+            return [
+              ...prev,
+              {
+                rider,
+                becameUnmatchedAt: new Date().toISOString(),
+                emailSent: false,
+              },
+            ]
+          }
+          return prev
+        })
+
         // Log to ChangeLog
+        // Note: target_group_id expects UUID, but ride_id is a number
+        // Storing ride_id in metadata instead
         await logToChangeLog(
           'REMOVE_FROM_GROUP',
           {
             from_group: groupId,
             to: 'unmatched',
+            ride_id: groupId, // Store as number in metadata
             rider_name: rider.name,
             rider_user_id: rider.user_id,
+            rider_flight_id: rider.flight_id,
+            flight_id: rider.flight_id,
+            date: rider.date,
           },
-          groupId,
+          undefined, // Don't set target_group_id if it's UUID type and we have a number
           rider.user_id,
         )
       } catch (error) {
@@ -1236,7 +2483,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
   const handleRemoveFromCorral = useCallback((rider: Rider) => {
     // Remove from corral
-    setCorralRiders((prev) => prev.filter((r) => r.user_id !== rider.user_id))
+    setCorralRiders((prev) =>
+      prev.filter((r) => r.flight_id !== rider.flight_id),
+    )
 
     // Return to origin
     if (rider.originType === 'group' && rider.originGroupId) {
@@ -1289,7 +2538,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               g.ride_id === rider.originGroupId
                 ? {
                     ...g,
-                    riders: g.riders.filter((r) => r.user_id !== rider.user_id),
+                    riders: g.riders.filter(
+                      (r) => r.flight_id !== rider.flight_id,
+                    ),
                   }
                 : g,
             ),
@@ -1300,7 +2551,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       }
 
       // Remove from corral and add to unmatched
-      setCorralRiders((prev) => prev.filter((r) => r.user_id !== rider.user_id))
+      setCorralRiders((prev) =>
+        prev.filter((r) => r.flight_id !== rider.flight_id),
+      )
       setUnmatchedRiders((prev) => [...prev, rider])
     },
     [supabase],
@@ -1318,25 +2571,27 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   )
 
   const handleSelectFromCorral = useCallback(
-    async (rider: Rider, group: Group) => {
-      // Validate time compatibility
-      const timeCompatible = validateTimeCompatibility(group, rider)
-      if (!timeCompatible) {
-        const errorKey = `${rider.user_id}-${group.ride_id}`
-        setCorralCardErrors((prev) => {
-          const newMap = new Map(prev)
-          newMap.set(errorKey, 'These flights have no overlap')
-          return newMap
-        })
-        setCorralSelectionMode(null)
-        setTimeout(() => {
+    async (rider: Rider, group: Group, skipTimeValidation = false) => {
+      // Validate time compatibility (unless skipping)
+      if (!skipTimeValidation) {
+        const timeCompatible = validateTimeCompatibility(group, rider)
+        if (!timeCompatible) {
+          const errorKey = `${rider.user_id}-${group.ride_id}`
           setCorralCardErrors((prev) => {
             const newMap = new Map(prev)
-            newMap.delete(errorKey)
+            newMap.set(errorKey, 'These flights have no overlap')
             return newMap
           })
-        }, 3000)
-        return
+          setCorralSelectionMode(null)
+          setTimeout(() => {
+            setCorralCardErrors((prev) => {
+              const newMap = new Map(prev)
+              newMap.delete(errorKey)
+              return newMap
+            })
+          }, 3000)
+          return
+        }
       }
 
       // Validate bag constraints
@@ -1350,14 +2605,18 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         return
       }
 
-      // Determine source (corral or unmatched) and remove from corral immediately
-      const isFromCorral = corralRiders.some((r) => r.user_id === rider.user_id)
+      // Determine source (corral or unmatched) and remove from corral immediately (by flight_id)
+      const corralRider = corralRiders.find(
+        (r) => r.flight_id === rider.flight_id,
+      )
+      const isFromCorral = !!corralRider
       const source = isFromCorral ? 'corral' : 'unmatched'
+      const sourceGroupId = corralRider?.originGroupId
 
       // Remove from corral immediately to prevent duplicate groups
       if (isFromCorral) {
         setCorralRiders((prev) =>
-          prev.filter((r) => r.user_id !== rider.user_id),
+          prev.filter((r) => r.flight_id !== rider.flight_id),
         )
       }
 
@@ -1419,10 +2678,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           return
         }
 
-        // Update all existing matches in the group with the new uber_type and is_subsidized
+        // Update all existing matches in the group with the new uber_type, is_subsidized, and set is_verified to false
         const { error: updateMatchesError } = await supabase
           .from('Matches')
-          .update({ uber_type: uberType, is_subsidized: isSubsidized })
+          .update({
+            uber_type: uberType,
+            is_subsidized: isSubsidized,
+            is_verified: false,
+          })
           .eq('ride_id', group.ride_id)
 
         if (updateMatchesError) {
@@ -1439,18 +2702,156 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           console.error('Error updating flight:', flightsError)
         }
 
-        // Update local state
-        setGroups((prev) =>
-          prev.map((g) =>
-            g.ride_id === group.ride_id
-              ? {
+        // Auto-confirm unmatched individual change if rider was previously unmatched
+        // Check if there's an unconfirmed ChangeLog entry for this flight_id where they were removed to unmatched
+        const { data: unmatchedChangeLogs } = await supabase
+          .from('ChangeLog')
+          .select('id, metadata')
+          .eq('confirmed', false)
+          .eq('action', 'REMOVE_FROM_GROUP')
+          .eq('target_user_id', rider.user_id)
+
+        if (unmatchedChangeLogs && unmatchedChangeLogs.length > 0) {
+          // Filter to find entries where metadata.to === 'unmatched' and metadata.rider_flight_id matches
+          const matchingLogs = unmatchedChangeLogs.filter((log: any) => {
+            const metadata = log.metadata || {}
+            return (
+              metadata.to === 'unmatched' &&
+              (metadata.rider_flight_id === rider.flight_id ||
+                metadata.flight_id === rider.flight_id)
+            )
+          })
+
+          if (matchingLogs.length > 0) {
+            // Mark all matching unconfirmed change logs as confirmed
+            const changeLogIds = matchingLogs.map((log: any) => log.id)
+            await supabase
+              .from('ChangeLog')
+              .update({ confirmed: true })
+              .in('id', changeLogIds)
+
+            // Remove from unmatched individuals state if present
+            setUnmatchedIndividuals((prev) =>
+              prev.filter((ui) => ui.rider.flight_id !== rider.flight_id),
+            )
+          }
+        }
+
+        // Update local state and track changes
+        setGroups((prev) => {
+          const updatedGroups = prev.map((g) => {
+            // Update destination group
+            if (g.ride_id === group.ride_id) {
+              return {
+                ...g,
+                riders: [...g.riders, rider],
+                uber_type: uberType, // Update uber_type in local state
+              }
+            }
+            // If rider came from another group, update source group too
+            if (sourceGroupId && g.ride_id === sourceGroupId) {
+              // Calculate new uber_type for source group after removing rider
+              const remainingRiders = g.riders.filter(
+                (r) => r.flight_id !== rider.flight_id,
+              )
+              if (remainingRiders.length > 0) {
+                const bagUnits = calculateBagUnits(remainingRiders)
+                const newUberType = determineUberType(
+                  remainingRiders.length,
+                  bagUnits,
+                )
+                return {
                   ...g,
-                  riders: [...g.riders, rider],
-                  uber_type: uberType, // Update uber_type in local state
+                  riders: remainingRiders,
+                  uber_type: newUberType || g.uber_type,
                 }
-              : g,
-          ),
-        )
+              }
+            }
+            return g
+          })
+          const updatedGroup = updatedGroups.find(
+            (g) => g.ride_id === group.ride_id,
+          )
+          const updatedSourceGroup = sourceGroupId
+            ? updatedGroups.find((g) => g.ride_id === sourceGroupId)
+            : null
+
+          return updatedGroups
+        })
+
+        // Track destination group as changed
+        setGroups((prevGroups) => {
+          const updatedGroup = prevGroups.find(
+            (g) => g.ride_id === group.ride_id,
+          )
+          if (updatedGroup) {
+            setChangedGroups((prevChanged) => {
+              const existing = prevChanged.find(
+                (cg) => cg.group.ride_id === group.ride_id,
+              )
+              if (existing) {
+                return prevChanged.map((cg) =>
+                  cg.group.ride_id === group.ride_id
+                    ? {
+                        ...cg,
+                        group: updatedGroup, // Update with latest group data
+                        changedAt: new Date().toISOString(),
+                        emailsSent: false,
+                      }
+                    : cg,
+                )
+              }
+              return [
+                ...prevChanged,
+                {
+                  group: updatedGroup,
+                  changeType: 'modified',
+                  changedAt: new Date().toISOString(),
+                  emailsSent: false,
+                },
+              ]
+            })
+          }
+          return prevGroups
+        })
+
+        // Track source group as changed (if rider came from another group)
+        if (sourceGroupId) {
+          setGroups((prevGroups) => {
+            const updatedSourceGroup = prevGroups.find(
+              (g) => g.ride_id === sourceGroupId,
+            )
+            if (updatedSourceGroup) {
+              setChangedGroups((prevChanged) => {
+                const existing = prevChanged.find(
+                  (cg) => cg.group.ride_id === sourceGroupId,
+                )
+                if (existing) {
+                  return prevChanged.map((cg) =>
+                    cg.group.ride_id === sourceGroupId
+                      ? {
+                          ...cg,
+                          group: updatedSourceGroup, // Update with latest group data
+                          changedAt: new Date().toISOString(),
+                          emailsSent: false,
+                        }
+                      : cg,
+                  )
+                }
+                return [
+                  ...prevChanged,
+                  {
+                    group: updatedSourceGroup,
+                    changeType: 'modified',
+                    changedAt: new Date().toISOString(),
+                    emailsSent: false,
+                  },
+                ]
+              })
+            }
+            return prevGroups
+          })
+        }
 
         // Log to ChangeLog
         // Note: target_group_id expects UUID, but ride_id is a number
@@ -1767,6 +3168,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       )
 
       // Step 2: Create Matches rows for each rider
+      // Parse contingency vouchers (comma-separated list)
+      const contingencyVouchers = newGroupContingencyVoucher
+        ? newGroupContingencyVoucher
+            .split(',')
+            .map((v) => v.trim())
+            .filter(Boolean)
+        : []
+
       console.log('Step 2: Preparing matches to insert:', {
         rideId,
         matchCount: selectedRidersForNewGroup.length,
@@ -1774,8 +3183,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         calculatedIsSubsidized,
         uberType,
         formattedTime,
+        contingencyVouchersCount: contingencyVouchers.length,
       })
-      const matchesToInsert = selectedRidersForNewGroup.map((rider) => ({
+      const matchesToInsert = selectedRidersForNewGroup.map((rider, index) => ({
         ride_id: rideId,
         user_id: rider.user_id,
         flight_id: rider.flight_id,
@@ -1783,7 +3193,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         time: formattedTime,
         source: 'manual', // Admin-created groups
         voucher: calculatedIsSubsidized ? newGroupVoucher || '' : '',
-        contingency_voucher: null, // Not handling contingency vouchers for now
+        contingency_voucher: contingencyVouchers[index] || null, // Assign voucher by index
         is_verified: false,
         is_subsidized: calculatedIsSubsidized,
         uber_type: uberType,
@@ -1853,11 +3263,48 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         console.log('Step 3: Successfully updated flights to matched')
       }
 
+      // Auto-confirm unmatched individual changes for riders who were previously unmatched
+      // Check for unconfirmed ChangeLog entries where these riders were removed to unmatched
+      for (const rider of selectedRidersForNewGroup) {
+        const { data: unmatchedChangeLogs } = await supabase
+          .from('ChangeLog')
+          .select('id, metadata')
+          .eq('confirmed', false)
+          .eq('action', 'REMOVE_FROM_GROUP')
+          .eq('target_user_id', rider.user_id)
+
+        if (unmatchedChangeLogs && unmatchedChangeLogs.length > 0) {
+          // Filter to find entries where metadata.to === 'unmatched' and metadata.rider_flight_id matches
+          const matchingLogs = unmatchedChangeLogs.filter((log: any) => {
+            const metadata = log.metadata || {}
+            return (
+              metadata.to === 'unmatched' &&
+              (metadata.rider_flight_id === rider.flight_id ||
+                metadata.flight_id === rider.flight_id)
+            )
+          })
+
+          if (matchingLogs.length > 0) {
+            // Mark all matching unconfirmed change logs as confirmed
+            const changeLogIds = matchingLogs.map((log: any) => log.id)
+            await supabase
+              .from('ChangeLog')
+              .update({ confirmed: true })
+              .in('id', changeLogIds)
+
+            // Remove from unmatched individuals state if present
+            setUnmatchedIndividuals((prev) =>
+              prev.filter((ui) => ui.rider.flight_id !== rider.flight_id),
+            )
+          }
+        }
+      }
+
       // Log to ChangeLog
       await logToChangeLog(
         'CREATE_GROUP',
         {
-          ride_id: rideId,
+          ride_id: rideId, // Store as number in metadata
           rider_count: selectedRidersForNewGroup.length,
           rider_names: selectedRidersForNewGroup.map((r) => r.name),
           rider_user_ids: selectedRidersForNewGroup.map((r) => r.user_id),
@@ -1866,7 +3313,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           uber_type: uberType,
           is_subsidized: calculatedIsSubsidized,
         },
-        rideId,
+        undefined, // Don't set target_group_id if it's UUID type and we have a number
       )
 
       console.log('Group creation completed successfully:', {
@@ -1878,11 +3325,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       })
 
       // Remove riders from corral immediately to prevent duplicates
-      const selectedUserIds = new Set(
-        selectedRidersForNewGroup.map((r) => r.user_id),
+      const selectedFlightIds = new Set(
+        selectedRidersForNewGroup.map((r) => r.flight_id),
       )
       setCorralRiders((prev) =>
-        prev.filter((r) => !selectedUserIds.has(r.user_id)),
+        prev.filter((r) => !selectedFlightIds.has(r.flight_id)),
       )
 
       // Clear form and refresh data
@@ -1914,18 +3361,22 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       setTimeout(() => setErrorMessage(null), 3000)
       return
     }
-    if (selectedRidersForNewGroup.some((r) => r.user_id === rider.user_id)) {
+    if (
+      selectedRidersForNewGroup.some((r) => r.flight_id === rider.flight_id)
+    ) {
       return // Already selected
     }
     setSelectedRidersForNewGroup((prev) => [...prev, rider])
 
-    // Visual feedback: Add to recently added set for animation
-    setRecentlyAddedToNewGroup((prev) => new Set(prev).add(rider.user_id))
+    // Visual feedback: Add to recently added set for animation (use flight_id as string)
+    setRecentlyAddedToNewGroup((prev) =>
+      new Set(prev).add(String(rider.flight_id)),
+    )
     // Clear animation after 1 second
     setTimeout(() => {
       setRecentlyAddedToNewGroup((prev) => {
         const newSet = new Set(prev)
-        newSet.delete(rider.user_id)
+        newSet.delete(String(rider.flight_id))
         return newSet
       })
     }, 1000)
@@ -2395,7 +3846,18 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           }
           break
         case 'REMOVE_FROM_GROUP':
-          if (entry.metadata?.to === 'corral') {
+          // Check if this is actually an email confirmation (stored as REMOVE_FROM_GROUP with email_confirmed in metadata)
+          if (
+            entry.metadata?.email_confirmed === true ||
+            entry.metadata?.email_confirmed === 'true'
+          ) {
+            // Individual email confirmation
+            if (personName) {
+              actionText = `confirmed email sent for unmatched individual ${personName}`
+            } else {
+              actionText = 'confirmed email sent for an unmatched individual'
+            }
+          } else if (entry.metadata?.to === 'corral') {
             if (personName && groupId) {
               actionText = `moved user ${personName} from group ${groupId} to corral`
             } else if (personName) {
@@ -2443,6 +3905,59 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           break
         case 'IGNORE_ERROR':
           actionText = 'ignored an error'
+          break
+        case 'EMAIL_CONFIRMED':
+          if (entry.metadata?.ride_id) {
+            // Group email confirmation
+            const riderCount = entry.metadata?.rider_count || 0
+            const changeType = entry.metadata?.change_type || 'modified'
+            actionText = `confirmed email sent for ${changeType} group ${groupId || `#${entry.metadata.ride_id}`} (${riderCount} rider${riderCount !== 1 ? 's' : ''})`
+          } else if (personName) {
+            // Individual email confirmation
+            actionText = `confirmed email sent for unmatched individual ${personName}`
+          } else {
+            actionText = 'confirmed email sent'
+          }
+          break
+        case 'UPDATE_GROUP_TIME':
+          // Check if this is actually an email confirmation (stored as UPDATE_GROUP_TIME with email_confirmed in metadata)
+          if (
+            entry.metadata?.email_confirmed === true ||
+            entry.metadata?.email_confirmed === 'true'
+          ) {
+            if (entry.metadata?.ride_id) {
+              // Group email confirmation
+              const riderCount = entry.metadata?.rider_count || 0
+              const changeType = entry.metadata?.change_type || 'modified'
+              actionText = `confirmed email sent for ${changeType} group ${groupId || `#${entry.metadata.ride_id}`} (${riderCount} rider${riderCount !== 1 ? 's' : ''})`
+            } else {
+              actionText = 'confirmed email sent for a group'
+            }
+          } else {
+            // Regular time update
+            if (groupId) {
+              actionText = `updated time for group ${groupId}`
+            } else {
+              actionText = 'updated time for a group'
+            }
+          }
+          break
+        case 'UPDATE_VOUCHER':
+          const voucher = entry.metadata?.voucher || ''
+          const formattedVoucher = voucher ? formatVoucher(voucher) : ''
+          if (groupId) {
+            if (voucher) {
+              actionText = `updated voucher for group ${groupId} to ${formattedVoucher}`
+            } else {
+              actionText = `removed voucher for group ${groupId}`
+            }
+          } else {
+            if (voucher) {
+              actionText = `updated voucher for a group to ${formattedVoucher}`
+            } else {
+              actionText = 'removed voucher for a group'
+            }
+          }
           break
       }
 
@@ -2543,7 +4058,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           ) : (
             selectedRidersForNewGroup.map((rider) => (
               <div
-                key={rider.user_id}
+                key={`${rider.user_id}-${rider.flight_id}`}
                 className="flex items-center justify-between rounded border border-gray-200 bg-gray-50 p-2"
               >
                 <div className="min-w-0 flex-1">
@@ -2585,7 +4100,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 <button
                   onClick={() =>
                     setSelectedRidersForNewGroup((prev) =>
-                      prev.filter((r) => r.user_id !== rider.user_id),
+                      prev.filter((r) => r.flight_id !== rider.flight_id),
                     )
                   }
                   className="ml-2 text-red-500 hover:text-red-700"
@@ -2721,18 +4236,34 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         />
       </div>
 
-      {/* Contingency Voucher */}
+      {/* Contingency Vouchers */}
       <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">
-          Contingency Voucher
-        </label>
+        <div className="mb-1 flex items-center gap-2">
+          <label className="block text-sm font-medium text-gray-700">
+            Contingency Vouchers (per rider)
+          </label>
+          <div className="group relative">
+            <Info className="h-4 w-4 text-gray-400" />
+            <div className="absolute bottom-full left-1/2 z-10 mb-2 hidden w-64 -translate-x-1/2 transform rounded bg-gray-900 px-3 py-2 text-xs text-white group-hover:block">
+              Enter comma-separated vouchers (one per rider). Order should match
+              selected riders. Example: &quot;VOUCHER1, VOUCHER2&quot;
+              <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+            </div>
+          </div>
+        </div>
         <input
           type="text"
           value={newGroupContingencyVoucher}
           onChange={(e) => setNewGroupContingencyVoucher(e.target.value)}
-          placeholder="Optional"
+          placeholder={`Optional (e.g., "VOUCHER1, VOUCHER2" for ${selectedRidersForNewGroup.length} riders)`}
           className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
         />
+        {selectedRidersForNewGroup.length > 0 && (
+          <p className="mt-1 text-xs text-gray-500">
+            {selectedRidersForNewGroup.length} rider
+            {selectedRidersForNewGroup.length !== 1 ? 's' : ''} selected
+          </p>
+        )}
       </div>
 
       {/* Subsidized Checkbox */}
@@ -3507,9 +5038,157 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   return (
                     <div
                       key={group.ride_id}
-                      className={`overflow-hidden rounded-lg bg-white shadow-md ${
+                      className={`overflow-hidden rounded-lg bg-white shadow-md transition-colors ${
                         datePassed ? 'opacity-60' : ''
+                      } ${
+                        dragOverGroupId === group.ride_id &&
+                        draggedRider &&
+                        !datePassed
+                          ? 'bg-teal-50 ring-2 ring-teal-500'
+                          : ''
                       }`}
+                      onDragOver={(e) => {
+                        e.preventDefault()
+                        if (draggedRider && !datePassed) {
+                          e.dataTransfer.dropEffect = 'move'
+                          setDragOverGroupId(group.ride_id)
+                        } else {
+                          e.dataTransfer.dropEffect = 'none'
+                        }
+                      }}
+                      onDragLeave={(e) => {
+                        // Only clear if we're leaving the group area (not just moving to a child element)
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        const x = e.clientX
+                        const y = e.clientY
+                        if (
+                          x < rect.left ||
+                          x > rect.right ||
+                          y < rect.top ||
+                          y > rect.bottom
+                        ) {
+                          setDragOverGroupId(null)
+                        }
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setDragOverGroupId(null)
+                        if (draggedRider && !datePassed) {
+                          // Check if rider already exists in this group (by flight_id)
+                          const riderAlreadyInGroup = group.riders.some(
+                            (r) => r.flight_id === draggedRider.flight_id,
+                          )
+
+                          if (riderAlreadyInGroup) {
+                            // Rider already in group, don't add duplicate
+                            setDraggedRider(null)
+                            return
+                          }
+
+                          // Check if rider is from corral (by flight_id)
+                          const corralRider = corralRiders.find(
+                            (r) => r.flight_id === draggedRider.flight_id,
+                          )
+                          const isFromCorral = !!corralRider
+                          // Check if rider is from unmatched (by flight_id)
+                          const isFromUnmatched = unmatchedRiders.some(
+                            (r) => r.flight_id === draggedRider.flight_id,
+                          )
+
+                          // Check time/date compatibility before proceeding
+                          const timeCompatible = validateTimeCompatibility(
+                            group,
+                            draggedRider,
+                          )
+                          if (!timeCompatible) {
+                            // Show conflict modal with handler to proceed
+                            setTimeConflictModal({
+                              rider: draggedRider,
+                              group,
+                              onConfirm: async () => {
+                                if (isFromCorral) {
+                                  // Check if this is the original group
+                                  const isOriginalGroup =
+                                    corralRider?.originGroupId ===
+                                      group.ride_id &&
+                                    corralRider?.originType === 'group'
+
+                                  if (isOriginalGroup) {
+                                    // Remove from corral and restore to group
+                                    setCorralRiders((prev) =>
+                                      prev.filter(
+                                        (r) =>
+                                          r.flight_id !==
+                                          draggedRider.flight_id,
+                                      ),
+                                    )
+                                    setDraggedRider(null)
+                                    setTimeConflictModal(null)
+                                    return
+                                  } else {
+                                    // Add to different group (bypassing validation)
+                                    await handleSelectFromCorral(
+                                      draggedRider,
+                                      group,
+                                      true, // Skip time validation
+                                    )
+                                  }
+                                } else if (isFromUnmatched) {
+                                  // Add unmatched rider directly to group (bypassing validation)
+                                  await handleSelectFromCorral(
+                                    draggedRider,
+                                    group,
+                                    true, // Skip time validation
+                                  )
+                                  // Remove from unmatched
+                                  setUnmatchedRiders((prev) =>
+                                    prev.filter(
+                                      (r) =>
+                                        r.flight_id !== draggedRider.flight_id,
+                                    ),
+                                  )
+                                }
+                                setDraggedRider(null)
+                                setTimeConflictModal(null)
+                              },
+                            })
+                            return
+                          }
+
+                          if (isFromCorral) {
+                            // Check if this is the original group
+                            const isOriginalGroup =
+                              corralRider?.originGroupId === group.ride_id &&
+                              corralRider?.originType === 'group'
+
+                            if (isOriginalGroup) {
+                              // Remove from corral and restore to group (by flight_id)
+                              setCorralRiders((prev) =>
+                                prev.filter(
+                                  (r) => r.flight_id !== draggedRider.flight_id,
+                                ),
+                              )
+                              // Rider is already in the group, just remove from corral
+                              setDraggedRider(null)
+                              return
+                            } else {
+                              // Add to different group
+                              await handleSelectFromCorral(draggedRider, group)
+                            }
+                          } else if (isFromUnmatched) {
+                            // Add unmatched rider directly to group
+                            await handleSelectFromCorral(draggedRider, group)
+                            // Remove from unmatched (by flight_id)
+                            setUnmatchedRiders((prev) =>
+                              prev.filter(
+                                (r) => r.flight_id !== draggedRider.flight_id,
+                              ),
+                            )
+                          }
+                          setDraggedRider(null)
+                        }
+                      }}
                     >
                       {/* Group Header */}
                       <div
@@ -3566,16 +5245,29 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                               </p>
                             </div>
                             {/* Uber Voucher - Below date/time */}
-                            <p className="mt-1 text-xs text-gray-600">
-                              Uber Voucher:{' '}
-                              {group.group_voucher ? (
-                                <span className="font-bold text-gray-900">
-                                  {formatVoucher(group.group_voucher)}
-                                </span>
-                              ) : (
-                                'N/A'
-                              )}
-                            </p>
+                            <div className="mt-1 flex items-center gap-1.5">
+                              <p className="text-xs text-gray-600">
+                                Uber Voucher:{' '}
+                                {group.group_voucher ? (
+                                  <span className="font-bold text-gray-900">
+                                    {formatVoucher(group.group_voucher)}
+                                  </span>
+                                ) : (
+                                  'N/A'
+                                )}
+                              </p>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation() // Prevent group from expanding
+                                  setEditVoucherModal({ group })
+                                  setEditVoucherValue(group.group_voucher || '')
+                                }}
+                                className="flex items-center text-gray-500 transition-colors hover:text-teal-600"
+                                title="Edit voucher"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                            </div>
                           </div>
                         </div>
 
@@ -3676,6 +5368,34 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             </div>
                           </div>
 
+                          {/* Edit Time Button */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (!datePassed) {
+                                setEditTimeModal({ group })
+                                setEditTimeValue(
+                                  group.match_time
+                                    ? group.match_time.substring(0, 5)
+                                    : '',
+                                )
+                              }
+                            }}
+                            disabled={datePassed}
+                            className={`rounded p-1.5 ${
+                              datePassed
+                                ? 'cursor-not-allowed text-gray-400'
+                                : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                            }`}
+                            title={
+                              datePassed
+                                ? 'Cannot edit past groups'
+                                : 'Edit group time'
+                            }
+                          >
+                            <Clock className="h-5 w-5" />
+                          </button>
+
                           {/* Expand/Collapse Icon */}
                           <svg
                             className={`h-5 w-5 flex-shrink-0 text-gray-500 transition-transform ${
@@ -3749,30 +5469,124 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             e.stopPropagation()
                             setDragOverGroupId(null)
                             if (draggedRider && !datePassed) {
-                              // Check if rider is from corral
-                              const isFromCorral = corralRiders.some(
-                                (r) => r.user_id === draggedRider.user_id,
-                              )
-                              // Check if rider is from unmatched
-                              const isFromUnmatched = unmatchedRiders.some(
-                                (r) => r.user_id === draggedRider.user_id,
+                              // Check if rider already exists in this group (by flight_id)
+                              const riderAlreadyInGroup = group.riders.some(
+                                (r) => r.flight_id === draggedRider.flight_id,
                               )
 
-                              if (isFromCorral) {
-                                await handleSelectFromCorral(
-                                  draggedRider,
+                              if (riderAlreadyInGroup) {
+                                // Rider already in group, don't add duplicate
+                                setDraggedRider(null)
+                                return
+                              }
+
+                              // Check if rider is from corral (by flight_id)
+                              const corralRider = corralRiders.find(
+                                (r) => r.flight_id === draggedRider.flight_id,
+                              )
+                              const isFromCorral = !!corralRider
+                              // Check if rider is from unmatched (by flight_id)
+                              const isFromUnmatched = unmatchedRiders.some(
+                                (r) => r.flight_id === draggedRider.flight_id,
+                              )
+
+                              // Check time/date compatibility before proceeding
+                              const timeCompatible = validateTimeCompatibility(
+                                group,
+                                draggedRider,
+                              )
+                              if (!timeCompatible) {
+                                // Show conflict modal with handler to proceed
+                                setTimeConflictModal({
+                                  rider: draggedRider,
                                   group,
-                                )
+                                  onConfirm: async () => {
+                                    if (isFromCorral) {
+                                      // Check if this is the original group
+                                      const isOriginalGroup =
+                                        corralRider?.originGroupId ===
+                                          group.ride_id &&
+                                        corralRider?.originType === 'group'
+
+                                      if (isOriginalGroup) {
+                                        // Remove from corral and restore to group
+                                        setCorralRiders((prev) =>
+                                          prev.filter(
+                                            (r) =>
+                                              r.flight_id !==
+                                              draggedRider.flight_id,
+                                          ),
+                                        )
+                                        setDraggedRider(null)
+                                        setTimeConflictModal(null)
+                                        return
+                                      } else {
+                                        // Add to different group (bypassing validation)
+                                        await handleSelectFromCorral(
+                                          draggedRider,
+                                          group,
+                                          true, // Skip time validation
+                                        )
+                                      }
+                                    } else if (isFromUnmatched) {
+                                      // Add unmatched rider directly to group (bypassing validation)
+                                      await handleSelectFromCorral(
+                                        draggedRider,
+                                        group,
+                                        true, // Skip time validation
+                                      )
+                                      // Remove from unmatched
+                                      setUnmatchedRiders((prev) =>
+                                        prev.filter(
+                                          (r) =>
+                                            r.flight_id !==
+                                            draggedRider.flight_id,
+                                        ),
+                                      )
+                                    }
+                                    setDraggedRider(null)
+                                    setTimeConflictModal(null)
+                                  },
+                                })
+                                return
+                              }
+
+                              if (isFromCorral) {
+                                // Check if this is the original group
+                                const isOriginalGroup =
+                                  corralRider?.originGroupId ===
+                                    group.ride_id &&
+                                  corralRider?.originType === 'group'
+
+                                if (isOriginalGroup) {
+                                  // Remove from corral and restore to group (by flight_id)
+                                  setCorralRiders((prev) =>
+                                    prev.filter(
+                                      (r) =>
+                                        r.flight_id !== draggedRider.flight_id,
+                                    ),
+                                  )
+                                  // Rider is already in the group, just remove from corral
+                                  setDraggedRider(null)
+                                  return
+                                } else {
+                                  // Add to different group
+                                  await handleSelectFromCorral(
+                                    draggedRider,
+                                    group,
+                                  )
+                                }
                               } else if (isFromUnmatched) {
                                 // Add unmatched rider directly to group
                                 await handleSelectFromCorral(
                                   draggedRider,
                                   group,
                                 )
-                                // Remove from unmatched
+                                // Remove from unmatched (by flight_id)
                                 setUnmatchedRiders((prev) =>
                                   prev.filter(
-                                    (r) => r.user_id !== draggedRider.user_id,
+                                    (r) =>
+                                      r.flight_id !== draggedRider.flight_id,
                                   ),
                                 )
                               }
@@ -3791,162 +5605,213 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           >
                             Add from corral
                           </button>
-                          {group.riders.length === 0 ? (
-                            <div className="rounded-lg border-2 border-dashed border-gray-300 p-8 text-center">
-                              <p className="text-gray-500">Drop riders here</p>
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              {group.riders.map((rider) => (
-                                <div
-                                  key={rider.user_id}
-                                  className={`flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3 ${
-                                    datePassed
-                                      ? 'cursor-not-allowed opacity-50'
-                                      : 'hover:bg-gray-50'
-                                  }`}
-                                  draggable={!datePassed}
-                                  onDragStart={() => {
-                                    if (!datePassed) {
-                                      setDraggedRider(rider)
-                                    }
-                                  }}
-                                >
-                                  <div className="flex items-center gap-4">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-3">
-                                        <p className="font-medium text-gray-900">
-                                          {rider.name}
-                                        </p>
-                                        <div className="flex items-center gap-2">
-                                          <div className="group relative flex items-center gap-1">
-                                            <Luggage className="h-4 w-4 text-gray-600" />
-                                            <span className="text-sm text-gray-600">
-                                              {rider.checked_bags}
-                                            </span>
-                                            <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                                              Checked Bags (2 Units Each)
-                                              <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                          {(() => {
+                            // Get riders currently in the group
+                            const activeRiders = group.riders
+                            // Get riders from corral that belong to this group
+                            const corralRidersForGroup = corralRiders.filter(
+                              (r) =>
+                                r.originGroupId === group.ride_id &&
+                                r.originType === 'group',
+                            )
+                            // Combine both lists
+                            const allRiders = [
+                              ...activeRiders,
+                              ...corralRidersForGroup,
+                            ]
+
+                            if (allRiders.length === 0) {
+                              return (
+                                <div className="rounded-lg border-2 border-dashed border-gray-300 p-8 text-center">
+                                  <p className="text-gray-500">
+                                    Drop riders here
+                                  </p>
+                                </div>
+                              )
+                            }
+
+                            return (
+                              <div className="space-y-2">
+                                {allRiders.map((rider) => {
+                                  const isBeingDragged =
+                                    draggedRider?.flight_id === rider.flight_id
+                                  // Check if this exact rider (by flight_id) is in corral
+                                  const isInCorral = corralRiders.some(
+                                    (r) => r.flight_id === rider.flight_id,
+                                  )
+                                  return (
+                                    <div
+                                      key={`${rider.user_id}-${rider.flight_id}`}
+                                      className={`flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3 transition-all ${
+                                        datePassed
+                                          ? 'cursor-not-allowed opacity-50'
+                                          : isBeingDragged
+                                            ? 'bg-gray-100 opacity-30'
+                                            : isInCorral
+                                              ? 'cursor-not-allowed bg-gray-100 opacity-40'
+                                              : 'hover:bg-gray-50'
+                                      }`}
+                                      draggable={!datePassed && !isInCorral}
+                                      onDragStart={() => {
+                                        if (!datePassed && !isInCorral) {
+                                          setDraggedRider(rider)
+                                        }
+                                      }}
+                                      onDragEnd={() => {
+                                        // Only clear if this was the dragged rider
+                                        if (
+                                          draggedRider?.flight_id ===
+                                          rider.flight_id
+                                        ) {
+                                          setDraggedRider(null)
+                                        }
+                                      }}
+                                    >
+                                      <div className="flex items-center gap-4">
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-3">
+                                            <p className="font-medium text-gray-900">
+                                              {rider.name}
+                                            </p>
+                                            <div className="flex items-center gap-2">
+                                              <div className="group relative flex items-center gap-1">
+                                                <Luggage className="h-4 w-4 text-gray-600" />
+                                                <span className="text-sm text-gray-600">
+                                                  {rider.checked_bags}
+                                                </span>
+                                                <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
+                                                  Checked Bags (2 Units Each)
+                                                  <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                                </div>
+                                              </div>
+                                              <div className="group relative flex items-center gap-1">
+                                                <Briefcase className="h-4 w-4 text-gray-600" />
+                                                <span className="text-sm text-gray-600">
+                                                  {rider.carry_on_bags}
+                                                </span>
+                                                <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
+                                                  Carry-On Bags (1 Unit Each)
+                                                  <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                                </div>
+                                              </div>
                                             </div>
                                           </div>
-                                          <div className="group relative flex items-center gap-1">
-                                            <Briefcase className="h-4 w-4 text-gray-600" />
-                                            <span className="text-sm text-gray-600">
-                                              {rider.carry_on_bags}
+                                          <p className="text-sm text-gray-600">
+                                            {rider.phone}
+                                          </p>
+                                          <div className="mt-1 flex items-center gap-3 text-sm text-gray-600">
+                                            {rider.airline_iata &&
+                                              rider.flight_no && (
+                                                <span className="flex items-center gap-1 text-xs font-medium text-gray-700">
+                                                  <Plane className="h-3 w-3 text-gray-600" />
+                                                  {rider.airline_iata}{' '}
+                                                  {rider.flight_no}
+                                                </span>
+                                              )}
+                                            <span
+                                              className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                                rider.to_airport
+                                                  ? 'bg-teal-100 text-teal-800'
+                                                  : 'bg-orange-100 text-orange-800'
+                                              }`}
+                                            >
+                                              {rider.to_airport ? (
+                                                <>
+                                                  <PlaneTakeoff className="h-3 w-3" />
+                                                  TO {rider.airport}
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <PlaneLanding className="h-3 w-3" />
+                                                  FROM {rider.airport}
+                                                </>
+                                              )}
                                             </span>
-                                            <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                                              Carry-On Bags (1 Unit Each)
-                                              <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                                            </div>
                                           </div>
+                                          <p className="mt-1 text-xs text-gray-500">
+                                            {rider.date} •{' '}
+                                            {formatTimeRange(rider.time_range)}
+                                          </p>
                                         </div>
                                       </div>
-                                      <p className="text-sm text-gray-600">
-                                        {rider.phone}
-                                      </p>
-                                      <p className="mt-1 text-sm text-gray-600">
-                                        <span className="inline-flex items-center justify-center rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">
-                                          {rider.airport}
-                                        </span>
-                                        <span className="ml-3">
-                                          {rider.date}
-                                        </span>
-                                        <span className="ml-3">
-                                          {formatTimeRange(rider.time_range)}
-                                        </span>
-                                      </p>
-                                      {rider.airline_iata &&
-                                        rider.flight_no && (
-                                          <div className="group relative mt-1 flex items-center gap-1">
-                                            <Plane className="h-4 w-4 text-gray-600" />
-                                            <span className="text-sm text-gray-600">
-                                              {rider.airline_iata}{' '}
-                                              {rider.flight_no}
-                                            </span>
-                                            <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                                              Flight Number
-                                              <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                                            </div>
-                                          </div>
-                                        )}
+                                      <div className="flex gap-1">
+                                        <button
+                                          onClick={() => {
+                                            if (!datePassed) {
+                                              handleAddToCorral(
+                                                rider,
+                                                group.ride_id,
+                                              )
+                                            }
+                                          }}
+                                          disabled={datePassed}
+                                          className={`rounded p-1 ${
+                                            datePassed
+                                              ? 'cursor-not-allowed text-gray-400'
+                                              : 'text-teal-500 hover:bg-teal-50'
+                                          }`}
+                                          title={
+                                            datePassed
+                                              ? 'Cannot modify past groups'
+                                              : 'Move to corral'
+                                          }
+                                        >
+                                          <svg
+                                            className="h-5 w-5"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
+                                            />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            if (!datePassed) {
+                                              handleRemoveFromGroupToUnmatched(
+                                                rider,
+                                                group.ride_id,
+                                              )
+                                            }
+                                          }}
+                                          disabled={datePassed}
+                                          className={`rounded p-1 ${
+                                            datePassed
+                                              ? 'cursor-not-allowed text-gray-400'
+                                              : 'text-red-500 hover:bg-red-50'
+                                          }`}
+                                          title={
+                                            datePassed
+                                              ? 'Cannot modify past groups'
+                                              : 'Remove from group and make unmatched'
+                                          }
+                                        >
+                                          <svg
+                                            className="h-5 w-5"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M6 18L18 6M6 6l12 12"
+                                            />
+                                          </svg>
+                                        </button>
+                                      </div>
                                     </div>
-                                  </div>
-                                  <div className="flex gap-1">
-                                    <button
-                                      onClick={() => {
-                                        if (!datePassed) {
-                                          handleAddToCorral(
-                                            rider,
-                                            group.ride_id,
-                                          )
-                                        }
-                                      }}
-                                      disabled={datePassed}
-                                      className={`rounded p-1 ${
-                                        datePassed
-                                          ? 'cursor-not-allowed text-gray-400'
-                                          : 'text-teal-500 hover:bg-teal-50'
-                                      }`}
-                                      title={
-                                        datePassed
-                                          ? 'Cannot modify past groups'
-                                          : 'Move to corral'
-                                      }
-                                    >
-                                      <svg
-                                        className="h-5 w-5"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                      >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
-                                        />
-                                      </svg>
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        if (!datePassed) {
-                                          handleRemoveFromGroupToUnmatched(
-                                            rider,
-                                            group.ride_id,
-                                          )
-                                        }
-                                      }}
-                                      disabled={datePassed}
-                                      className={`rounded p-1 ${
-                                        datePassed
-                                          ? 'cursor-not-allowed text-gray-400'
-                                          : 'text-red-500 hover:bg-red-50'
-                                      }`}
-                                      title={
-                                        datePassed
-                                          ? 'Cannot modify past groups'
-                                          : 'Remove from group and make unmatched'
-                                      }
-                                    >
-                                      <svg
-                                        className="h-5 w-5"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        stroke="currentColor"
-                                      >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M6 18L18 6M6 6l12 12"
-                                        />
-                                      </svg>
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                                  )
+                                })}
+                              </div>
+                            )
+                          })()}
                         </div>
                       )}
                     </div>
@@ -3967,14 +5832,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 sortedUnmatchedRiders.map((rider) => {
                   const riderDatePassed = isDatePassed(rider.date)
                   const isSelectedForNewGroup = selectedRidersForNewGroup.some(
-                    (r) => r.user_id === rider.user_id,
+                    (r) => r.flight_id === rider.flight_id,
                   )
                   const isRecentlyAdded = recentlyAddedToNewGroup.has(
-                    rider.user_id,
+                    String(rider.flight_id),
                   )
                   return (
                     <div
-                      key={rider.user_id}
+                      key={`${rider.user_id}-${rider.flight_id}`}
                       className={`relative rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-all duration-300 ${
                         riderDatePassed ? 'opacity-50' : ''
                       } ${
@@ -4142,260 +6007,741 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           {/* Corral Content */}
           {!corralCollapsed && (
             <div className="flex flex-1 flex-col overflow-hidden">
-              <div className="mb-4 flex-shrink-0 p-4 pb-2">
-                <p className="text-xs text-gray-600">
-                  {corralSelectionMode
-                    ? 'Select a rider to add to the group'
-                    : 'Temporary holding area for removed/unmatched riders'}
-                </p>
-                {corralSelectionMode && (
+              {/* Tabs */}
+              <div className="flex-shrink-0 border-b border-gray-200">
+                <div className="flex">
                   <button
-                    onClick={() => setCorralSelectionMode(null)}
-                    className="mt-2 text-xs text-gray-500 underline hover:text-gray-700"
+                    onClick={() => setCorralTab('riders')}
+                    className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                      corralTab === 'riders'
+                        ? 'border-b-2 border-teal-500 text-teal-600'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
                   >
-                    Cancel selection
+                    Riders ({corralRiders.length})
                   </button>
-                )}
-              </div>
-
-              <div
-                className={`flex-1 overflow-y-auto px-4 pb-4 transition-colors ${
-                  isDraggingOverCorral ? 'bg-teal-50' : ''
-                }`}
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  e.dataTransfer.dropEffect = 'move'
-                  if (draggedRider) {
-                    setIsDraggingOverCorral(true)
-                  }
-                }}
-                onDragLeave={(e) => {
-                  // Only clear if we're leaving the corral area (not just moving to a child element)
-                  const rect = e.currentTarget.getBoundingClientRect()
-                  const x = e.clientX
-                  const y = e.clientY
-                  if (
-                    x < rect.left ||
-                    x > rect.right ||
-                    y < rect.top ||
-                    y > rect.bottom
-                  ) {
-                    setIsDraggingOverCorral(false)
-                  }
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  setIsDraggingOverCorral(false)
-                  if (draggedRider) {
-                    // Check if rider is not already in corral
-                    const isAlreadyInCorral = corralRiders.some(
-                      (r) => r.user_id === draggedRider.user_id,
-                    )
-                    if (!isAlreadyInCorral) {
-                      handleAddToCorral(draggedRider)
-                    }
-                    setDraggedRider(null)
-                  }
-                }}
-              >
-                <div className="space-y-2">
-                  {sortedCorralRiders.length === 0 ? (
-                    <p className="text-center text-sm text-gray-500">
-                      Corral is empty
-                    </p>
-                  ) : (
-                    sortedCorralRiders.map((rider, riderIndex) => {
-                      const group = corralSelectionMode
-                        ? groups.find((g) => g.ride_id === corralSelectionMode)
-                        : null
-                      const isSelectedForNewGroup =
-                        selectedRidersForNewGroup.some(
-                          (r) => r.user_id === rider.user_id,
-                        )
-                      const isRecentlyAdded = recentlyAddedToNewGroup.has(
-                        rider.user_id,
-                      )
-                      const errorKey = group
-                        ? `${rider.user_id}-${group.ride_id}`
-                        : null
-                      const cardError = errorKey
-                        ? corralCardErrors.get(errorKey)
-                        : null
-
-                      return (
-                        <div
-                          key={`corral-${rider.user_id}-${riderIndex}`}
-                          className="space-y-1"
-                        >
-                          {cardError && (
-                            <p className="px-1 text-xs text-red-600">
-                              {cardError}
-                            </p>
-                          )}
-                          <div
-                            className={`rounded-lg border p-3 transition-all duration-300 ${
-                              isSelectedForNewGroup || isRecentlyAdded
-                                ? 'border-gray-300 bg-gray-100 opacity-60'
-                                : corralSelectionMode
-                                  ? 'cursor-pointer border-teal-400 bg-teal-50 hover:bg-teal-100'
-                                  : 'border-gray-200 bg-gray-50'
-                            } ${isRecentlyAdded ? 'animate-pulse' : ''}`}
-                            draggable={!corralSelectionMode}
-                            onDragStart={() => {
-                              if (!corralSelectionMode) {
-                                setDraggedRider(rider)
-                              }
-                            }}
-                            onDragEnd={() => {
-                              setDraggedRider(null)
-                              setDragOverGroupId(null)
-                            }}
-                            onClick={() => {
-                              if (corralSelectionMode && group) {
-                                handleSelectFromCorral(rider, group)
-                              }
-                            }}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-gray-900">
-                                  {rider.name}
-                                </p>
-                                <p className="text-xs text-gray-600">
-                                  {rider.phone}
-                                </p>
-                                {rider.airline_iata && rider.flight_no && (
-                                  <div className="group relative mt-1 flex items-center gap-1">
-                                    <Plane className="h-3 w-3 text-gray-600" />
-                                    <span className="text-xs text-gray-600">
-                                      {rider.airline_iata} {rider.flight_no}
-                                    </span>
-                                    <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                                      Flight Number
-                                      <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                                    </div>
-                                  </div>
-                                )}
-                                <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
-                                  <div className="group relative flex items-center gap-1">
-                                    <Luggage className="h-3 w-3" />
-                                    <span>{rider.checked_bags}</span>
-                                    <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                                      Checked Bags (2 Units Each)
-                                      <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                                    </div>
-                                  </div>
-                                  <div className="group relative flex items-center gap-1">
-                                    <Briefcase className="h-3 w-3" />
-                                    <span>{rider.carry_on_bags}</span>
-                                    <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
-                                      Carry-On Bags (1 Unit Each)
-                                      <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-                                    </div>
-                                  </div>
-                                  <span
-                                    className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                                      rider.to_airport
-                                        ? 'bg-teal-100 text-teal-800'
-                                        : 'bg-orange-100 text-orange-800'
-                                    }`}
-                                  >
-                                    {rider.to_airport ? (
-                                      <>
-                                        <PlaneTakeoff className="h-3 w-3" />
-                                        TO {rider.airport}
-                                      </>
-                                    ) : (
-                                      <>
-                                        <PlaneLanding className="h-3 w-3" />
-                                        FROM {rider.airport}
-                                      </>
-                                    )}
-                                  </span>
-                                </div>
-                                <p className="mt-1 text-xs text-gray-500">
-                                  {rider.date} •{' '}
-                                  {formatTimeRange(rider.time_range)}
-                                </p>
-                              </div>
-                              {!corralSelectionMode && (
-                                <div className="flex flex-shrink-0 gap-1">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      addRiderToNewGroup(rider)
-                                    }}
-                                    className="rounded p-1 text-purple-500 hover:bg-purple-50"
-                                    title="Add to new group"
-                                  >
-                                    <svg
-                                      className="h-4 w-4"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      stroke="currentColor"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M12 4v16m8-8H4"
-                                      />
-                                    </svg>
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleRemoveFromCorral(rider)
-                                    }}
-                                    className="rounded p-1 text-blue-500 hover:bg-blue-50"
-                                    title="Remove from corral (return to origin)"
-                                  >
-                                    <svg
-                                      className="h-4 w-4"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      stroke="currentColor"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
-                                      />
-                                    </svg>
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleRemoveFromCorralToUnmatched(rider)
-                                    }}
-                                    className="rounded p-1 text-red-500 hover:bg-red-50"
-                                    title="Remove from corral and make unmatched"
-                                  >
-                                    <svg
-                                      className="h-4 w-4"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      stroke="currentColor"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M6 18L18 6M6 6l12 12"
-                                      />
-                                    </svg>
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })
-                  )}
+                  <button
+                    onClick={() => setCorralTab('changes')}
+                    className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                      corralTab === 'changes'
+                        ? 'border-b-2 border-teal-500 text-teal-600'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    Changes (
+                    {changedGroups.length + unmatchedIndividuals.length})
+                  </button>
                 </div>
               </div>
+
+              {/* Riders Tab */}
+              {corralTab === 'riders' && (
+                <div className="flex flex-1 flex-col overflow-hidden">
+                  <div className="mb-4 flex-shrink-0 p-4 pb-2">
+                    <p className="text-xs text-gray-600">
+                      {corralSelectionMode
+                        ? 'Select a rider to add to the group'
+                        : 'Temporary holding area for removed/unmatched riders'}
+                    </p>
+                    {corralSelectionMode && (
+                      <button
+                        onClick={() => setCorralSelectionMode(null)}
+                        className="mt-2 text-xs text-gray-500 underline hover:text-gray-700"
+                      >
+                        Cancel selection
+                      </button>
+                    )}
+                  </div>
+
+                  <div
+                    className={`flex-1 overflow-y-auto px-4 pb-4 transition-colors ${
+                      isDraggingOverCorral ? 'bg-teal-50' : ''
+                    }`}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                      if (draggedRider) {
+                        setIsDraggingOverCorral(true)
+                      }
+                    }}
+                    onDragLeave={(e) => {
+                      // Only clear if we're leaving the corral area (not just moving to a child element)
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      const x = e.clientX
+                      const y = e.clientY
+                      if (
+                        x < rect.left ||
+                        x > rect.right ||
+                        y < rect.top ||
+                        y > rect.bottom
+                      ) {
+                        setIsDraggingOverCorral(false)
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      setIsDraggingOverCorral(false)
+                      if (draggedRider) {
+                        // Check if rider is not already in corral
+                        const isAlreadyInCorral = corralRiders.some(
+                          (r) => r.flight_id === draggedRider.flight_id,
+                        )
+                        if (!isAlreadyInCorral) {
+                          handleAddToCorral(draggedRider)
+                        }
+                        setDraggedRider(null)
+                      }
+                    }}
+                  >
+                    <div className="space-y-2">
+                      {sortedCorralRiders.length === 0 ? (
+                        <p className="text-center text-sm text-gray-500">
+                          Corral is empty
+                        </p>
+                      ) : (
+                        sortedCorralRiders.map((rider, riderIndex) => {
+                          const group = corralSelectionMode
+                            ? groups.find(
+                                (g) => g.ride_id === corralSelectionMode,
+                              )
+                            : null
+                          const isSelectedForNewGroup =
+                            selectedRidersForNewGroup.some(
+                              (r) => r.flight_id === rider.flight_id,
+                            )
+                          const isRecentlyAdded = recentlyAddedToNewGroup.has(
+                            String(rider.flight_id),
+                          )
+                          const errorKey = group
+                            ? `${rider.user_id}-${group.ride_id}`
+                            : null
+                          const cardError = errorKey
+                            ? corralCardErrors.get(errorKey)
+                            : null
+
+                          return (
+                            <div
+                              key={`corral-${rider.flight_id}-${riderIndex}`}
+                              className="space-y-1"
+                            >
+                              {cardError && (
+                                <p className="px-1 text-xs text-red-600">
+                                  {cardError}
+                                </p>
+                              )}
+                              <div
+                                className={`rounded-lg border p-3 transition-all duration-300 ${
+                                  isSelectedForNewGroup || isRecentlyAdded
+                                    ? 'border-gray-300 bg-gray-100 opacity-60'
+                                    : corralSelectionMode
+                                      ? 'cursor-pointer border-teal-400 bg-teal-50 hover:bg-teal-100'
+                                      : 'border-gray-200 bg-gray-50'
+                                } ${isRecentlyAdded ? 'animate-pulse' : ''}`}
+                                draggable={!corralSelectionMode}
+                                onDragStart={() => {
+                                  if (!corralSelectionMode) {
+                                    setDraggedRider(rider)
+                                  }
+                                }}
+                                onDragEnd={() => {
+                                  setDraggedRider(null)
+                                  setDragOverGroupId(null)
+                                }}
+                                onClick={() => {
+                                  if (corralSelectionMode && group) {
+                                    handleSelectFromCorral(rider, group)
+                                  }
+                                }}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium text-gray-900">
+                                      {rider.name}
+                                    </p>
+                                    <p className="text-xs text-gray-600">
+                                      {rider.phone}
+                                    </p>
+                                    {rider.airline_iata && rider.flight_no && (
+                                      <div className="group relative mt-1 flex items-center gap-1">
+                                        <Plane className="h-3 w-3 text-gray-600" />
+                                        <span className="text-xs text-gray-600">
+                                          {rider.airline_iata} {rider.flight_no}
+                                        </span>
+                                        <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
+                                          Flight Number
+                                          <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                        </div>
+                                      </div>
+                                    )}
+                                    <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
+                                      <div className="group relative flex items-center gap-1">
+                                        <Luggage className="h-3 w-3" />
+                                        <span>{rider.checked_bags}</span>
+                                        <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
+                                          Checked Bags (2 Units Each)
+                                          <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                        </div>
+                                      </div>
+                                      <div className="group relative flex items-center gap-1">
+                                        <Briefcase className="h-3 w-3" />
+                                        <span>{rider.carry_on_bags}</span>
+                                        <div className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 transform whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white group-hover:block">
+                                          Carry-On Bags (1 Unit Each)
+                                          <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+                                        </div>
+                                      </div>
+                                      <span
+                                        className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                          rider.to_airport
+                                            ? 'bg-teal-100 text-teal-800'
+                                            : 'bg-orange-100 text-orange-800'
+                                        }`}
+                                      >
+                                        {rider.to_airport ? (
+                                          <>
+                                            <PlaneTakeoff className="h-3 w-3" />
+                                            TO {rider.airport}
+                                          </>
+                                        ) : (
+                                          <>
+                                            <PlaneLanding className="h-3 w-3" />
+                                            FROM {rider.airport}
+                                          </>
+                                        )}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-xs text-gray-500">
+                                      {rider.date} •{' '}
+                                      {formatTimeRange(rider.time_range)}
+                                    </p>
+                                  </div>
+                                  {!corralSelectionMode && (
+                                    <div className="flex flex-shrink-0 gap-1">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          addRiderToNewGroup(rider)
+                                        }}
+                                        className="rounded p-1 text-purple-500 hover:bg-purple-50"
+                                        title="Add to new group"
+                                      >
+                                        <svg
+                                          className="h-4 w-4"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M12 4v16m8-8H4"
+                                          />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleRemoveFromCorral(rider)
+                                        }}
+                                        className="rounded p-1 text-blue-500 hover:bg-blue-50"
+                                        title="Remove from corral (return to origin)"
+                                      >
+                                        <svg
+                                          className="h-4 w-4"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
+                                          />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleRemoveFromCorralToUnmatched(
+                                            rider,
+                                          )
+                                        }}
+                                        className="rounded p-1 text-red-500 hover:bg-red-50"
+                                        title="Remove from corral and make unmatched"
+                                      >
+                                        <svg
+                                          className="h-4 w-4"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M6 18L18 6M6 6l12 12"
+                                          />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Changes Tab */}
+              {corralTab === 'changes' && (
+                <div className="flex flex-1 flex-col overflow-y-auto p-4">
+                  <div className="space-y-4">
+                    {/* Unconfirmed Changed Groups */}
+                    {changedGroups.filter((cg) => !cg.emailsSent).length >
+                      0 && (
+                      <div>
+                        <h3 className="mb-2 text-sm font-semibold text-gray-900">
+                          Changed Groups (
+                          {changedGroups.filter((cg) => !cg.emailsSent).length})
+                        </h3>
+                        <div className="space-y-2">
+                          {changedGroups
+                            .filter((cg) => !cg.emailsSent)
+                            .map((changedGroup) => (
+                              <ChangedGroupCard
+                                key={changedGroup.group.ride_id}
+                                changedGroup={changedGroup}
+                                onConfirmEmail={async () => {
+                                  console.log(
+                                    '[onConfirmEmail] Starting confirmation for group:',
+                                    {
+                                      groupId: changedGroup.group.ride_id,
+                                      changeLogId: changedGroup.changeLogId,
+                                      changeType: changedGroup.changeType,
+                                    },
+                                  )
+
+                                  // Find ALL unconfirmed ChangeLog entries related to this group
+                                  // This includes entries where the group is the source (from_group) or destination (to_group/ride_id)
+                                  const {
+                                    data: relatedEntries,
+                                    error: findError,
+                                  } = await supabase
+                                    .from('ChangeLog')
+                                    .select('id, action, metadata')
+                                    .eq('confirmed', false)
+                                    .in('action', [
+                                      'UPDATE_GROUP_TIME',
+                                      'ADD_TO_GROUP',
+                                      'REMOVE_FROM_GROUP',
+                                      'CREATE_GROUP',
+                                      'DELETE_GROUP',
+                                    ])
+                                    .or(
+                                      `metadata->>ride_id.eq.${changedGroup.group.ride_id},metadata->>to_group.eq.${changedGroup.group.ride_id},metadata->>from_group.eq.${changedGroup.group.ride_id}`,
+                                    )
+
+                                  if (findError) {
+                                    console.error(
+                                      '[onConfirmEmail] Error finding related ChangeLog entries:',
+                                      findError,
+                                    )
+                                  } else {
+                                    console.log(
+                                      '[onConfirmEmail] Found related ChangeLog entries:',
+                                      relatedEntries?.length || 0,
+                                      relatedEntries,
+                                    )
+                                  }
+
+                                  // Update ALL related ChangeLog entries to confirmed = true
+                                  if (
+                                    relatedEntries &&
+                                    relatedEntries.length > 0
+                                  ) {
+                                    const entryIds = relatedEntries.map(
+                                      (e) => e.id,
+                                    )
+                                    console.log(
+                                      '[onConfirmEmail] Updating ChangeLog entries to confirmed:',
+                                      entryIds,
+                                    )
+
+                                    const { error: updateError } =
+                                      await supabase
+                                        .from('ChangeLog')
+                                        .update({ confirmed: true })
+                                        .in('id', entryIds)
+
+                                    if (updateError) {
+                                      console.error(
+                                        '[onConfirmEmail] Error confirming changes:',
+                                        updateError,
+                                      )
+                                      setErrorMessage(
+                                        'Failed to confirm change',
+                                      )
+                                      setTimeout(
+                                        () => setErrorMessage(null),
+                                        3000,
+                                      )
+                                      return
+                                    }
+                                    console.log(
+                                      '[onConfirmEmail] Successfully updated',
+                                      entryIds.length,
+                                      'ChangeLog entries to confirmed',
+                                    )
+                                  } else if (changedGroup.changeLogId) {
+                                    // Fallback to single entry if no related entries found
+                                    console.log(
+                                      '[onConfirmEmail] No related entries found, updating single entry:',
+                                      changedGroup.changeLogId,
+                                    )
+                                    const { error } = await supabase
+                                      .from('ChangeLog')
+                                      .update({ confirmed: true })
+                                      .eq('id', changedGroup.changeLogId)
+
+                                    if (error) {
+                                      console.error(
+                                        '[onConfirmEmail] Error confirming change:',
+                                        error,
+                                      )
+                                      setErrorMessage(
+                                        'Failed to confirm change',
+                                      )
+                                      setTimeout(
+                                        () => setErrorMessage(null),
+                                        3000,
+                                      )
+                                      return
+                                    }
+                                  }
+
+                                  // Log email confirmation to ChangeLog
+                                  // Note: EMAIL_CONFIRMED is not in the database constraint, so we use UPDATE_GROUP_TIME
+                                  // with email_confirmed: true in metadata to track this
+                                  console.log(
+                                    '[onConfirmEmail] Creating email confirmation entry for group:',
+                                    changedGroup.group.ride_id,
+                                  )
+                                  try {
+                                    const emailConfirmedResult =
+                                      await logToChangeLog(
+                                        'UPDATE_GROUP_TIME', // Use allowed action type
+                                        {
+                                          email_confirmed: true, // Flag to indicate this is an email confirmation
+                                          ride_id: changedGroup.group.ride_id, // Store as number in metadata
+                                          change_type: changedGroup.changeType,
+                                          rider_count:
+                                            changedGroup.group.riders.length,
+                                          rider_names:
+                                            changedGroup.group.riders.map(
+                                              (r) => r.name,
+                                            ),
+                                          rider_user_ids:
+                                            changedGroup.group.riders.map(
+                                              (r) => r.user_id,
+                                            ),
+                                        },
+                                        undefined, // Don't set target_group_id if it's UUID type and we have a number
+                                        undefined, // targetUserId
+                                        true, // confirmed = true for email confirmations
+                                      )
+                                    console.log(
+                                      '[onConfirmEmail] Email confirmation entry creation result:',
+                                      emailConfirmedResult,
+                                    )
+                                  } catch (emailError) {
+                                    console.error(
+                                      '[onConfirmEmail] Error creating email confirmation entry:',
+                                      emailError,
+                                    )
+                                    // Don't fail the whole operation if logging fails
+                                  }
+
+                                  // Update local state
+                                  setChangedGroups((prev) =>
+                                    prev.map((cg) =>
+                                      cg.group.ride_id ===
+                                      changedGroup.group.ride_id
+                                        ? { ...cg, emailsSent: true }
+                                        : cg,
+                                    ),
+                                  )
+
+                                  // Refresh ChangeLog to show the new EMAIL_CONFIRMED entry
+                                  await fetchChangeLog()
+
+                                  // Reload unconfirmed changes after a delay to ensure DB commit
+                                  // The loadUnconfirmedChanges will now check for EMAIL_CONFIRMED entries
+                                  // and preserve the emailsSent state
+                                  setTimeout(() => {
+                                    loadUnconfirmedChanges()
+                                  }, 500)
+                                }}
+                                supabase={supabase}
+                              />
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Confirmed/Emailed Groups */}
+                    {changedGroups.filter((cg) => cg.emailsSent).length > 0 && (
+                      <div>
+                        <h3 className="mb-2 text-sm font-semibold text-green-700">
+                          Confirmed/Emailed Groups (
+                          {changedGroups.filter((cg) => cg.emailsSent).length})
+                        </h3>
+                        <div className="space-y-2">
+                          {changedGroups
+                            .filter((cg) => cg.emailsSent)
+                            .map((changedGroup) => (
+                              <ChangedGroupCard
+                                key={`confirmed-${changedGroup.group.ride_id}`}
+                                changedGroup={changedGroup}
+                                onConfirmEmail={async () => {
+                                  // Already confirmed, do nothing
+                                }}
+                                supabase={supabase}
+                              />
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Unconfirmed Unmatched Individuals */}
+                    {unmatchedIndividuals.filter((ui) => !ui.emailSent).length >
+                      0 && (
+                      <div>
+                        <h3 className="mb-2 text-sm font-semibold text-gray-900">
+                          Unmatched Individuals (
+                          {
+                            unmatchedIndividuals.filter((ui) => !ui.emailSent)
+                              .length
+                          }
+                          )
+                        </h3>
+                        <div className="space-y-2">
+                          {unmatchedIndividuals
+                            .filter((ui) => !ui.emailSent)
+                            .map((item) => (
+                              <UnmatchedIndividualCard
+                                key={`${item.rider.user_id}-${item.rider.flight_id}`}
+                                item={item}
+                                onConfirmEmail={async () => {
+                                  console.log(
+                                    '[onConfirmEmail] Starting confirmation for unmatched individual:',
+                                    {
+                                      flightId: item.rider.flight_id,
+                                      userId: item.rider.user_id,
+                                      changeLogId: item.changeLogId,
+                                    },
+                                  )
+
+                                  // Find ALL unconfirmed ChangeLog entries related to this flight/user
+                                  // This includes REMOVE_FROM_GROUP entries where this flight was removed to unmatched
+                                  const {
+                                    data: relatedEntries,
+                                    error: findError,
+                                  } = await supabase
+                                    .from('ChangeLog')
+                                    .select('id, action, metadata')
+                                    .eq('confirmed', false)
+                                    .eq('action', 'REMOVE_FROM_GROUP')
+                                    .eq('target_user_id', item.rider.user_id)
+                                    .or(
+                                      `metadata->>rider_flight_id.eq.${item.rider.flight_id},metadata->>flight_id.eq.${item.rider.flight_id}`,
+                                    )
+
+                                  if (findError) {
+                                    console.error(
+                                      '[onConfirmEmail] Error finding related ChangeLog entries:',
+                                      findError,
+                                    )
+                                  } else {
+                                    console.log(
+                                      '[onConfirmEmail] Found related ChangeLog entries:',
+                                      relatedEntries?.length || 0,
+                                      relatedEntries,
+                                    )
+                                  }
+
+                                  // Update ALL related ChangeLog entries to confirmed = true
+                                  if (
+                                    relatedEntries &&
+                                    relatedEntries.length > 0
+                                  ) {
+                                    const entryIds = relatedEntries.map(
+                                      (e) => e.id,
+                                    )
+                                    console.log(
+                                      '[onConfirmEmail] Updating ChangeLog entries to confirmed:',
+                                      entryIds,
+                                    )
+
+                                    const { error: updateError } =
+                                      await supabase
+                                        .from('ChangeLog')
+                                        .update({ confirmed: true })
+                                        .in('id', entryIds)
+
+                                    if (updateError) {
+                                      console.error(
+                                        '[onConfirmEmail] Error confirming changes:',
+                                        updateError,
+                                      )
+                                      setErrorMessage(
+                                        'Failed to confirm change',
+                                      )
+                                      setTimeout(
+                                        () => setErrorMessage(null),
+                                        3000,
+                                      )
+                                      return
+                                    }
+                                    console.log(
+                                      '[onConfirmEmail] Successfully updated',
+                                      entryIds.length,
+                                      'ChangeLog entries to confirmed',
+                                    )
+                                  } else if (item.changeLogId) {
+                                    // Fallback to single entry if no related entries found
+                                    console.log(
+                                      '[onConfirmEmail] No related entries found, updating single entry:',
+                                      item.changeLogId,
+                                    )
+                                    const { error } = await supabase
+                                      .from('ChangeLog')
+                                      .update({ confirmed: true })
+                                      .eq('id', item.changeLogId)
+
+                                    if (error) {
+                                      console.error(
+                                        '[onConfirmEmail] Error confirming change:',
+                                        error,
+                                      )
+                                      setErrorMessage(
+                                        'Failed to confirm change',
+                                      )
+                                      setTimeout(
+                                        () => setErrorMessage(null),
+                                        3000,
+                                      )
+                                      return
+                                    }
+                                  }
+
+                                  // Log email confirmation to ChangeLog
+                                  console.log(
+                                    '[onConfirmEmail] Creating EMAIL_CONFIRMED entry for individual:',
+                                    item.rider.flight_id,
+                                  )
+                                  const emailConfirmedResult =
+                                    await logToChangeLog(
+                                      'EMAIL_CONFIRMED',
+                                      {
+                                        rider_name: item.rider.name,
+                                        rider_user_id: item.rider.user_id,
+                                        rider_flight_id: item.rider.flight_id,
+                                        date: item.rider.date,
+                                      },
+                                      undefined, // targetGroupId
+                                      item.rider.user_id,
+                                      true, // confirmed = true for email confirmations
+                                    )
+                                  console.log(
+                                    '[onConfirmEmail] EMAIL_CONFIRMED entry creation result:',
+                                    emailConfirmedResult,
+                                  )
+
+                                  // Update local state immediately
+                                  setUnmatchedIndividuals((prev) =>
+                                    prev.map((ui) =>
+                                      ui.rider.flight_id ===
+                                      item.rider.flight_id
+                                        ? { ...ui, emailSent: true }
+                                        : ui,
+                                    ),
+                                  )
+
+                                  // Refresh ChangeLog to show the new EMAIL_CONFIRMED entry
+                                  await fetchChangeLog()
+
+                                  // Reload unconfirmed changes after a delay to ensure DB commit
+                                  // But preserve entries that are already marked as emailSent
+                                  setTimeout(async () => {
+                                    await loadUnconfirmedChanges()
+                                    // Re-apply emailSent status to prevent overwriting
+                                    setUnmatchedIndividuals((prev) =>
+                                      prev.map((ui) => {
+                                        const wasEmailed =
+                                          unmatchedIndividuals.find(
+                                            (ui2) =>
+                                              ui2.rider.flight_id ===
+                                              ui.rider.flight_id,
+                                          )?.emailSent
+                                        if (wasEmailed) {
+                                          return { ...ui, emailSent: true }
+                                        }
+                                        return ui
+                                      }),
+                                    )
+                                  }, 500)
+                                }}
+                                supabase={supabase}
+                              />
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Confirmed Unmatched Individuals */}
+                    {unmatchedIndividuals.filter((ui) => ui.emailSent).length >
+                      0 && (
+                      <div>
+                        <h3 className="mb-2 text-sm font-semibold text-green-700">
+                          Confirmed/Emailed Unmatched Individuals (
+                          {
+                            unmatchedIndividuals.filter((ui) => ui.emailSent)
+                              .length
+                          }
+                          )
+                        </h3>
+                        <div className="space-y-2">
+                          {unmatchedIndividuals
+                            .filter((ui) => ui.emailSent)
+                            .map((item) => (
+                              <UnmatchedIndividualCard
+                                key={`confirmed-${item.rider.user_id}-${item.rider.flight_id}`}
+                                item={item}
+                                onConfirmEmail={async () => {
+                                  // Already confirmed, do nothing
+                                }}
+                                supabase={supabase}
+                              />
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {changedGroups.length === 0 &&
+                      unmatchedIndividuals.length === 0 && (
+                        <p className="text-center text-sm text-gray-500">
+                          No changes to track
+                        </p>
+                      )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -4438,10 +6784,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
       {/* Bottom Panel - Change Log */}
       <div
-        className={`border-t border-gray-200 bg-white ${changeLogExpanded ? 'fixed inset-0 z-50 md:relative md:z-auto' : ''}`}
+        className={`w-full border-t border-gray-200 bg-white ${changeLogExpanded ? 'fixed inset-0 z-50 h-screen md:relative md:z-auto md:h-auto' : ''}`}
       >
         {!changeLogExpanded && (
-          <div className="flex w-full items-center justify-between px-6 py-4">
+          <div className="flex w-full items-center justify-between px-4 py-4 md:px-6">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setChangeLogExpanded(!changeLogExpanded)}
@@ -4488,9 +6834,16 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         )}
 
         {changeLogExpanded && (
-          <div className="flex h-full flex-col overflow-y-auto md:h-auto">
+          <div
+            className="flex h-full w-full flex-col overflow-hidden md:h-auto md:overflow-y-auto"
+            style={
+              {
+                '--changelog-height': `${changeLogHeight}px`,
+              } as React.CSSProperties
+            }
+          >
             {/* Header - Sticky on mobile */}
-            <div className="sticky top-0 z-10 flex w-full items-center justify-between border-b border-gray-200 bg-white px-6 py-4 md:relative md:border-b-0">
+            <div className="sticky top-0 z-10 flex w-full items-center justify-between border-b border-gray-200 bg-white px-4 py-4 md:relative md:border-b-0 md:px-6">
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setChangeLogExpanded(!changeLogExpanded)}
@@ -4535,9 +6888,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto border-t border-gray-200 md:border-t-0">
+            <div className="min-h-0 w-full flex-1 overflow-y-auto border-t border-gray-200 md:border-t-0">
               {changeLogOptionsExpanded && (
-                <div className="space-y-4 border-b border-gray-200 bg-gray-50 px-6 py-4">
+                <div className="space-y-4 border-b border-gray-200 bg-gray-50 px-4 py-4 md:px-6">
                   {/* Download CSV */}
                   <div>
                     <button
@@ -4706,6 +7059,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           { value: 'CREATE_GROUP', label: 'Create Group' },
                           { value: 'DELETE_GROUP', label: 'Delete Group' },
                           { value: 'IGNORE_ERROR', label: 'Ignore Error' },
+                          { value: 'UPDATE_GROUP_TIME', label: 'Update Time' },
+                          { value: 'UPDATE_VOUCHER', label: 'Update Voucher' },
                         ].map((action) => (
                           <label
                             key={action.value}
@@ -4785,12 +7140,16 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
               {/* Resizable Changelog Content */}
               <div
-                className="relative flex flex-col"
-                style={{ height: `${changeLogHeight}px` }}
+                className="relative flex flex-1 flex-col md:flex-none"
+                style={
+                  typeof window !== 'undefined' && window.innerWidth >= 768
+                    ? { height: `${changeLogHeight}px` }
+                    : undefined
+                }
               >
-                {/* Resize Handle - More visible and functional */}
+                {/* Resize Handle - More visible and functional - Hidden on mobile */}
                 <div
-                  className="group z-10 flex h-3 cursor-ns-resize items-center justify-center border-y border-gray-200 bg-gray-100 transition-colors hover:bg-teal-100"
+                  className="group z-10 hidden h-3 cursor-ns-resize items-center justify-center border-y border-gray-200 bg-gray-100 transition-colors hover:bg-teal-100 md:flex"
                   onMouseDown={(e) => {
                     resizeStartRef.current = {
                       y: e.clientY,
@@ -4809,7 +7168,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 </div>
 
                 {/* Changelog Entries */}
-                <div className="flex-1 overflow-y-auto px-6 py-4">
+                <div className="w-full flex-1 overflow-y-auto px-4 py-4 md:px-6">
                   <div className="space-y-2">
                     {sortedChangeLog.length === 0 ? (
                       <p className="text-center text-sm text-gray-500">
@@ -4858,6 +7217,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                               'ran',
                               'ignored',
                               'left',
+                              'updated',
                             ]
                             const words = segment.split(/(\s+)/)
                             words.forEach((word, wordIndex) => {
@@ -4946,6 +7306,210 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
                 >
                   Okay
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Time Modal */}
+        {editTimeModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+              <h3 className="mb-4 text-lg font-semibold text-gray-900">
+                Edit Group Time
+              </h3>
+              <p className="mb-4 text-sm text-gray-600">
+                Group #{editTimeModal.group.ride_id} •{' '}
+                {editTimeModal.group.riders.length} rider
+                {editTimeModal.group.riders.length !== 1 ? 's' : ''}
+              </p>
+              <div className="mb-4">
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  New Time (HH:MM)
+                </label>
+                <div className="relative">
+                  <input
+                    type="time"
+                    value={editTimeValue}
+                    onChange={(e) => setEditTimeValue(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      const input = e.currentTarget
+                        .previousElementSibling as HTMLInputElement
+                      input?.showPicker?.()
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    title="Open time picker"
+                  >
+                    <Clock className="h-4 w-4" />
+                  </button>
+                </div>
+                {editTimeModal.group.match_time && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Current time:{' '}
+                    {editTimeModal.group.match_time.substring(0, 5)}
+                  </p>
+                )}
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setEditTimeModal(null)
+                    setEditTimeValue('')
+                  }}
+                  disabled={isUpdatingTime}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (editTimeValue) {
+                      await handleUpdateGroupTime(
+                        editTimeModal.group.ride_id,
+                        editTimeValue,
+                      )
+                    }
+                  }}
+                  disabled={isUpdatingTime || !editTimeValue}
+                  className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:opacity-50"
+                >
+                  {isUpdatingTime ? 'Updating...' : 'Update Time'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Voucher Modal */}
+        {editVoucherModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+              <h3 className="mb-4 text-lg font-semibold text-gray-900">
+                Edit Uber Voucher
+              </h3>
+              <p className="mb-4 text-sm text-gray-600">
+                Group #{editVoucherModal.group.ride_id} •{' '}
+                {editVoucherModal.group.riders.length} rider
+                {editVoucherModal.group.riders.length !== 1 ? 's' : ''}
+              </p>
+              <div className="mb-4">
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Voucher Code
+                </label>
+                <input
+                  type="text"
+                  value={editVoucherValue}
+                  onChange={(e) => setEditVoucherValue(e.target.value)}
+                  placeholder="Enter voucher code (e.g., VOUCHER123)"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                />
+                {editVoucherModal.group.group_voucher && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Current voucher:{' '}
+                    {formatVoucher(editVoucherModal.group.group_voucher)}
+                  </p>
+                )}
+                <p className="mt-2 text-xs text-gray-500">
+                  This will update the voucher for all{' '}
+                  {editVoucherModal.group.riders.length} rider
+                  {editVoucherModal.group.riders.length !== 1 ? 's' : ''} in
+                  this group.
+                </p>
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setEditVoucherModal(null)
+                    setEditVoucherValue('')
+                  }}
+                  disabled={isUpdatingVoucher}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    await handleUpdateGroupVoucher(
+                      editVoucherModal.group.ride_id,
+                      editVoucherValue,
+                    )
+                  }}
+                  disabled={isUpdatingVoucher}
+                  className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:opacity-50"
+                >
+                  {isUpdatingVoucher ? 'Updating...' : 'Update Voucher'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Time Conflict Modal */}
+        {timeConflictModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+              <h3 className="mb-4 text-lg font-semibold text-red-600">
+                Time/Date Conflict
+              </h3>
+              <p className="mb-4 text-sm text-gray-700">
+                You are trying to drag a user into a group where they have no
+                overlap.
+              </p>
+              <div className="mb-4 space-y-3 rounded-lg bg-gray-50 p-4">
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-gray-600">
+                    Group #{timeConflictModal.group.ride_id}:
+                  </p>
+                  <p className="text-sm text-gray-900">
+                    Date: {timeConflictModal.group.date}
+                  </p>
+                  <p className="text-sm text-gray-900">
+                    Time:{' '}
+                    {timeConflictModal.group.match_time
+                      ? formatTime(timeConflictModal.group.match_time)
+                      : formatTimeRange(
+                          calculateGroupTimeRange(
+                            timeConflictModal.group.riders,
+                          ),
+                        )}
+                  </p>
+                </div>
+                <div className="border-t border-gray-300 pt-3">
+                  <p className="mb-1 text-xs font-semibold text-gray-600">
+                    User ({timeConflictModal.rider.name}):
+                  </p>
+                  <p className="text-sm text-gray-900">
+                    Date: {timeConflictModal.rider.date}
+                  </p>
+                  <p className="text-sm text-gray-900">
+                    Time: {formatTimeRange(timeConflictModal.rider.time_range)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setTimeConflictModal(null)
+                    setDraggedRider(null)
+                  }}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (timeConflictModal.onConfirm) {
+                      await timeConflictModal.onConfirm()
+                    }
+                  }}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                >
+                  OK
                 </button>
               </div>
             </div>
