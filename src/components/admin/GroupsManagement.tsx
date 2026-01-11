@@ -1350,7 +1350,16 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         })
       })
 
-      setGroups(Array.from(groupsMap.values()))
+      // Calculate time range for each group from all its riders
+      const finalGroups = Array.from(groupsMap.values()).map((group) => {
+        const calculatedTimeRange = calculateGroupTimeRange(group.riders)
+        return {
+          ...group,
+          time_range: calculatedTimeRange,
+        }
+      })
+
+      setGroups(finalGroups)
 
       // Get unmatched riders
       const unmatched = flightsDataToUse
@@ -1587,6 +1596,37 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     [authUser, user, supabase, fetchChangeLog],
   )
 
+  // Helper function to convert time string to minutes
+  const timeToMinutes = useCallback((timeStr: string): number => {
+    const [hours, minutes] = timeStr.split(':').map(Number)
+    return hours * 60 + (minutes || 0)
+  }, [])
+
+  // Convert minutes back to time string (HH:MM)
+  const minutesToTime = useCallback((minutes: number): string => {
+    const hours = Math.floor(minutes / 60)
+    const mins = minutes % 60
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+  }, [])
+
+  // Round time to the nearest 5-minute interval
+  const roundToNearest5Minutes = useCallback(
+    (timeStr: string): string => {
+      if (!timeStr) return '00:00'
+
+      // Handle HH:MM:SS format by taking only HH:MM
+      const timeOnly = timeStr.split(':').slice(0, 2).join(':')
+      const minutes = timeToMinutes(timeOnly)
+
+      // Round to nearest 5 minutes
+      const roundedMinutes = Math.round(minutes / 5) * 5
+      const wrappedMinutes = roundedMinutes % (24 * 60) // Wrap around if needed
+
+      return minutesToTime(wrappedMinutes)
+    },
+    [timeToMinutes, minutesToTime],
+  )
+
   // Update group time for all members
   const handleUpdateGroupTime = useCallback(
     async (groupId: number, newTime: string) => {
@@ -1598,11 +1638,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
       setIsUpdatingTime(true)
       try {
-        // Format time to HH:MM:SS
+        // Round to nearest 5 minutes and format time to HH:MM:SS
+        const roundedTime = roundToNearest5Minutes(newTime)
         const formattedTime =
-          newTime.includes(':') && newTime.split(':').length === 2
-            ? `${newTime}:00`
-            : newTime
+          roundedTime.includes(':') && roundedTime.split(':').length === 2
+            ? `${roundedTime}:00`
+            : roundedTime
 
         // Update all Matches for this group (set is_verified to false when time changes)
         const { error: updateError } = await supabase
@@ -1686,7 +1727,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         setIsUpdatingTime(false)
       }
     },
-    [supabase, logToChangeLog],
+    [supabase, logToChangeLog, roundToNearest5Minutes],
   )
 
   // Update group voucher for all members
@@ -1835,11 +1876,29 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     [],
   )
 
-  // Helper function to convert time string to minutes
-  const timeToMinutes = useCallback((timeStr: string): number => {
-    const [hours, minutes] = timeStr.split(':').map(Number)
-    return hours * 60 + (minutes || 0)
-  }, [])
+  // Calculate midpoint of a time range
+  const calculateTimeMidpoint = useCallback(
+    (timeRange: string): string => {
+      const [startTime, endTime] = timeRange.split(' - ').map((t) => t.trim())
+      if (!startTime || !endTime) return startTime || '00:00'
+
+      const startMinutes = timeToMinutes(startTime)
+      let endMinutes = timeToMinutes(endTime)
+
+      // Handle cross-midnight case (end time is earlier in day than start)
+      if (endMinutes < startMinutes) {
+        endMinutes += 24 * 60 // Add 24 hours
+      }
+
+      const midpointMinutes = Math.floor((startMinutes + endMinutes) / 2)
+      const actualMidpoint = midpointMinutes % (24 * 60) // Wrap around if needed
+      const midpointTime = minutesToTime(actualMidpoint)
+
+      // Round to nearest 5 minutes
+      return roundToNearest5Minutes(midpointTime)
+    },
+    [timeToMinutes, minutesToTime, roundToNearest5Minutes],
+  )
 
   // Calculate overlapping time range for a group from all riders
   const calculateGroupTimeRange = useCallback(
@@ -2359,11 +2418,20 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               updatedRiders.length,
             )
 
+            // Recalculate time range and midpoint for the group
+            const newTimeRange = calculateGroupTimeRange(updatedRiders)
+            const midpointTime = calculateTimeMidpoint(newTimeRange)
+            const formattedTime =
+              midpointTime.includes(':') && midpointTime.split(':').length === 2
+                ? `${midpointTime}:00`
+                : midpointTime
+
             if (uberType) {
-              // Update all matches in the group with new uber_type, is_subsidized, and set is_verified to false
+              // Update all matches in the group with new time, uber_type, is_subsidized, and set is_verified to false
               const { error: updateError } = await supabase
                 .from('Matches')
                 .update({
+                  time: formattedTime,
                   uber_type: uberType,
                   is_subsidized: isSubsidized,
                   is_verified: false,
@@ -2372,7 +2440,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
               if (updateError) {
                 console.error(
-                  'Error updating uber_type when removing rider:',
+                  'Error updating matches when removing rider:',
                   updateError,
                 )
               } else {
@@ -2384,17 +2452,38 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
         // Update local state - remove from group and add to unmatched, and track changes
         setGroups((prev) => {
-          const updatedGroups = prev.map((g) =>
-            g.ride_id === groupId
-              ? {
-                  ...g,
-                  riders: g.riders.filter(
-                    (r) => r.flight_id !== rider.flight_id,
-                  ),
-                  uber_type: newUberType !== null ? newUberType : g.uber_type, // Update uber_type if calculated
-                }
-              : g,
-          )
+          const updatedGroups = prev.map((g) => {
+            if (g.ride_id === groupId) {
+              const remainingRiders = g.riders.filter(
+                (r) => r.flight_id !== rider.flight_id,
+              )
+              // Recalculate time range if there are remaining riders
+              const newTimeRange =
+                remainingRiders.length > 0
+                  ? calculateGroupTimeRange(remainingRiders)
+                  : g.time_range
+              const midpointTime =
+                remainingRiders.length > 0
+                  ? calculateTimeMidpoint(newTimeRange)
+                  : g.match_time
+              const formattedTime =
+                remainingRiders.length > 0 && midpointTime
+                  ? midpointTime.includes(':') &&
+                    midpointTime.split(':').length === 2
+                    ? `${midpointTime}:00`
+                    : midpointTime
+                  : g.match_time
+
+              return {
+                ...g,
+                riders: remainingRiders,
+                time_range: newTimeRange,
+                match_time: formattedTime,
+                uber_type: newUberType !== null ? newUberType : g.uber_type, // Update uber_type if calculated
+              }
+            }
+            return g
+          })
           const updatedGroup = updatedGroups.find((g) => g.ride_id === groupId)
 
           return updatedGroups
@@ -2478,7 +2567,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         setTimeout(() => setErrorMessage(null), 3000)
       }
     },
-    [groups, supabase, logToChangeLog, isGroupSubsidized],
+    [
+      groups,
+      supabase,
+      logToChangeLog,
+      isGroupSubsidized,
+      calculateGroupTimeRange,
+      calculateTimeMidpoint,
+    ],
   )
 
   const handleRemoveFromCorral = useCallback((rider: Rider) => {
@@ -2532,18 +2628,58 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             console.error('Error updating flight:', flightsError)
           }
 
-          // Update local state - remove from group
+          // Update local state - remove from group and recalculate time range
           setGroups((prev) =>
-            prev.map((g) =>
-              g.ride_id === rider.originGroupId
-                ? {
-                    ...g,
-                    riders: g.riders.filter(
-                      (r) => r.flight_id !== rider.flight_id,
-                    ),
-                  }
-                : g,
-            ),
+            prev.map((g) => {
+              if (g.ride_id === rider.originGroupId) {
+                const remainingRiders = g.riders.filter(
+                  (r) => r.flight_id !== rider.flight_id,
+                )
+                // Recalculate time range if there are remaining riders
+                const newTimeRange =
+                  remainingRiders.length > 0
+                    ? calculateGroupTimeRange(remainingRiders)
+                    : g.time_range
+                const midpointTime =
+                  remainingRiders.length > 0
+                    ? calculateTimeMidpoint(newTimeRange)
+                    : g.match_time
+                const formattedTime =
+                  remainingRiders.length > 0 && midpointTime
+                    ? midpointTime.includes(':') &&
+                      midpointTime.split(':').length === 2
+                      ? `${midpointTime}:00`
+                      : midpointTime
+                    : g.match_time
+
+                // Update all matches in the group with new time
+                if (remainingRiders.length > 0 && formattedTime) {
+                  supabase
+                    .from('Matches')
+                    .update({
+                      time: formattedTime,
+                      is_verified: false,
+                    })
+                    .eq('ride_id', rider.originGroupId)
+                    .then(({ error }) => {
+                      if (error) {
+                        console.error(
+                          'Error updating group matches time:',
+                          error,
+                        )
+                      }
+                    })
+                }
+
+                return {
+                  ...g,
+                  riders: remainingRiders,
+                  time_range: newTimeRange,
+                  match_time: formattedTime,
+                }
+              }
+              return g
+            }),
           )
         } catch (error) {
           console.error('Error removing rider from group:', error)
@@ -2554,9 +2690,15 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       setCorralRiders((prev) =>
         prev.filter((r) => r.flight_id !== rider.flight_id),
       )
-      setUnmatchedRiders((prev) => [...prev, rider])
+      // Clear originType and originGroupId since rider is now truly unmatched
+      const unmatchedRider = {
+        ...rider,
+        originType: undefined,
+        originGroupId: undefined,
+      }
+      setUnmatchedRiders((prev) => [...prev, unmatchedRider])
     },
-    [supabase],
+    [supabase, calculateGroupTimeRange, calculateTimeMidpoint],
   )
 
   const handleAddFromCorral = useCallback(
@@ -2621,28 +2763,22 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       }
 
       try {
-        // Get the group's match_time and date for the new match
-        let matchTime = group.match_time
-        if (!matchTime && group.riders.length > 0) {
-          // If no match_time, use the first rider's earliest time
-          const firstRiderTimeRange = group.riders[0]?.time_range
-          if (firstRiderTimeRange) {
-            matchTime =
-              firstRiderTimeRange.split(' - ')[0]?.trim() || '00:00:00'
-          }
-        }
-        matchTime = matchTime || '00:00:00'
-
-        // Format time to HH:MM:SS
-        const formattedTime =
-          matchTime.includes(':') && matchTime.split(':').length === 2
-            ? `${matchTime}:00`
-            : matchTime
-
         // Calculate bag units and uber_type for the updated group
         const updatedRiders = [...group.riders, rider]
         const bagUnits = calculateBagUnits(updatedRiders)
         const uberType = determineUberType(updatedRiders.length, bagUnits)
+
+        // Calculate new time range overlap for the group
+        const newTimeRange = calculateGroupTimeRange(updatedRiders)
+
+        // Calculate midpoint of the overlap
+        const midpointTime = calculateTimeMidpoint(newTimeRange)
+
+        // Format time to HH:MM:SS
+        const formattedTime =
+          midpointTime.includes(':') && midpointTime.split(':').length === 2
+            ? `${midpointTime}:00`
+            : midpointTime
 
         if (!uberType) {
           setErrorMessage('Invalid group size and bag combination')
@@ -2678,10 +2814,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           return
         }
 
-        // Update all existing matches in the group with the new uber_type, is_subsidized, and set is_verified to false
+        // Update all existing matches in the group with the new time, uber_type, is_subsidized, and set is_verified to false
         const { error: updateMatchesError } = await supabase
           .from('Matches')
           .update({
+            time: formattedTime,
             uber_type: uberType,
             is_subsidized: isSubsidized,
             is_verified: false,
@@ -2745,6 +2882,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               return {
                 ...g,
                 riders: [...g.riders, rider],
+                time_range: newTimeRange, // Update time range
+                match_time: formattedTime, // Update match time
                 uber_type: uberType, // Update uber_type in local state
               }
             }
@@ -2760,9 +2899,40 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   remainingRiders.length,
                   bagUnits,
                 )
+                // Recalculate time range and midpoint for source group
+                const newSourceTimeRange =
+                  calculateGroupTimeRange(remainingRiders)
+                const sourceMidpointTime =
+                  calculateTimeMidpoint(newSourceTimeRange)
+                const formattedSourceTime =
+                  sourceMidpointTime.includes(':') &&
+                  sourceMidpointTime.split(':').length === 2
+                    ? `${sourceMidpointTime}:00`
+                    : sourceMidpointTime
+
+                // Update all matches in source group with new time
+                supabase
+                  .from('Matches')
+                  .update({
+                    time: formattedSourceTime,
+                    uber_type: newUberType || g.uber_type,
+                    is_verified: false,
+                  })
+                  .eq('ride_id', sourceGroupId)
+                  .then(({ error }) => {
+                    if (error) {
+                      console.error(
+                        'Error updating source group matches:',
+                        error,
+                      )
+                    }
+                  })
+
                 return {
                   ...g,
                   riders: remainingRiders,
+                  time_range: newSourceTimeRange,
+                  match_time: formattedSourceTime,
                   uber_type: newUberType || g.uber_type,
                 }
               }
@@ -2886,6 +3056,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       logToChangeLog,
       corralRiders,
       isGroupSubsidized,
+      calculateGroupTimeRange,
+      calculateTimeMidpoint,
     ],
   )
 
@@ -3049,12 +3221,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       return
     }
 
-    if (!newGroupDate || !newGroupTime) {
-      console.warn('Validation failed: Date and time are required', {
+    if (!newGroupDate) {
+      console.warn('Validation failed: Date is required', {
         newGroupDate,
-        newGroupTime,
       })
-      setErrorMessage('Date and time are required')
+      setErrorMessage('Date is required')
       setTimeout(() => setErrorMessage(null), 3000)
       return
     }
@@ -3076,6 +3247,18 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         return
       }
 
+      // Calculate time range overlap from selected riders
+      const calculatedTimeRange = calculateGroupTimeRange(
+        selectedRidersForNewGroup,
+      )
+      const midpointTime = calculateTimeMidpoint(calculatedTimeRange)
+
+      // Format time to HH:MM:SS (database expects seconds)
+      const formattedTime =
+        midpointTime.includes(':') && midpointTime.split(':').length === 2
+          ? `${midpointTime}:00`
+          : midpointTime
+
       // Format date for database (YYYY-MM-DD)
       const rideDate = new Date(newGroupDate).toISOString().split('T')[0]
       console.log('Creating new group:', {
@@ -3087,7 +3270,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           airport: r.airport,
         })),
         newGroupDate,
-        newGroupTime,
+        calculatedTimeRange,
+        midpointTime: formattedTime,
       })
 
       // Step 1: Create Rides row and get ride_id
@@ -3152,12 +3336,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       )
 
       const rideId = rideData.ride_id
-
-      // Format time to HH:MM:SS (database expects seconds)
-      const formattedTime =
-        newGroupTime.includes(':') && newGroupTime.split(':').length === 2
-          ? `${newGroupTime}:00`
-          : newGroupTime
 
       // Calculate is_subsidized based on airport and rider count
       // All riders in a group should have the same airport
