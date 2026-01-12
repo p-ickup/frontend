@@ -20,6 +20,39 @@ export default function PickupHeader() {
   const router = useRouter()
   const [avatarKey, setAvatarKey] = useState(0)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  // Fetch admin status from Users table
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (!user) {
+        setIsAdmin(false)
+        return
+      }
+
+      try {
+        const { data: userProfile } = await supabase
+          .from('Users')
+          .select('role')
+          .eq('user_id', user.id)
+          .single()
+
+        if (userProfile?.role) {
+          const normalizedRole = userProfile.role.toLowerCase()
+          setIsAdmin(
+            normalizedRole === 'admin' || normalizedRole === 'super_admin',
+          )
+        } else {
+          setIsAdmin(false)
+        }
+      } catch (error) {
+        console.error('Error checking admin status:', error)
+        setIsAdmin(false)
+      }
+    }
+
+    checkAdminStatus()
+  }, [user])
 
   // Force re-render when avatarUrl changes
   useEffect(() => {
@@ -44,17 +77,29 @@ export default function PickupHeader() {
   return (
     <>
       <header className="flex min-h-[80px] items-center justify-between bg-gradient-to-r from-teal-500 to-yellow-100 p-4 text-white shadow-lg sm:px-6 lg:px-8">
-        <div
-          onClick={() => router.push('/')}
-          className="h-25 w-25 border-1 cursor-pointer overflow-hidden rounded-full hover:border-yellow-200"
-        >
-          <Image
-            src="/favicon.ico"
-            alt="P-ickup logo"
-            width={65}
-            height={65}
-            className="object-cover"
-          />
+        <div className="flex items-center gap-3">
+          <div
+            onClick={() => router.push('/')}
+            className="h-25 w-25 border-1 cursor-pointer overflow-hidden rounded-full hover:border-yellow-200"
+          >
+            <Image
+              src="/favicon.ico"
+              alt="P-ickup logo"
+              width={65}
+              height={65}
+              className="object-cover"
+            />
+          </div>
+          {/* Dashboard button - always rendered to prevent layout shift, hidden on mobile */}
+          <div
+            className={`hidden rounded-lg bg-white/10 px-1 py-1 backdrop-blur-sm transition-opacity duration-200 md:block ${
+              isAdmin
+                ? 'pointer-events-auto opacity-100'
+                : 'pointer-events-none opacity-0'
+            }`}
+          >
+            <SimpleRedirectButton label="Dashboard" route="/admin" />
+          </div>
         </div>
 
         {/* Desktop Navigation */}
@@ -209,6 +254,17 @@ export default function PickupHeader() {
             >
               💬 Feedback
             </button>
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  router.push('/admin')
+                  setIsMobileMenuOpen(false)
+                }}
+                className="block w-full py-2 text-left text-white transition-colors hover:text-yellow-200"
+              >
+                🔐 Dashboard
+              </button>
+            )}
           </div>
         </div>
       )}
