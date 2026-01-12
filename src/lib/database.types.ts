@@ -29,6 +29,7 @@ export type Database = {
           is_verified: boolean | null
           is_subsidized: boolean | null
           contingency_voucher: string | null
+          email_sent: boolean
         }
       }
       Flights: {
@@ -56,6 +57,7 @@ export type Database = {
           last_notified_at: string
           last_notified_delay_min: number
           opt_in: boolean
+          unmatched_email_sent: boolean
         }
       }
 
