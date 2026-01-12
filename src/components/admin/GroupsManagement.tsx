@@ -15,6 +15,7 @@ import {
   Plane,
   PlaneLanding,
   PlaneTakeoff,
+  X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -1177,9 +1178,33 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       setSelectedAirports(airports) // Select all by default
 
       // Fetch matches first to get all ride_ids and flight_ids
-      const { data: matchesData } = await supabase
-        .from('Matches')
-        .select('ride_id, flight_id, user_id, voucher, time, uber_type')
+      // Use pagination to fetch all matches (Supabase defaults to 1000 row limit)
+      let allMatchesData: any[] = []
+      let matchesFrom = 0
+      const matchesPageSize = 1000
+      let hasMoreMatches = true
+
+      while (hasMoreMatches) {
+        const { data: matchesPage, error: matchesError } = await supabase
+          .from('Matches')
+          .select('ride_id, flight_id, user_id, voucher, time, uber_type')
+          .range(matchesFrom, matchesFrom + matchesPageSize - 1)
+
+        if (matchesError) {
+          console.error('Error fetching matches:', matchesError.message)
+          break
+        }
+
+        if (matchesPage && matchesPage.length > 0) {
+          allMatchesData = [...allMatchesData, ...matchesPage]
+          matchesFrom += matchesPageSize
+          hasMoreMatches = matchesPage.length === matchesPageSize
+        } else {
+          hasMoreMatches = false
+        }
+      }
+
+      const matchesData = allMatchesData
 
       if (!matchesData || matchesData.length === 0) {
         setGroups([])
@@ -1218,26 +1243,45 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       )
 
       // Fetch flights for all matches (without Users join to avoid RLS issues)
-      const { data: matchFlightsData } = await supabase
-        .from('Flights')
-        .select(
-          `
-            flight_id,
-            airport,
-            date,
-            earliest_time,
-            latest_time,
-            to_airport,
-            bag_no,
-            bag_no_large,
-            bag_no_personal,
-            user_id,
-            matched,
-            flight_no,
-            airline_iata
-          `,
-        )
-        .in('flight_id', matchFlightIds)
+      // Batch the .in() query to avoid Supabase limits (typically 100-1000 items)
+      const flightIdBatchSize = 500
+      let allMatchFlightsData: any[] = []
+
+      for (let i = 0; i < matchFlightIds.length; i += flightIdBatchSize) {
+        const batch = matchFlightIds.slice(i, i + flightIdBatchSize)
+        const { data: matchFlightsBatch, error: matchFlightsError } =
+          await supabase
+            .from('Flights')
+            .select(
+              `
+              flight_id,
+              airport,
+              date,
+              earliest_time,
+              latest_time,
+              to_airport,
+              bag_no,
+              bag_no_large,
+              bag_no_personal,
+              user_id,
+              matched,
+              flight_no,
+              airline_iata
+            `,
+            )
+            .in('flight_id', batch)
+
+        if (matchFlightsError) {
+          console.error(
+            `Error fetching match flights batch ${i / flightIdBatchSize + 1}:`,
+            matchFlightsError,
+          )
+        } else if (matchFlightsBatch) {
+          allMatchFlightsData = [...allMatchFlightsData, ...matchFlightsBatch]
+        }
+      }
+
+      const matchFlightsData = allMatchFlightsData
 
       // Create a map of flight_id to flight data for quick lookup
       const flightsMap = new Map<number, any>()
@@ -1737,10 +1781,21 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
       setIsUpdatingVoucher(true)
       try {
+        // Normalize voucher URL: if it doesn't start with https://r.uber.com/, prepend it
+        let normalizedVoucher = newVoucher.trim()
+        if (normalizedVoucher) {
+          const uberVoucherPrefix = 'https://r.uber.com/'
+          if (!normalizedVoucher.startsWith(uberVoucherPrefix)) {
+            // Remove any leading slashes from the voucher code
+            const voucherCode = normalizedVoucher.replace(/^\/+/, '')
+            normalizedVoucher = `${uberVoucherPrefix}${voucherCode}`
+          }
+        }
+
         // Update all Matches for this group with the new voucher
         const { error: updateError } = await supabase
           .from('Matches')
-          .update({ voucher: newVoucher || '' })
+          .update({ voucher: normalizedVoucher || '' })
           .eq('ride_id', groupId)
 
         if (updateError) {
@@ -1754,7 +1809,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         setGroups((prev) => {
           const updatedGroups = prev.map((g) =>
             g.ride_id === groupId
-              ? { ...g, group_voucher: newVoucher || undefined }
+              ? { ...g, group_voucher: normalizedVoucher || undefined }
               : g,
           )
 
@@ -1800,7 +1855,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           {
             group_id: groupId.toString(),
             ride_id: groupId, // Store as number in metadata
-            voucher: newVoucher || '',
+            voucher: normalizedVoucher || '',
           },
           undefined, // Don't set target_group_id if it's UUID type and we have a number
         )
@@ -1985,16 +2040,22 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     [calculateGroupTimeRange],
   )
 
+  // Get max bag units based on group size: 12 for <= 3 people, 10 for > 3 people
+  const getMaxBagUnits = useCallback((riderCount: number): number => {
+    return riderCount > 3 ? 10 : 12
+  }, [])
+
   const validateBagConstraints = useCallback(
     (group: Group, rider: Rider): boolean => {
       const currentBags = getTotalBags(group.riders)
       const riderBags = rider.checked_bags + rider.carry_on_bags
       const totalBags = currentBags + riderBags
+      const newRiderCount = group.riders.length + 1
+      const maxBags = getMaxBagUnits(newRiderCount)
 
-      // Recommended max is 10 bags
-      return totalBags <= 10
+      return totalBags <= maxBags
     },
-    [getTotalBags],
+    [getTotalBags, getMaxBagUnits],
   )
 
   const handleAddToCorral = useCallback(
@@ -3170,7 +3231,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     groupSize: number,
     bagUnits: number,
   ): string | null => {
-    if (bagUnits > 10) return null // Hard limit
+    // Max bag units: 12 for <= 3 people, 10 for > 3 people
+    const maxBagUnits = groupSize > 3 ? 10 : 12
+    if (bagUnits > maxBagUnits) return null // Hard limit based on group size
 
     if (groupSize >= 2 && groupSize <= 3) {
       if (bagUnits >= 0 && bagUnits <= 4) return 'X'
@@ -3363,6 +3426,17 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         formattedTime,
         contingencyVouchersCount: contingencyVouchers.length,
       })
+      // Normalize voucher URL: if it doesn't start with https://r.uber.com/, prepend it
+      let normalizedNewGroupVoucher = newGroupVoucher.trim()
+      if (normalizedNewGroupVoucher && calculatedIsSubsidized) {
+        const uberVoucherPrefix = 'https://r.uber.com/'
+        if (!normalizedNewGroupVoucher.startsWith(uberVoucherPrefix)) {
+          // Remove any leading slashes from the voucher code
+          const voucherCode = normalizedNewGroupVoucher.replace(/^\/+/, '')
+          normalizedNewGroupVoucher = `${uberVoucherPrefix}${voucherCode}`
+        }
+      }
+
       const matchesToInsert = selectedRidersForNewGroup.map((rider, index) => ({
         ride_id: rideId,
         user_id: rider.user_id,
@@ -3370,7 +3444,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         date: rideDate,
         time: formattedTime,
         source: 'manual', // Admin-created groups
-        voucher: calculatedIsSubsidized ? newGroupVoucher || '' : '',
+        voucher: calculatedIsSubsidized ? normalizedNewGroupVoucher || '' : '',
         contingency_voucher: contingencyVouchers[index] || null, // Assign voucher by index
         is_verified: false,
         is_subsidized: calculatedIsSubsidized,
@@ -3658,49 +3732,62 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
         // Search filter
         if (searchQuery.trim()) {
-          const query = searchQuery.toLowerCase().trim()
-          // Search in group ride_id
-          const rideIdMatch = group.ride_id.toString().includes(query)
+          const trimmedQuery = searchQuery.trim()
+          const isRideIdSearch = trimmedQuery.startsWith('#')
+          const query = isRideIdSearch
+            ? trimmedQuery.slice(1).toLowerCase().trim()
+            : trimmedQuery.toLowerCase().trim()
 
-          // Search in rider names
-          const nameMatch = group.riders.some((rider) =>
-            rider.name.toLowerCase().includes(query),
-          )
-
-          // Search in flight_id
-          const flightIdMatch = group.riders.some((rider) =>
-            rider.flight_id.toString().includes(query),
-          )
-
-          // Search in flight_no (voucher)
-          const flightNoMatch = group.riders.some((rider) =>
-            rider.flight_no?.toString().toLowerCase().includes(query),
-          )
-
-          // Search in airline_iata + flight_no combination (e.g., "AA1234")
-          const airlineFlightMatch = group.riders.some((rider) => {
-            if (rider.airline_iata && rider.flight_no) {
-              const combined =
-                `${rider.airline_iata}${rider.flight_no}`.toLowerCase()
-              return combined.includes(query)
+          // If searching with # prefix, only search by ride_id
+          if (isRideIdSearch) {
+            const rideIdMatch = group.ride_id.toString().includes(query)
+            if (!rideIdMatch) {
+              return false
             }
-            return false
-          })
+          } else {
+            // Search in group ride_id
+            const rideIdMatch = group.ride_id.toString().includes(query)
 
-          // Search in group voucher (formatted - just the code part)
-          const groupVoucherMatch = group.group_voucher
-            ? formatVoucher(group.group_voucher).toLowerCase().includes(query)
-            : false
+            // Search in rider names
+            const nameMatch = group.riders.some((rider) =>
+              rider.name.toLowerCase().includes(query),
+            )
 
-          if (
-            !rideIdMatch &&
-            !nameMatch &&
-            !flightIdMatch &&
-            !flightNoMatch &&
-            !airlineFlightMatch &&
-            !groupVoucherMatch
-          ) {
-            return false
+            // Search in flight_id
+            const flightIdMatch = group.riders.some((rider) =>
+              rider.flight_id.toString().includes(query),
+            )
+
+            // Search in flight_no (voucher)
+            const flightNoMatch = group.riders.some((rider) =>
+              rider.flight_no?.toString().toLowerCase().includes(query),
+            )
+
+            // Search in airline_iata + flight_no combination (e.g., "AA1234")
+            const airlineFlightMatch = group.riders.some((rider) => {
+              if (rider.airline_iata && rider.flight_no) {
+                const combined =
+                  `${rider.airline_iata}${rider.flight_no}`.toLowerCase()
+                return combined.includes(query)
+              }
+              return false
+            })
+
+            // Search in group voucher (formatted - just the code part)
+            const groupVoucherMatch = group.group_voucher
+              ? formatVoucher(group.group_voucher).toLowerCase().includes(query)
+              : false
+
+            if (
+              !rideIdMatch &&
+              !nameMatch &&
+              !flightIdMatch &&
+              !flightNoMatch &&
+              !airlineFlightMatch &&
+              !groupVoucherMatch
+            ) {
+              return false
+            }
           }
         }
 
@@ -4520,14 +4607,43 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             </h1>
             {/* Search Bar - Center */}
             <div className="flex flex-1 justify-center">
-              <div className="w-full max-w-md">
+              <div className="relative w-full max-w-md">
                 <input
                   type="text"
-                  placeholder="Search by name, flight, or voucher..."
+                  placeholder="Search by ride ID (#Num), name, flight, or voucher..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 pr-20 text-sm text-gray-900 placeholder-gray-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                 />
+                <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="flex items-center justify-center rounded p-0.5 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                      title="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                  <div className="group">
+                    <Info className="h-4 w-4 text-gray-400" />
+                    <div className="absolute bottom-full right-0 mb-2 hidden w-64 rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                      <p className="mb-1 font-semibold">Search Tips:</p>
+                      <p className="mb-1">
+                        • Use{' '}
+                        <span className="font-mono font-semibold">
+                          #[RideID Num]
+                        </span>{' '}
+                        to search by ride ID only
+                      </p>
+                      <p>
+                        • Otherwise searches across names, flights, vouchers,
+                        and ride IDs
+                      </p>
+                      <div className="absolute right-2 top-full h-0 w-0 border-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             {/* Buttons - Right */}
@@ -4673,13 +4789,44 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             </div>
             {/* Second Row: Search Bar with Create Group Button */}
             <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Search by name, flight, or voucher..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-900 placeholder-gray-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-              />
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder="Search by ride ID (#Num), name, flight, or voucher..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 pr-20 text-sm text-gray-900 placeholder-gray-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                />
+                <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="flex items-center justify-center rounded p-0.5 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                      title="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                  <div className="group">
+                    <Info className="h-4 w-4 text-gray-400" />
+                    <div className="absolute bottom-full right-0 mb-2 hidden w-64 rounded-lg bg-gray-900 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+                      <p className="mb-1 font-semibold">Search Tips:</p>
+                      <p className="mb-1">
+                        • Use{' '}
+                        <span className="font-mono font-semibold">
+                          #[RideID Num]
+                        </span>{' '}
+                        to search by ride ID only
+                      </p>
+                      <p>
+                        • Otherwise searches across names, flights, vouchers,
+                        and ride IDs
+                      </p>
+                      <div className="absolute right-2 top-full h-0 w-0 border-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <button
                 onClick={() => {
                   if (leftSidebarTabs.includes('createGroup')) {
@@ -5389,7 +5536,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             </div>
                             {/* Desktop: single line */}
                             <p className="hidden text-sm text-gray-600 md:block">
-                              {group.airport} • {group.date} •{' '}
+                              {group.date} •{' '}
                               {group.match_time ? (
                                 <>
                                   {formatTime(group.match_time)}
@@ -5405,7 +5552,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             </p>
                             {/* Mobile: stacked lines */}
                             <div className="space-y-0.5 text-sm text-gray-600 md:hidden">
-                              <p>{group.airport}</p>
                               <p>{group.date}</p>
                               <p>
                                 {group.match_time ? (
@@ -5438,7 +5584,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                 onClick={(e) => {
                                   e.stopPropagation() // Prevent group from expanding
                                   setEditVoucherModal({ group })
-                                  setEditVoucherValue(group.group_voucher || '')
+                                  // Show only the formatted voucher code (last part) in the input
+                                  setEditVoucherValue(
+                                    group.group_voucher
+                                      ? formatVoucher(group.group_voucher)
+                                      : '',
+                                  )
                                 }}
                                 className="flex items-center text-gray-500 transition-colors hover:text-teal-600"
                                 title="Edit voucher"
@@ -5469,12 +5620,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                               {group.to_airport ? (
                                 <>
                                   <PlaneTakeoff className="h-3 w-3" />
-                                  TO Airport
+                                  TO {group.airport}
                                 </>
                               ) : (
                                 <>
                                   <PlaneLanding className="h-3 w-3" />
-                                  FROM Airport
+                                  FROM {group.airport}
                                 </>
                               )}
                             </span>
@@ -5516,12 +5667,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                 {group.to_airport ? (
                                   <>
                                     <PlaneTakeoff className="h-3 w-3" />
-                                    TO Airport
+                                    TO {group.airport}
                                   </>
                                 ) : (
                                   <>
                                     <PlaneLanding className="h-3 w-3" />
-                                    FROM Airport
+                                    FROM {group.airport}
                                   </>
                                 )}
                               </span>
@@ -5597,14 +5748,15 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       <div className="border-b border-gray-200 bg-white px-4 py-2">
                         <div className="mb-1 flex items-center justify-between">
                           <span className="text-xs text-gray-600">
-                            Bag Units: {totalBagUnits}/10
+                            Bag Units: {totalBagUnits}/
+                            {getMaxBagUnits(riderCount)}
                           </span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
                           <div
                             className={`h-full ${getCapacityBarColor(totalBagUnits)} transition-all`}
                             style={{
-                              width: `${Math.min((totalBagUnits / 10) * 100, 100)}%`,
+                              width: `${Math.min((totalBagUnits / getMaxBagUnits(riderCount)) * 100, 100)}%`,
                             }}
                           ></div>
                         </div>
