@@ -8,6 +8,7 @@ import {
   Calendar,
   Clock,
   Copy,
+  Download,
   Info,
   Luggage,
   Mail,
@@ -39,6 +40,7 @@ interface Rider {
   airline_iata?: string
   originGroupId?: number // Track which group the rider came from (if from a group)
   originType?: 'unmatched' | 'group' // Track if rider came from unmatched or group
+  school?: string // User's school for admin scope filtering
 }
 
 interface Group {
@@ -418,6 +420,7 @@ const UnmatchedIndividualCard = ({
 export default function GroupsManagement({ user }: AdminDashboardProps) {
   const supabase = createBrowserClient()
   const { user: authUser } = useAuth()
+  const [adminScope, setAdminScope] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'matched' | 'unmatched'>('matched')
   const [selectedAirports, setSelectedAirports] = useState<string[]>([])
@@ -1580,7 +1583,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         const batch = userIds.slice(i, i + batchSize)
         const { data: usersBatch, error: usersError } = await supabase
           .from('Users')
-          .select('user_id, firstname, lastname, phonenumber')
+          .select('user_id, firstname, lastname, phonenumber, school')
           .in('user_id', batch)
 
         if (usersError) {
@@ -1593,6 +1596,18 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         }
       }
 
+      // Fetch admin's admin_scope
+      let currentAdminScope: string | null = null
+      if (currentUser) {
+        const { data: adminProfile } = await supabase
+          .from('Users')
+          .select('admin_scope')
+          .eq('user_id', currentUser.id)
+          .single()
+        currentAdminScope = adminProfile?.admin_scope || null
+        setAdminScope(currentAdminScope)
+      }
+
       // Create a map of user_id to user data (ensure both keys and lookups use string format)
       const usersMap = new Map(
         allUsersData.map((user: any) => [
@@ -1601,6 +1616,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             firstname: user.firstname,
             lastname: user.lastname,
             phonenumber: user.phonenumber,
+            school: user.school,
           },
         ]),
       )
@@ -1659,32 +1675,40 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
       if (!matchesData || matchesData.length === 0) {
         setGroups([])
-        setUnmatchedRiders(
-          flightsDataToUse
-            .filter((f: any) => f.matched === false)
-            .map((flight: any) => {
-              const userData = Array.isArray(flight.Users)
-                ? flight.Users[0]
-                : flight.Users
-              return {
-                user_id: flight.user_id,
-                flight_id: flight.flight_id,
-                name:
-                  `${userData?.firstname || ''} ${userData?.lastname || ''}`.trim() ||
-                  'Unknown',
-                phone: userData?.phonenumber || 'N/A',
-                checked_bags: flight.bag_no_large || 0,
-                carry_on_bags: flight.bag_no || 0,
-                time_range: `${flight.earliest_time} - ${flight.latest_time}`,
-                airport: flight.airport,
-                to_airport: flight.to_airport,
-                date: flight.date,
-                reason: 'unmatched',
-                flight_no: flight.flight_no || '',
-                airline_iata: flight.airline_iata || '',
-              }
-            }),
-        )
+        let unmatchedRiders = flightsDataToUse
+          .filter((f: any) => f.matched === false)
+          .map((flight: any) => {
+            const userData = Array.isArray(flight.Users)
+              ? flight.Users[0]
+              : flight.Users
+            return {
+              user_id: flight.user_id,
+              flight_id: flight.flight_id,
+              name:
+                `${userData?.firstname || ''} ${userData?.lastname || ''}`.trim() ||
+                'Unknown',
+              phone: userData?.phonenumber || 'N/A',
+              checked_bags: flight.bag_no_large || 0,
+              carry_on_bags: flight.bag_no || 0,
+              time_range: `${flight.earliest_time} - ${flight.latest_time}`,
+              airport: flight.airport,
+              to_airport: flight.to_airport,
+              date: flight.date,
+              reason: 'unmatched',
+              flight_no: flight.flight_no || '',
+              airline_iata: flight.airline_iata || '',
+              school: userData?.school || undefined,
+            }
+          })
+
+        // Filter unmatched riders by admin scope
+        if (currentAdminScope) {
+          unmatchedRiders = unmatchedRiders.filter(
+            (rider) => rider.school === currentAdminScope,
+          )
+        }
+
+        setUnmatchedRiders(unmatchedRiders)
         return
       }
 
@@ -1753,7 +1777,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         const batch = matchFlightUserIds.slice(i, i + matchBatchSize)
         const { data: matchUsersBatch, error: matchUsersError } = await supabase
           .from('Users')
-          .select('user_id, firstname, lastname, phonenumber')
+          .select('user_id, firstname, lastname, phonenumber, school')
           .in('user_id', batch)
 
         if (matchUsersError) {
@@ -1775,6 +1799,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             firstname: user.firstname,
             lastname: user.lastname,
             phonenumber: user.phonenumber,
+            school: user.school,
           },
         ]),
       )
@@ -1842,17 +1867,46 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           date: flight.date,
           flight_no: flight.flight_no || '',
           airline_iata: flight.airline_iata || '',
+          school: userData?.school || undefined,
         })
       })
 
       // Calculate time range for each group from all its riders
-      const finalGroups = Array.from(groupsMap.values()).map((group) => {
+      let finalGroups = Array.from(groupsMap.values()).map((group) => {
         const calculatedTimeRange = calculateGroupTimeRange(group.riders)
         return {
           ...group,
           time_range: calculatedTimeRange,
         }
       })
+
+      // Filter groups by admin scope and mask non-matching users
+      // Only filter if admin has an admin_scope set (super_admins might not have one)
+      if (currentAdminScope) {
+        finalGroups = finalGroups
+          .filter((group) => {
+            // Only show groups that have at least one user matching admin_scope
+            return group.riders.some(
+              (rider) => rider.school === currentAdminScope,
+            )
+          })
+          .map((group) => {
+            // Hide name and phone for users that don't match admin_scope
+            return {
+              ...group,
+              riders: group.riders.map((rider) => {
+                if (rider.school !== currentAdminScope) {
+                  return {
+                    ...rider,
+                    name: '[Hidden]',
+                    phone: '[Hidden]',
+                  }
+                }
+                return rider
+              }),
+            }
+          })
+      }
 
       setGroups(finalGroups)
 
@@ -6045,7 +6099,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           className={`flex-1 overflow-y-auto bg-gray-100 p-6 ${!filtersCollapsed || !corralCollapsed ? 'hidden md:block' : ''}`}
         >
           {/* Tabs */}
-          <div className="mb-4 flex gap-2">
+          <div className="mb-4 flex items-center gap-2">
             <button
               onClick={() => setActiveTab('matched')}
               className={`rounded-lg px-6 py-2 font-medium transition-all ${
@@ -6065,6 +6119,297 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               }`}
             >
               Unmatched ({sortedUnmatchedRiders.length})
+            </button>
+            {/* Download CSV Buttons */}
+            <button
+              onClick={async () => {
+                try {
+                  setErrorMessage(null)
+                  // Fetch matched data - need to join Matches, Flights, and Users
+                  const { data: matchesData, error: matchesError } =
+                    await supabase
+                      .from('Matches')
+                      .select(
+                        'ride_id, date, time, voucher, is_subsidized, flight_id, user_id',
+                      )
+                      .gte('date', '2026-01-07')
+                      .lte('date', '2026-01-25')
+                      .order('date', { ascending: true })
+                      .order('time', { ascending: true })
+                      .order('ride_id', { ascending: true })
+
+                  if (matchesError) throw matchesError
+                  if (!matchesData || matchesData.length === 0) {
+                    setErrorMessage('No matched data found')
+                    setTimeout(() => setErrorMessage(null), 3000)
+                    return
+                  }
+
+                  // Get unique flight_ids and user_ids
+                  const flightIds = Array.from(
+                    new Set(matchesData.map((m: any) => m.flight_id)),
+                  )
+                  const userIds = Array.from(
+                    new Set(matchesData.map((m: any) => m.user_id)),
+                  )
+
+                  // Fetch flights
+                  const { data: flightsData, error: flightsError } =
+                    await supabase
+                      .from('Flights')
+                      .select(
+                        'flight_id, earliest_time, latest_time, airport, to_airport, airline_iata, flight_no, bag_no_personal, bag_no, bag_no_large',
+                      )
+                      .in('flight_id', flightIds)
+
+                  if (flightsError) throw flightsError
+
+                  // Fetch users
+                  const { data: usersData, error: usersError } = await supabase
+                    .from('Users')
+                    .select(
+                      'user_id, firstname, lastname, email, phonenumber, school',
+                    )
+                    .in('user_id', userIds)
+
+                  if (usersError) throw usersError
+
+                  // Create maps for quick lookup
+                  const flightsMap = new Map(
+                    flightsData?.map((f: any) => [f.flight_id, f]) || [],
+                  )
+                  const usersMap = new Map(
+                    usersData?.map((u: any) => [u.user_id, u]) || [],
+                  )
+
+                  // Transform data to match SQL query output
+                  const csvData = matchesData.map((m: any) => {
+                    const flight = flightsMap.get(m.flight_id)
+                    const user = usersMap.get(m.user_id)
+                    return {
+                      ride_id: m.ride_id,
+                      date: m.date,
+                      time: m.time || '',
+                      earliest_time: flight?.earliest_time || '',
+                      latest_time: flight?.latest_time || '',
+                      name: `${user?.firstname || ''} ${user?.lastname || ''}`.trim(),
+                      email: user?.email || '',
+                      phonenumber: user?.phonenumber || '',
+                      school: user?.school || '',
+                      airport: flight?.airport || '',
+                      flight:
+                        `${flight?.airline_iata || ''} ${flight?.flight_no || ''}`.trim(),
+                      personal_bag: flight?.bag_no_personal || 0,
+                      carry_on: flight?.bag_no || 0,
+                      checked_bag: flight?.bag_no_large || 0,
+                      voucher: m.voucher || '',
+                      is_subsidized: m.is_subsidized || false,
+                      to_airport: flight?.to_airport || false,
+                    }
+                  })
+
+                  // Create CSV
+                  const headers = [
+                    'ride_id',
+                    'date',
+                    'time',
+                    'earliest_time',
+                    'latest_time',
+                    'name',
+                    'email',
+                    'phonenumber',
+                    'school',
+                    'airport',
+                    'flight',
+                    'personal_bag',
+                    'carry_on',
+                    'checked_bag',
+                    'voucher',
+                    'is_subsidized',
+                    'to_airport',
+                  ]
+                  const csv = [
+                    headers,
+                    ...csvData.map((row: any) => [
+                      row.ride_id,
+                      row.date,
+                      row.time,
+                      row.earliest_time,
+                      row.latest_time,
+                      row.name,
+                      row.email,
+                      row.phonenumber,
+                      row.school,
+                      row.airport,
+                      row.flight,
+                      row.personal_bag,
+                      row.carry_on,
+                      row.checked_bag,
+                      row.voucher,
+                      row.is_subsidized,
+                      row.to_airport,
+                    ]),
+                  ]
+                    .map((row) =>
+                      row
+                        .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
+                        .join(','),
+                    )
+                    .join('\n')
+
+                  const blob = new Blob([csv], { type: 'text/csv' })
+                  const url = window.URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `matched-${new Date().toISOString().split('T')[0]}.csv`
+                  a.click()
+                  window.URL.revokeObjectURL(url)
+                } catch (error: any) {
+                  console.error('Error downloading matched CSV:', error)
+                  setErrorMessage(
+                    'Failed to download matched CSV: ' +
+                      (error.message || 'Unknown error'),
+                  )
+                  setTimeout(() => setErrorMessage(null), 5000)
+                }
+              }}
+              className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 transition-all hover:bg-gray-50"
+              title="Download Matched CSV"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Matches CSV</span>
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  setErrorMessage(null)
+                  // Fetch unmatched flights
+                  const { data: flightsData, error: flightsError } =
+                    await supabase
+                      .from('Flights')
+                      .select(
+                        'flight_id, date, earliest_time, latest_time, airport, to_airport, airline_iata, flight_no, bag_no_personal, bag_no, bag_no_large, user_id',
+                      )
+                      .eq('matched', false)
+                      .gte('date', '2026-01-10')
+                      .lte('date', '2026-01-24')
+                      .order('date', { ascending: true })
+                      .order('earliest_time', { ascending: true })
+                      .order('flight_id', { ascending: true })
+
+                  if (flightsError) throw flightsError
+                  if (!flightsData || flightsData.length === 0) {
+                    setErrorMessage('No unmatched data found')
+                    setTimeout(() => setErrorMessage(null), 3000)
+                    return
+                  }
+
+                  // Get unique user_ids
+                  const userIds = Array.from(
+                    new Set(
+                      flightsData.map((f: any) => f.user_id).filter(Boolean),
+                    ),
+                  )
+
+                  // Fetch users
+                  const { data: usersData, error: usersError } = await supabase
+                    .from('Users')
+                    .select('user_id, school, firstname, lastname, email')
+                    .in('user_id', userIds)
+
+                  if (usersError) throw usersError
+
+                  // Create map for quick lookup
+                  const usersMap = new Map(
+                    usersData?.map((u: any) => [u.user_id, u]) || [],
+                  )
+
+                  // Transform data to match SQL query output
+                  const csvData = flightsData.map((f: any) => {
+                    const user = usersMap.get(f.user_id)
+                    return {
+                      flight_id: f.flight_id,
+                      date: f.date,
+                      earliest_time: f.earliest_time || '',
+                      latest_time: f.latest_time || '',
+                      school: user?.school || '',
+                      name: `${user?.firstname || ''} ${user?.lastname || ''}`.trim(),
+                      email: user?.email || '',
+                      user_id: f.user_id || '',
+                      flight:
+                        `${f.airline_iata || ''} ${f.flight_no || ''}`.trim(),
+                      personal_bag: f.bag_no_personal || 0,
+                      carry_on: f.bag_no || 0,
+                      checked_bag: f.bag_no_large || 0,
+                      airport: f.airport || '',
+                      to_airport: f.to_airport || false,
+                    }
+                  })
+
+                  // Create CSV
+                  const headers = [
+                    'flight_id',
+                    'date',
+                    'earliest_time',
+                    'latest_time',
+                    'school',
+                    'name',
+                    'email',
+                    'user_id',
+                    'flight',
+                    'personal_bag',
+                    'carry_on',
+                    'checked_bag',
+                    'airport',
+                    'to_airport',
+                  ]
+                  const csv = [
+                    headers,
+                    ...csvData.map((row: any) => [
+                      row.flight_id,
+                      row.date,
+                      row.earliest_time,
+                      row.latest_time,
+                      row.school,
+                      row.name,
+                      row.email,
+                      row.user_id,
+                      row.flight,
+                      row.personal_bag,
+                      row.carry_on,
+                      row.checked_bag,
+                      row.airport,
+                      row.to_airport,
+                    ]),
+                  ]
+                    .map((row) =>
+                      row
+                        .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
+                        .join(','),
+                    )
+                    .join('\n')
+
+                  const blob = new Blob([csv], { type: 'text/csv' })
+                  const url = window.URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `unmatched-${new Date().toISOString().split('T')[0]}.csv`
+                  a.click()
+                  window.URL.revokeObjectURL(url)
+                } catch (error: any) {
+                  console.error('Error downloading unmatched CSV:', error)
+                  setErrorMessage(
+                    'Failed to download unmatched CSV: ' +
+                      (error.message || 'Unknown error'),
+                  )
+                  setTimeout(() => setErrorMessage(null), 5000)
+                }
+              }}
+              className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 transition-all hover:bg-gray-50"
+              title="Download Unmatched CSV"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Unmatched CSV</span>
             </button>
           </div>
 
