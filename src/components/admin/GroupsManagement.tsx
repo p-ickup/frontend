@@ -79,6 +79,51 @@ interface ChangeLogEntry {
   actor_name?: string
 }
 
+// Helper function to format change descriptions from actions
+const getChangeDescription = (action: string): string => {
+  switch (action) {
+    case 'ADD_TO_GROUP':
+      return 'Added member'
+    case 'REMOVE_FROM_GROUP':
+      return 'Removed member'
+    case 'UPDATE_GROUP_TIME':
+      return 'Updated time'
+    case 'UPDATE_VOUCHER':
+      return 'Updated voucher'
+    case 'CREATE_GROUP':
+      return 'Group created'
+    case 'DELETE_GROUP':
+      return 'Group deleted'
+    default:
+      return 'Modified'
+  }
+}
+
+// Helper function to consolidate member changes into a single description
+const consolidateChangeDescriptions = (descriptions: string[]): string[] => {
+  const hasAddMember = descriptions.includes('Added member')
+  const hasRemoveMember = descriptions.includes('Removed member')
+  const otherChanges = descriptions.filter(
+    (desc) => desc !== 'Added member' && desc !== 'Removed member',
+  )
+
+  const consolidated: string[] = []
+
+  // If both add and remove, consolidate to "Updated group members"
+  if (hasAddMember && hasRemoveMember) {
+    consolidated.push('Updated group members')
+  } else if (hasAddMember) {
+    consolidated.push('Added member')
+  } else if (hasRemoveMember) {
+    consolidated.push('Removed member')
+  }
+
+  // Add other changes (time, voucher, etc.)
+  consolidated.push(...otherChanges)
+
+  return consolidated
+}
+
 // Component for displaying changed groups
 const ChangedGroupCard = ({
   changedGroup,
@@ -90,6 +135,7 @@ const ChangedGroupCard = ({
     changeType: 'modified' | 'deleted'
     changedAt: string
     emailsSent: boolean
+    changeDescriptions?: string[]
   }
   onConfirmEmail: () => Promise<void>
   supabase: any
@@ -173,6 +219,17 @@ const ChangedGroupCard = ({
               </span>
             )}
           </div>
+          {/* Display change descriptions */}
+          {changedGroup.changeDescriptions &&
+            changedGroup.changeDescriptions.length > 0 && (
+              <div className="mt-1 space-y-0.5">
+                {changedGroup.changeDescriptions.map((desc, idx) => (
+                  <p key={idx} className="text-xs text-gray-700">
+                    {desc}
+                  </p>
+                ))}
+              </div>
+            )}
           <p className="mt-1 text-xs text-gray-600">
             {changedGroup.group.riders.length} rider
             {changedGroup.group.riders.length !== 1 ? 's' : ''} •{' '}
@@ -455,6 +512,26 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     group: Group
     onConfirm: () => Promise<void>
   } | null>(null)
+  const [validationErrorModal, setValidationErrorModal] = useState<{
+    rider: Rider
+    group: Group
+    issue: 'time' | 'bags'
+    onAcknowledge: () => Promise<void>
+    onCancel: () => void
+  } | null>(null)
+
+  // Log validation error modal state changes
+  useEffect(() => {
+    if (validationErrorModal) {
+      console.log('[ValidationErrorModal] Modal state changed to OPEN', {
+        issue: validationErrorModal.issue,
+        riderName: validationErrorModal.rider.name,
+        groupId: validationErrorModal.group.ride_id,
+      })
+    } else {
+      console.log('[ValidationErrorModal] Modal state changed to CLOSED')
+    }
+  }, [validationErrorModal])
   const [corralTab, setCorralTab] = useState<'riders' | 'changes'>('riders')
   const [changedGroups, setChangedGroups] = useState<
     Array<{
@@ -463,6 +540,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       changedAt: string
       emailsSent: boolean
       changeLogId?: string
+      changeDescriptions?: string[]
     }>
   >([])
   const [unmatchedIndividuals, setUnmatchedIndividuals] = useState<
@@ -492,9 +570,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const loadUnconfirmedChanges = useCallback(async () => {
     try {
       // Fetch all unconfirmed change entries from ChangeLog
-      const { data: unconfirmedChanges, error } = await supabase
+      // Include target_group_id to make it easier to query group changes
+      let { data: unconfirmedChanges, error } = await supabase
         .from('ChangeLog')
-        .select('id, metadata, created_at, action, confirmed')
+        .select('id, metadata, created_at, action, confirmed, target_group_id')
         .eq('confirmed', false)
         .in('action', [
           'UPDATE_GROUP_TIME',
@@ -510,74 +589,20 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         return
       }
 
-      // Also fetch email confirmation entries to check which groups/individuals have been confirmed
-      // Since EMAIL_CONFIRMED is not in the DB constraint, we look for entries with email_confirmed: true in metadata
-      // Query for entries where metadata contains email_confirmed: true (as string)
-      const { data: emailConfirmedEntries = [] } = await supabase
-        .from('ChangeLog')
-        .select('id, metadata, created_at, action')
-        .eq('metadata->>email_confirmed', 'true')
-        .order('created_at', { ascending: false })
-
-      // Also try to get entries where email_confirmed is boolean true (not string)
-      const { data: emailConfirmedEntriesBool = [] } = await supabase
-        .from('ChangeLog')
-        .select('id, metadata, created_at, action')
-        .eq('metadata->email_confirmed', true)
-        .order('created_at', { ascending: false })
-
-      // Combine and deduplicate
-      const allEmailConfirmedEntries = [
-        ...(emailConfirmedEntries || []),
-        ...(emailConfirmedEntriesBool || []),
-      ]
-      const uniqueEmailConfirmedEntries = Array.from(
-        new Map(allEmailConfirmedEntries.map((e: any) => [e.id, e])).values(),
-      )
-
-      // Create sets of confirmed group IDs and flight IDs
-      const confirmedGroupIds = new Set<number>()
-      const confirmedFlightIds = new Set<number>()
-
-      if (
-        uniqueEmailConfirmedEntries &&
-        uniqueEmailConfirmedEntries.length > 0
-      ) {
-        console.log(
-          '[loadUnconfirmedChanges] Found',
-          uniqueEmailConfirmedEntries.length,
-          'email confirmation entries',
-        )
-        uniqueEmailConfirmedEntries.forEach((entry) => {
-          const metadata = entry.metadata || {}
-          if (metadata.ride_id) {
-            confirmedGroupIds.add(metadata.ride_id)
-            console.log(
-              '[loadUnconfirmedChanges] Added confirmed group ID:',
-              metadata.ride_id,
-            )
-          }
-          if (metadata.rider_flight_id) {
-            confirmedFlightIds.add(metadata.rider_flight_id)
-            console.log(
-              '[loadUnconfirmedChanges] Added confirmed flight ID:',
-              metadata.rider_flight_id,
-            )
-          }
-        })
-        console.log(
-          '[loadUnconfirmedChanges] Confirmed group IDs:',
-          Array.from(confirmedGroupIds),
-        )
-        console.log(
-          '[loadUnconfirmedChanges] Confirmed flight IDs:',
-          Array.from(confirmedFlightIds),
-        )
-      } else {
-        console.log('[loadUnconfirmedChanges] No EMAIL_CONFIRMED entries found')
+      if (!unconfirmedChanges || unconfirmedChanges.length === 0) {
+        setChangedGroups([])
+        setUnmatchedIndividuals([])
+        return
       }
 
-      if (unconfirmedChanges && unconfirmedChanges.length > 0) {
+      // Note: We no longer use group-level confirmation filtering
+      // Each change is confirmed individually via the `confirmed` field on the ChangeLog entry
+      // This allows new changes to the same group to appear even if previous changes were confirmed
+
+      // Process reversals and delete them from the database
+      let processedUnconfirmedChanges = [...unconfirmedChanges]
+
+      if (processedUnconfirmedChanges.length > 0) {
         // Group changes by ride_id
         const groupChangesMap = new Map<
           number,
@@ -606,10 +631,31 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         for (const change of unconfirmedChanges) {
           const metadata = change.metadata || {}
 
+          // Use target_group_id from ChangeLog if available, otherwise fall back to metadata
+          const getGroupIdFromChange = (): number | null => {
+            // First try target_group_id (most reliable)
+            if (change.target_group_id) {
+              const parsed = parseInt(change.target_group_id, 10)
+              if (!isNaN(parsed)) return parsed
+            }
+            // Fall back to metadata
+            return (
+              metadata.ride_id ||
+              metadata.to_group ||
+              metadata.from_group ||
+              null
+            )
+          }
+
           // Handle group changes - track both source and destination groups
           if (change.action === 'ADD_TO_GROUP') {
-            const toGroupId = metadata.to_group || metadata.ride_id
-            if (toGroupId) {
+            // Use target_group_id if available (int8 type), otherwise use metadata
+            const toGroupId = change.target_group_id
+              ? typeof change.target_group_id === 'number'
+                ? change.target_group_id
+                : parseInt(change.target_group_id, 10)
+              : metadata.to_group || metadata.ride_id
+            if (toGroupId && !isNaN(toGroupId)) {
               const existing = groupChangesMap.get(toGroupId)
               if (
                 !existing ||
@@ -642,8 +688,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               }
             }
           } else if (change.action === 'REMOVE_FROM_GROUP') {
-            const fromGroupId = metadata.from_group
-            if (fromGroupId) {
+            // Use target_group_id if available, otherwise use metadata.from_group
+            const fromGroupId = change.target_group_id
+              ? parseInt(change.target_group_id, 10)
+              : metadata.from_group
+            if (fromGroupId && !isNaN(fromGroupId)) {
               const existing = groupChangesMap.get(fromGroupId)
               if (
                 !existing ||
@@ -681,10 +730,16 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             }
           } else if (
             change.action === 'UPDATE_GROUP_TIME' ||
+            change.action === 'UPDATE_VOUCHER' ||
             change.action === 'CREATE_GROUP'
           ) {
-            const rideId = metadata.ride_id
-            if (rideId) {
+            // Use target_group_id if available (int8 type), otherwise use metadata.ride_id
+            const rideId = change.target_group_id
+              ? typeof change.target_group_id === 'number'
+                ? change.target_group_id
+                : parseInt(change.target_group_id, 10)
+              : metadata.ride_id
+            if (rideId && !isNaN(rideId)) {
               const existing = groupChangesMap.get(rideId)
               if (
                 !existing ||
@@ -700,7 +755,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               }
             }
           } else if (change.action === 'DELETE_GROUP') {
-            const rideId = metadata.ride_id
+            // Use target_group_id if available (int8 type), otherwise use metadata.ride_id
+            const rideId = change.target_group_id
+              ? typeof change.target_group_id === 'number'
+                ? change.target_group_id
+                : parseInt(change.target_group_id, 10)
+              : metadata.ride_id
             if (rideId) {
               const existing = groupChangesMap.get(rideId)
               if (
@@ -719,95 +779,452 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           }
         }
 
-        // Find corresponding groups from current state and verify changes are still valid
-        setGroups((prevGroups) => {
-          // Check for subsequent changes that would have reverted the original change
-          // Track which group changes have been reverted
-          const revertedGroupChanges = new Set<string>() // changeLogIds that have been reverted
+        // Check for reversals and delete them BEFORE processing groups
+        // Group all changes by ride_id to check for reversals
+        const changesByRideId = new Map<
+          number,
+          typeof processedUnconfirmedChanges
+        >()
+        processedUnconfirmedChanges.forEach((change) => {
+          // Use target_group_id if available (int8 type), otherwise fall back to metadata
+          let rideId: number | null = null
 
-          // Group all changes by ride_id to check for reversals
-          const changesByRideId = new Map<number, typeof unconfirmedChanges>()
-          unconfirmedChanges.forEach((change) => {
+          if (change.target_group_id) {
+            rideId =
+              typeof change.target_group_id === 'number'
+                ? change.target_group_id
+                : parseInt(change.target_group_id, 10)
+            if (isNaN(rideId)) {
+              rideId = null
+            }
+          }
+
+          // Fall back to metadata if target_group_id not available
+          if (!rideId) {
             const metadata = change.metadata || {}
-            const rideId =
-              metadata.ride_id || metadata.to_group || metadata.from_group
-            if (rideId) {
-              if (!changesByRideId.has(rideId)) {
-                changesByRideId.set(rideId, [])
+            if (change.action === 'ADD_TO_GROUP') {
+              rideId = metadata.to_group || metadata.ride_id
+            } else if (change.action === 'REMOVE_FROM_GROUP') {
+              rideId = metadata.from_group
+            } else {
+              rideId =
+                metadata.ride_id || metadata.to_group || metadata.from_group
+            }
+          }
+
+          if (rideId && !isNaN(rideId)) {
+            if (!changesByRideId.has(rideId)) {
+              changesByRideId.set(rideId, [])
+            }
+            changesByRideId.get(rideId)!.push(change)
+          }
+        })
+
+        // Check for reversals: if REMOVE_FROM_GROUP is followed by ADD_TO_GROUP for same group and same rider
+        // DELETE both changes from the database if they cancel each other out and both are unconfirmed
+        const changesToDelete: string[] = [] // Array of changeLogIds to delete
+
+        // We need current groups to check if riders are currently in groups
+        const currentGroups = groups
+
+        for (const [rideId, changes] of Array.from(changesByRideId.entries())) {
+          const group = currentGroups.find((g) => g.ride_id === rideId)
+          if (!group) continue // Group doesn't exist, skip
+
+          const sortedChanges = changes.sort(
+            (a, b) =>
+              new Date(a.created_at).getTime() -
+              new Date(b.created_at).getTime(),
+          )
+
+          // Track which riders were removed and then added back to the same group (or vice versa)
+          const removedRiders = new Map<
+            string,
+            { changeId: string; change: any }
+          >() // `${rideId}-${flightId}` -> { changeId, change }
+          const addedRiders = new Map<
+            string,
+            { changeId: string; change: any }
+          >() // `${rideId}-${flightId}` -> { changeId, change }
+
+          sortedChanges.forEach((change) => {
+            const metadata = change.metadata || {}
+            const flightId = metadata.rider_flight_id || metadata.flight_id
+
+            // Determine which group this change belongs to - use target_group_id if available
+            let changeGroupId: number | null = null
+            if (change.target_group_id) {
+              changeGroupId =
+                typeof change.target_group_id === 'number'
+                  ? change.target_group_id
+                  : parseInt(change.target_group_id, 10)
+              if (isNaN(changeGroupId)) {
+                changeGroupId = null
               }
-              changesByRideId.get(rideId)!.push(change)
+            }
+
+            // Fall back to metadata if target_group_id not available
+            if (!changeGroupId) {
+              if (change.action === 'REMOVE_FROM_GROUP') {
+                changeGroupId = metadata.from_group
+              } else if (change.action === 'ADD_TO_GROUP') {
+                changeGroupId = metadata.to_group || metadata.ride_id
+              } else {
+                changeGroupId = metadata.ride_id
+              }
+            }
+
+            // Only process if this change belongs to the current group being checked
+            if (changeGroupId !== rideId) {
+              return
+            }
+
+            if (change.action === 'REMOVE_FROM_GROUP' && flightId) {
+              const key = `${rideId}-${flightId}`
+              removedRiders.set(key, { changeId: change.id, change })
+            } else if (change.action === 'ADD_TO_GROUP' && flightId) {
+              const key = `${rideId}-${flightId}`
+              addedRiders.set(key, { changeId: change.id, change })
             }
           })
 
-          // Check for reversals: if REMOVE_FROM_GROUP is followed by ADD_TO_GROUP for same group and same rider
-          // Also verify that the rider is currently in the group (check current state)
-          changesByRideId.forEach((changes, rideId) => {
-            const group = prevGroups.find((g) => g.ride_id === rideId)
-            if (!group) return // Group doesn't exist, skip
+          // Check for reversals: if a rider was removed and then added back (or vice versa) to the same group
+          // DELETE both changes if they cancel each other out and both are unconfirmed
+          removedRiders.forEach((removeData, key) => {
+            if (addedRiders.has(key)) {
+              const addData = addedRiders.get(key)!
+              const removeChange = removeData.change
+              const addChange = addData.change
 
-            const sortedChanges = changes.sort(
-              (a, b) =>
-                new Date(a.created_at).getTime() -
-                new Date(b.created_at).getTime(),
-            )
+              if (removeChange && addChange) {
+                const removeTime = new Date(removeChange.created_at).getTime()
+                const addTime = new Date(addChange.created_at).getTime()
 
-            // Track which riders were removed and then added back to the same group
-            const removedRiders = new Map<string, string>() // `${rideId}-${flightId}` -> changeLogId
-            sortedChanges.forEach((change) => {
-              const metadata = change.metadata || {}
-              const flightId = metadata.rider_flight_id || metadata.flight_id
-
-              if (
-                change.action === 'REMOVE_FROM_GROUP' &&
-                metadata.from_group === rideId &&
-                flightId
-              ) {
-                const key = `${rideId}-${flightId}`
-                removedRiders.set(key, change.id)
-              } else if (
-                change.action === 'ADD_TO_GROUP' &&
-                metadata.to_group === rideId &&
-                flightId
-              ) {
-                // If this rider was previously removed from this same group, check if they're currently in the group
-                const key = `${rideId}-${flightId}`
-                if (removedRiders.has(key)) {
+                // Check if removal happened before addition (remove -> add cycle)
+                if (removeTime < addTime) {
                   // Check if rider is currently in the group
-                  const isCurrentlyInGroup = group.riders.some(
-                    (r) => r.flight_id === flightId,
-                  )
-                  if (isCurrentlyInGroup) {
-                    // Rider was removed and then added back, and is currently in the group - mark removal as reverted
-                    revertedGroupChanges.add(removedRiders.get(key)!)
+                  const flightId =
+                    removeChange.metadata?.rider_flight_id ||
+                    removeChange.metadata?.flight_id
+                  if (flightId) {
+                    const isCurrentlyInGroup = group.riders.some(
+                      (r) => r.flight_id === flightId,
+                    )
+                    if (isCurrentlyInGroup) {
+                      // Check if both changes are unconfirmed - only delete if neither was confirmed
+                      if (!removeChange.confirmed && !addChange.confirmed) {
+                        // Both changes cancel out and are unconfirmed - DELETE them
+                        changesToDelete.push(removeData.changeId)
+                        changesToDelete.push(addData.changeId)
+                        console.log(
+                          '[loadUnconfirmedChanges] Detected reversal: REMOVE then ADD for rider',
+                          flightId,
+                          'in group',
+                          rideId,
+                          '- deleting both unconfirmed changes',
+                        )
+                      }
+                    }
                   }
                 }
               }
-            })
+            }
           })
 
+          // Also check for add -> remove cycles
+          addedRiders.forEach((addData, key) => {
+            if (removedRiders.has(key)) {
+              const removeData = removedRiders.get(key)!
+              const addChange = addData.change
+              const removeChange = removeData.change
+
+              if (addChange && removeChange) {
+                const addTime = new Date(addChange.created_at).getTime()
+                const removeTime = new Date(removeChange.created_at).getTime()
+
+                // Check if addition happened before removal (add -> remove cycle)
+                if (addTime < removeTime) {
+                  // Check if rider is currently NOT in the group
+                  const flightId =
+                    addChange.metadata?.rider_flight_id ||
+                    addChange.metadata?.flight_id
+                  if (flightId) {
+                    const isCurrentlyInGroup = group.riders.some(
+                      (r) => r.flight_id === flightId,
+                    )
+                    if (!isCurrentlyInGroup) {
+                      // Check if both changes are unconfirmed - only delete if neither was confirmed
+                      if (!addChange.confirmed && !removeChange.confirmed) {
+                        // Both changes cancel out and are unconfirmed - DELETE them
+                        changesToDelete.push(addData.changeId)
+                        changesToDelete.push(removeData.changeId)
+                        console.log(
+                          '[loadUnconfirmedChanges] Detected reversal: ADD then REMOVE for rider',
+                          flightId,
+                          'in group',
+                          rideId,
+                          '- deleting both unconfirmed changes',
+                        )
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          })
+        }
+
+        // Delete all reversed changes from the database
+        if (changesToDelete.length > 0) {
+          const uniqueChangeIds = Array.from(new Set(changesToDelete))
+          console.log(
+            '[loadUnconfirmedChanges] Deleting',
+            uniqueChangeIds.length,
+            'reversed changes from database:',
+            uniqueChangeIds,
+          )
+          const { error: deleteError } = await supabase
+            .from('ChangeLog')
+            .delete()
+            .in('id', uniqueChangeIds)
+
+          if (deleteError) {
+            console.error(
+              '[loadUnconfirmedChanges] Error deleting reversed changes:',
+              deleteError,
+            )
+          } else {
+            console.log(
+              '[loadUnconfirmedChanges] Successfully deleted reversed changes',
+            )
+            // Re-fetch unconfirmed changes after deletion
+            // This ensures we don't process deleted changes
+            const { data: refreshedUnconfirmedChanges } = await supabase
+              .from('ChangeLog')
+              .select(
+                'id, metadata, created_at, action, confirmed, target_group_id',
+              )
+              .eq('confirmed', false)
+              .in('action', [
+                'UPDATE_GROUP_TIME',
+                'ADD_TO_GROUP',
+                'REMOVE_FROM_GROUP',
+                'CREATE_GROUP',
+                'DELETE_GROUP',
+              ])
+              .order('created_at', { ascending: false })
+
+            if (refreshedUnconfirmedChanges) {
+              // Update the processedUnconfirmedChanges array to exclude deleted entries
+              processedUnconfirmedChanges = refreshedUnconfirmedChanges.filter(
+                (change) => !uniqueChangeIds.includes(change.id),
+              )
+            }
+          }
+        }
+
+        // Find corresponding groups from current state and verify changes are still valid
+        setGroups((prevGroups) => {
           const newChangedGroups: Array<{
             group: Group
             changeType: 'modified' | 'deleted'
             changedAt: string
             emailsSent: boolean
             changeLogId?: string
+            changeDescriptions?: string[]
           }> = []
 
-          groupChangesMap.forEach((changeInfo) => {
-            // Skip if this change has been reverted
-            if (revertedGroupChanges.has(changeInfo.changeLogId)) {
-              return
+          // Check if groups have any non-reverted changes
+          const groupsWithNonRevertedChanges = new Set<number>()
+
+          // First, check all changes for each group to see if any are not reverted
+          // Note: Reversed changes have been deleted from the database, so they won't be in processedUnconfirmedChanges
+          processedUnconfirmedChanges.forEach((change) => {
+            // Use target_group_id if available (int8 type), otherwise fall back to metadata
+            let rideId: number | null = null
+            if (change.target_group_id) {
+              rideId =
+                typeof change.target_group_id === 'number'
+                  ? change.target_group_id
+                  : parseInt(change.target_group_id, 10)
+              if (isNaN(rideId)) {
+                rideId = null
+              }
             }
 
-            // Skip if this group has been confirmed (has EMAIL_CONFIRMED entry)
-            if (confirmedGroupIds.has(changeInfo.ride_id)) {
+            // Fall back to metadata if target_group_id not available
+            if (!rideId) {
+              const metadata = change.metadata || {}
+              if (change.action === 'ADD_TO_GROUP') {
+                rideId = metadata.to_group || metadata.ride_id
+              } else if (change.action === 'REMOVE_FROM_GROUP') {
+                rideId = metadata.from_group
+              } else {
+                rideId = metadata.ride_id
+              }
+            }
+
+            if (rideId && !isNaN(rideId)) {
+              groupsWithNonRevertedChanges.add(rideId)
+              console.log(
+                '[loadUnconfirmedChanges] Added group to non-reverted changes:',
+                rideId,
+                'from action:',
+                change.action,
+                'target_group_id:',
+                change.target_group_id,
+              )
+            } else {
+              console.log(
+                '[loadUnconfirmedChanges] Could not determine rideId for change:',
+                change.id,
+                change.action,
+                'target_group_id:',
+                change.target_group_id,
+                'metadata:',
+                change.metadata,
+              )
+            }
+          })
+
+          console.log(
+            '[loadUnconfirmedChanges] Groups with non-reverted changes:',
+            Array.from(groupsWithNonRevertedChanges),
+          )
+
+          // Rebuild groupChangesMap to only include non-reverted changes, using the most recent non-reverted change per group
+          const finalGroupChangesMap = new Map<
+            number,
+            {
+              ride_id: number
+              changeType: 'modified' | 'deleted'
+              changedAt: string
+              action: string
+              changeLogId: string
+            }
+          >()
+
+          // Find the most recent non-reverted change for each group
+          // Note: Reversed changes have been deleted from the database, so they won't be in processedUnconfirmedChanges
+          processedUnconfirmedChanges.forEach((change) => {
+            // Use target_group_id if available (int8 type, most reliable), otherwise fall back to metadata
+            let rideId: number | null = null
+
+            if (change.target_group_id) {
+              rideId =
+                typeof change.target_group_id === 'number'
+                  ? change.target_group_id
+                  : parseInt(change.target_group_id, 10)
+              if (isNaN(rideId)) {
+                rideId = null
+              }
+            }
+
+            // Fall back to metadata if target_group_id not available
+            if (!rideId) {
+              const metadata = change.metadata || {}
+              if (change.action === 'ADD_TO_GROUP') {
+                rideId = metadata.to_group || metadata.ride_id
+              } else if (change.action === 'REMOVE_FROM_GROUP') {
+                rideId = metadata.from_group
+              } else if (
+                change.action === 'UPDATE_GROUP_TIME' ||
+                change.action === 'UPDATE_VOUCHER' ||
+                change.action === 'CREATE_GROUP' ||
+                change.action === 'DELETE_GROUP'
+              ) {
+                rideId = metadata.ride_id
+              }
+            }
+
+            if (rideId && !isNaN(rideId)) {
+              const existing = finalGroupChangesMap.get(rideId)
+              if (
+                !existing ||
+                new Date(change.created_at) > new Date(existing.changedAt)
+              ) {
+                finalGroupChangesMap.set(rideId, {
+                  ride_id: rideId,
+                  changeType:
+                    change.action === 'DELETE_GROUP'
+                      ? ('deleted' as const)
+                      : ('modified' as const),
+                  changedAt: change.created_at,
+                  action: change.action,
+                  changeLogId: change.id,
+                })
+              }
+            }
+          })
+
+          console.log(
+            '[loadUnconfirmedChanges] Final group changes map:',
+            Array.from(finalGroupChangesMap.keys()),
+          )
+
+          // Collect all unique change types for each group to build change descriptions
+          // Note: Reversed changes have been deleted from the database, so they won't be in processedUnconfirmedChanges
+          const groupChangeTypesMap = new Map<number, Set<string>>()
+          processedUnconfirmedChanges.forEach((change) => {
+            // Use target_group_id if available (int8 type), otherwise fall back to metadata
+            let rideId: number | null = null
+            if (change.target_group_id) {
+              rideId =
+                typeof change.target_group_id === 'number'
+                  ? change.target_group_id
+                  : parseInt(change.target_group_id, 10)
+              if (isNaN(rideId)) {
+                rideId = null
+              }
+            }
+
+            // Fall back to metadata if target_group_id not available
+            if (!rideId) {
+              const metadata = change.metadata || {}
+              if (change.action === 'ADD_TO_GROUP') {
+                rideId = metadata.to_group || metadata.ride_id
+              } else if (change.action === 'REMOVE_FROM_GROUP') {
+                rideId = metadata.from_group
+              } else if (
+                change.action === 'UPDATE_GROUP_TIME' ||
+                change.action === 'UPDATE_VOUCHER' ||
+                change.action === 'CREATE_GROUP' ||
+                change.action === 'DELETE_GROUP'
+              ) {
+                rideId = metadata.ride_id
+              }
+            }
+
+            if (rideId && !isNaN(rideId)) {
+              if (!groupChangeTypesMap.has(rideId)) {
+                groupChangeTypesMap.set(rideId, new Set())
+              }
+              groupChangeTypesMap.get(rideId)!.add(change.action)
+            }
+          })
+
+          finalGroupChangesMap.forEach((changeInfo) => {
+            // Skip if this group has no non-reverted changes (all changes were reverted)
+            if (!groupsWithNonRevertedChanges.has(changeInfo.ride_id)) {
               console.log(
                 '[loadUnconfirmedChanges] Skipping group',
                 changeInfo.ride_id,
-                'because it has EMAIL_CONFIRMED entry',
+                'because all changes have been reverted (no net change). ChangeInfo:',
+                changeInfo,
               )
               return
             }
+
+            console.log(
+              '[loadUnconfirmedChanges] Processing group change:',
+              changeInfo.ride_id,
+              'action:',
+              changeInfo.action,
+            )
+
+            // Note: We no longer filter by group-level confirmation
+            // Each change is confirmed individually via the `confirmed` field
+            // Unconfirmed changes are already filtered by `.eq('confirmed', false)` in the query
 
             const group = prevGroups.find(
               (g) => g.ride_id === changeInfo.ride_id,
@@ -815,16 +1232,43 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             if (group) {
               // For DELETE_GROUP, check if group still exists (if it does, it wasn't actually deleted)
               if (changeInfo.changeType === 'deleted') {
+                console.log(
+                  '[loadUnconfirmedChanges] Skipping deleted group that still exists:',
+                  changeInfo.ride_id,
+                )
                 return // Don't show deleted groups that still exist
               }
 
+              // Build change descriptions from all change types for this group
+              const changeTypes =
+                groupChangeTypesMap.get(changeInfo.ride_id) || new Set()
+              const rawDescriptions =
+                Array.from(changeTypes).map(getChangeDescription)
+              const changeDescriptions =
+                consolidateChangeDescriptions(rawDescriptions)
+
+              console.log(
+                '[loadUnconfirmedChanges] Adding group to changed groups:',
+                changeInfo.ride_id,
+                'actions:',
+                Array.from(changeTypes),
+                'descriptions:',
+                changeDescriptions,
+              )
               newChangedGroups.push({
                 group,
                 changeType: changeInfo.changeType,
                 changedAt: changeInfo.changedAt,
                 emailsSent: false, // Should not reach here if confirmed, but set to false for safety
                 changeLogId: changeInfo.changeLogId,
+                changeDescriptions,
               })
+            } else {
+              console.log(
+                '[loadUnconfirmedChanges] Group not found in prevGroups:',
+                changeInfo.ride_id,
+                'This might be why the card disappears',
+              )
             }
           })
 
@@ -900,15 +1344,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           }> = []
 
           unmatchedChangesMap.forEach((changeInfo, flightId) => {
-            // Skip if this flight has been confirmed (has EMAIL_CONFIRMED entry)
-            if (confirmedFlightIds.has(flightId)) {
-              console.log(
-                '[loadUnconfirmedChanges] Skipping unmatched individual',
-                flightId,
-                'because it has EMAIL_CONFIRMED entry',
-              )
-              return
-            }
+            // Note: We no longer filter by flight-level confirmation
+            // Each change is confirmed individually via the `confirmed` field
+            // Unconfirmed changes are already filtered by `.eq('confirmed', false)` in the query
 
             // Only include if they're actually unmatched (not in Matches table)
             if (!matchedFlightIds.has(flightId)) {
@@ -965,7 +1403,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     } catch (error) {
       console.error('Error loading unconfirmed changes:', error)
     }
-  }, [supabase])
+  }, [supabase, groups])
 
   useEffect(() => {
     const loadData = async () => {
@@ -980,6 +1418,19 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     loadData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Log validation error modal state changes
+  useEffect(() => {
+    if (validationErrorModal) {
+      console.log('[ValidationErrorModal] Modal state changed to OPEN', {
+        issue: validationErrorModal.issue,
+        riderName: validationErrorModal.rider.name,
+        groupId: validationErrorModal.group.ride_id,
+      })
+    } else {
+      console.log('[ValidationErrorModal] Modal state changed to CLOSED')
+    }
+  }, [validationErrorModal])
 
   // Reload unconfirmed changes when groups change
   useEffect(() => {
@@ -1572,7 +2023,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           actor_user_id: currentUser.id,
           actor_role: actorRole,
           action,
-          target_group_id: targetGroupId ? targetGroupId.toString() : null,
+          target_group_id: targetGroupId || null, // int8 type, same as ride_id in Matches
           target_user_id: targetUserId || null,
           metadata: serializedMetadata,
           ignored_error: false,
@@ -1720,7 +2171,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 new_time: formattedTime,
                 rider_count: oldGroup.riders.length,
               },
-              undefined, // Don't set target_group_id if it's UUID type and we have a number
+              groupId, // Set target_group_id to the group that was changed
             )
           }
 
@@ -1736,6 +2187,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 (cg) => cg.group.ride_id === groupId,
               )
               if (existing) {
+                // Merge new change description with existing ones
+                const newDescription = getChangeDescription('UPDATE_GROUP_TIME')
+                const existingDescriptions = existing.changeDescriptions || []
+                const updatedDescriptions = consolidateChangeDescriptions([
+                  ...existingDescriptions,
+                  newDescription,
+                ])
                 return prevChanged.map((cg) =>
                   cg.group.ride_id === groupId
                     ? {
@@ -1743,6 +2201,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         group: updatedGroup, // Update with latest group data
                         changedAt: new Date().toISOString(),
                         emailsSent: false,
+                        changeDescriptions: updatedDescriptions,
                       }
                     : cg,
                 )
@@ -1754,6 +2213,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   changeType: 'modified',
                   changedAt: new Date().toISOString(),
                   emailsSent: false,
+                  changeDescriptions: [
+                    getChangeDescription('UPDATE_GROUP_TIME'),
+                  ],
                 },
               ]
             })
@@ -1821,6 +2283,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 (cg) => cg.group.ride_id === groupId,
               )
               if (existing) {
+                // Merge new change description with existing ones
+                const newDescription = getChangeDescription('UPDATE_VOUCHER')
+                const existingDescriptions = existing.changeDescriptions || []
+                const updatedDescriptions = consolidateChangeDescriptions([
+                  ...existingDescriptions,
+                  newDescription,
+                ])
                 return prevChanged.map((cg) =>
                   cg.group.ride_id === groupId
                     ? {
@@ -1828,6 +2297,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         group: updatedGroup,
                         changedAt: new Date().toISOString(),
                         emailsSent: false,
+                        changeDescriptions: updatedDescriptions,
                       }
                     : cg,
                 )
@@ -1839,6 +2309,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   changeType: 'modified',
                   changedAt: new Date().toISOString(),
                   emailsSent: false,
+                  changeDescriptions: [getChangeDescription('UPDATE_VOUCHER')],
                 },
               ]
             })
@@ -1857,7 +2328,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             ride_id: groupId, // Store as number in metadata
             voucher: normalizedVoucher || '',
           },
-          undefined, // Don't set target_group_id if it's UUID type and we have a number
+          groupId, // Set target_group_id to the group that was changed
         )
 
         setEditVoucherModal(null)
@@ -2023,10 +2494,29 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         .map((t) => t.trim())
       const riderTimes = rider.time_range.split(' - ').map((t) => t.trim())
 
-      if (groupTimes.length !== 2 || riderTimes.length !== 2) return false
+      console.log('[validateTimeCompatibility] Checking time compatibility', {
+        calculatedGroupTimeRange,
+        groupTimes,
+        riderTimeRange: rider.time_range,
+        riderTimes,
+        groupDate: group.date,
+        riderDate: rider.date,
+      })
+
+      if (groupTimes.length !== 2 || riderTimes.length !== 2) {
+        console.log(
+          '[validateTimeCompatibility] Invalid time format, returning false',
+        )
+        return false
+      }
 
       // Check if dates match
-      if (group.date !== rider.date) return false
+      if (group.date !== rider.date) {
+        console.log(
+          '[validateTimeCompatibility] Dates do not match, returning false',
+        )
+        return false
+      }
 
       // Check if time ranges overlap (simplified check)
       const groupStart = groupTimes[0]
@@ -2034,15 +2524,30 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       const riderStart = riderTimes[0]
       const riderEnd = riderTimes[1]
 
+      console.log('[validateTimeCompatibility] Comparing times', {
+        groupStart,
+        groupEnd,
+        riderStart,
+        riderEnd,
+      })
+
       // Times overlap if: (riderStart <= groupEnd && riderEnd >= groupStart)
-      return riderStart <= groupEnd && riderEnd >= groupStart
+      const overlaps = riderStart <= groupEnd && riderEnd >= groupStart
+      console.log('[validateTimeCompatibility] Overlap result', {
+        overlaps,
+        condition1: `${riderStart} <= ${groupEnd}`,
+        condition1Result: riderStart <= groupEnd,
+        condition2: `${riderEnd} >= ${groupStart}`,
+        condition2Result: riderEnd >= groupStart,
+      })
+      return overlaps
     },
     [calculateGroupTimeRange],
   )
 
-  // Get max bag units based on group size: 12 for <= 3 people, 10 for > 3 people
+  // Get max bag units based on group size: 12 for < 3 people, 10 for >= 3 people
   const getMaxBagUnits = useCallback((riderCount: number): number => {
-    return riderCount > 3 ? 10 : 12
+    return riderCount >= 3 ? 10 : 12
   }, [])
 
   const validateBagConstraints = useCallback(
@@ -2137,7 +2642,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                     rider_user_id: rider.user_id,
                     rider_flight_id: rider.flight_id,
                   },
-                  undefined, // Don't set target_group_id if it's UUID type and we have a number
+                  fromGroupId, // Set target_group_id to the group that was changed
                   rider.user_id,
                 )
 
@@ -2228,7 +2733,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               rider_user_id: rider.user_id,
               rider_flight_id: rider.flight_id,
             },
-            undefined, // Don't set target_group_id if it's UUID type and we have a number
+            fromGroupId, // Set target_group_id to the group that was changed
             rider.user_id,
           )
 
@@ -2249,7 +2754,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                     riders: g.riders.filter(
                       (r) => r.flight_id !== rider.flight_id,
                     ),
-                    uber_type: newUberType !== null ? newUberType : g.uber_type, // Update uber_type if calculated
+                    uber_type: newUberType || g.uber_type, // Update uber_type (always a string, defaults to 'XXL*' for invalid)
                   }
                 : g,
             )
@@ -2271,6 +2776,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   (cg) => cg.group.ride_id === fromGroupId,
                 )
                 if (existing) {
+                  // Merge new change description with existing ones
+                  const newDescription =
+                    getChangeDescription('REMOVE_FROM_GROUP')
+                  const existingDescriptions = existing.changeDescriptions || []
+                  const updatedDescriptions = consolidateChangeDescriptions([
+                    ...existingDescriptions,
+                    newDescription,
+                  ])
                   return prevChanged.map((cg) =>
                     cg.group.ride_id === fromGroupId
                       ? {
@@ -2278,6 +2791,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           group: updatedGroup, // Update with latest group data
                           changedAt: new Date().toISOString(),
                           emailsSent: false,
+                          changeDescriptions: updatedDescriptions,
                         }
                       : cg,
                   )
@@ -2289,6 +2803,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                     changeType: 'modified',
                     changedAt: new Date().toISOString(),
                     emailsSent: false,
+                    changeDescriptions: [
+                      getChangeDescription('REMOVE_FROM_GROUP'),
+                    ],
                   },
                 ]
               })
@@ -2410,7 +2927,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                     rider_name: rider.name,
                     rider_user_id: rider.user_id,
                   },
-                  undefined, // Don't set target_group_id if it's UUID type and we have a number
+                  groupId, // Set target_group_id to the group that was deleted
                 )
 
                 // Track as deleted group
@@ -2559,6 +3076,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 (cg) => cg.group.ride_id === groupId,
               )
               if (existing) {
+                // Merge new change description with existing ones
+                const newDescription = getChangeDescription('REMOVE_FROM_GROUP')
+                const existingDescriptions = existing.changeDescriptions || []
+                const updatedDescriptions = consolidateChangeDescriptions([
+                  ...existingDescriptions,
+                  newDescription,
+                ])
                 return prevChanged.map((cg) =>
                   cg.group.ride_id === groupId
                     ? {
@@ -2566,6 +3090,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         group: updatedGroup, // Update with latest group data
                         changedAt: new Date().toISOString(),
                         emailsSent: false,
+                        changeDescriptions: updatedDescriptions,
                       }
                     : cg,
                 )
@@ -2577,6 +3102,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   changeType: 'modified',
                   changedAt: new Date().toISOString(),
                   emailsSent: false,
+                  changeDescriptions: [
+                    getChangeDescription('REMOVE_FROM_GROUP'),
+                  ],
                 },
               ]
             })
@@ -2607,6 +3135,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         // Log to ChangeLog
         // Note: target_group_id expects UUID, but ride_id is a number
         // Storing ride_id in metadata instead
+        // Log the group change - this tracks that the group was modified
         await logToChangeLog(
           'REMOVE_FROM_GROUP',
           {
@@ -2619,7 +3148,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             flight_id: rider.flight_id,
             date: rider.date,
           },
-          undefined, // Don't set target_group_id if it's UUID type and we have a number
+          groupId, // Set target_group_id to the group that was changed
           rider.user_id,
         )
       } catch (error) {
@@ -2774,105 +3303,279 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   )
 
   const handleSelectFromCorral = useCallback(
-    async (rider: Rider, group: Group, skipTimeValidation = false) => {
-      // Validate time compatibility (unless skipping)
-      if (!skipTimeValidation) {
+    async (
+      rider: Rider,
+      group: Group,
+      skipValidation = false,
+      explicitSourceGroupId?: number,
+      customTime?: string,
+      customDate?: string,
+    ) => {
+      // Check for validation errors that require acknowledgment (unless skipping)
+      console.log('[handleSelectFromCorral] Starting validation check', {
+        skipValidation,
+        riderName: rider.name,
+        groupId: group.ride_id,
+        currentGroupSize: group.riders.length,
+      })
+
+      if (!skipValidation) {
+        console.log('[handleSelectFromCorral] Running validation checks...')
         const timeCompatible = validateTimeCompatibility(group, rider)
-        if (!timeCompatible) {
-          const errorKey = `${rider.user_id}-${group.ride_id}`
-          setCorralCardErrors((prev) => {
-            const newMap = new Map(prev)
-            newMap.set(errorKey, 'These flights have no overlap')
-            return newMap
+        console.log(
+          '[handleSelectFromCorral] Time compatibility result:',
+          timeCompatible,
+        )
+
+        const updatedRiders = [...group.riders, rider]
+        const newRiderCount = updatedRiders.length
+        console.log(
+          '[handleSelectFromCorral] New rider count after adding:',
+          newRiderCount,
+        )
+
+        // Calculate bag units manually to avoid dependency issues
+        let numLargeBags = 0
+        let numNormalBags = 0
+        for (const r of updatedRiders) {
+          numLargeBags += r.checked_bags
+          numNormalBags += r.carry_on_bags
+        }
+        const bagUnits = numLargeBags * 2 + numNormalBags
+        console.log('[handleSelectFromCorral] Bag calculation:', {
+          numLargeBags,
+          numNormalBags,
+          bagUnits,
+        })
+
+        // Check if bags would exceed 10 for 4+ members
+        const bagsExceedLimit = newRiderCount >= 4 && bagUnits > 10
+        console.log('[handleSelectFromCorral] Bag limit check:', {
+          newRiderCount,
+          is4OrMore: newRiderCount >= 4,
+          bagUnits,
+          exceeds10: bagUnits > 10,
+          bagsExceedLimit,
+        })
+
+        console.log('[handleSelectFromCorral] Validation results:', {
+          timeCompatible,
+          bagsExceedLimit,
+          shouldShowModal: !timeCompatible || bagsExceedLimit,
+        })
+
+        // Determine which issue(s) we have (prioritize time if both)
+        if (!timeCompatible || bagsExceedLimit) {
+          const issue = !timeCompatible ? 'time' : 'bags'
+          console.log(
+            '[handleSelectFromCorral] Validation failed! Showing modal with issue:',
+            issue,
+          )
+
+          console.log(
+            '[handleSelectFromCorral] Setting validationErrorModal state...',
+          )
+          setValidationErrorModal({
+            rider,
+            group,
+            issue,
+            onAcknowledge: async () => {
+              // Log IGNORE_ERROR to ChangeLog
+              await logToChangeLog(
+                'IGNORE_ERROR',
+                {
+                  ride_id: group.ride_id,
+                  rider_name: rider.name,
+                  rider_user_id: rider.user_id,
+                  rider_flight_id: rider.flight_id,
+                  issue: issue,
+                  time_compatible: timeCompatible,
+                  bags_exceed_limit: bagsExceedLimit,
+                  bag_units: bagUnits,
+                  new_rider_count: newRiderCount,
+                },
+                group.ride_id,
+                rider.user_id,
+                false,
+              )
+
+              setValidationErrorModal(null)
+              // Recursively call handleSelectFromCorral to proceed with addition
+              await handleSelectFromCorral(
+                rider,
+                group,
+                true, // Skip validation (already acknowledged)
+                explicitSourceGroupId,
+                customTime,
+                customDate,
+              )
+            },
+            onCancel: () => {
+              setValidationErrorModal(null)
+              setCorralSelectionMode(null)
+            },
           })
-          setCorralSelectionMode(null)
-          setTimeout(() => {
-            setCorralCardErrors((prev) => {
-              const newMap = new Map(prev)
-              newMap.delete(errorKey)
-              return newMap
-            })
-          }, 3000)
           return
         }
       }
 
-      // Validate bag constraints
-      const bagValid = validateBagConstraints(group, rider)
-      if (!bagValid) {
-        setErrorMessage(
-          'You are creating a group over the recommended bag size',
-        )
-        setCorralSelectionMode(null)
-        setTimeout(() => setErrorMessage(null), 3000)
-        return
-      }
-
-      // Determine source (corral or unmatched) and remove from corral immediately (by flight_id)
+      // Determine source (corral, unmatched, or direct from group) - DON'T remove from corral yet
       const corralRider = corralRiders.find(
         (r) => r.flight_id === rider.flight_id,
       )
       const isFromCorral = !!corralRider
-      const source = isFromCorral ? 'corral' : 'unmatched'
-      const sourceGroupId = corralRider?.originGroupId
 
-      // Remove from corral immediately to prevent duplicate groups
-      if (isFromCorral) {
-        setCorralRiders((prev) =>
-          prev.filter((r) => r.flight_id !== rider.flight_id),
-        )
-      }
+      // If explicitSourceGroupId is provided, use it (direct drag from group)
+      // Otherwise, use the originGroupId from corral rider
+      const sourceGroupId = explicitSourceGroupId || corralRider?.originGroupId
+      const source = explicitSourceGroupId
+        ? 'group'
+        : isFromCorral
+          ? 'corral'
+          : 'unmatched'
 
       try {
         // Calculate bag units and uber_type for the updated group
         const updatedRiders = [...group.riders, rider]
         const bagUnits = calculateBagUnits(updatedRiders)
-        const uberType = determineUberType(updatedRiders.length, bagUnits)
+        const uberType = determineUberType(updatedRiders.length, bagUnits) // Always returns a string (defaults to 'XXL*' for invalid)
 
-        // Calculate new time range overlap for the group
-        const newTimeRange = calculateGroupTimeRange(updatedRiders)
+        console.log('[handleSelectFromCorral] Calculated values', {
+          bagUnits,
+          uberType,
+          updatedRidersCount: updatedRiders.length,
+        })
 
-        // Calculate midpoint of the overlap
-        const midpointTime = calculateTimeMidpoint(newTimeRange)
+        // Use custom time/date if provided, otherwise calculate from overlap
+        let formattedTime: string
+        let finalDate: string
+        let newTimeRange: string
 
-        // Format time to HH:MM:SS
-        const formattedTime =
-          midpointTime.includes(':') && midpointTime.split(':').length === 2
-            ? `${midpointTime}:00`
-            : midpointTime
+        if (customTime && customDate) {
+          // Use custom time/date provided by user
+          formattedTime =
+            customTime.includes(':') && customTime.split(':').length === 2
+              ? `${customTime}:00`
+              : customTime
+          finalDate = customDate
+          // For custom time, we still need a time range - use the custom time as both start and end
+          // Or calculate from the group's existing time range
+          newTimeRange = calculateGroupTimeRange(updatedRiders)
+        } else {
+          // Calculate new time range overlap for the group
+          newTimeRange = calculateGroupTimeRange(updatedRiders)
 
-        if (!uberType) {
-          setErrorMessage('Invalid group size and bag combination')
+          // Calculate midpoint of the overlap
+          const midpointTime = calculateTimeMidpoint(newTimeRange)
+
+          // Format time to HH:MM:SS
+          formattedTime =
+            midpointTime.includes(':') && midpointTime.split(':').length === 2
+              ? `${midpointTime}:00`
+              : midpointTime
+          finalDate = group.date
+        }
+
+        // uberType will always be a string now (defaults to 'XXL*' for invalid combinations)
+        // No need to check for null/undefined
+
+        // Delete any existing matches for this rider (from any group)
+        // This ensures we don't have duplicates when moving between groups
+        // We delete by user_id and flight_id to catch all possible matches
+        const { error: deleteMatchError, data: deletedMatches } = await supabase
+          .from('Matches')
+          .delete()
+          .eq('user_id', rider.user_id)
+          .eq('flight_id', rider.flight_id)
+          .select()
+
+        if (deleteMatchError) {
+          console.error(
+            'Error deleting existing matches for rider:',
+            deleteMatchError,
+          )
+          setErrorMessage('Failed to remove rider from original group')
           setCorralSelectionMode(null)
           setTimeout(() => setErrorMessage(null), 3000)
+          // Restore corral rider if error
+          if (isFromCorral) {
+            setCorralRiders((prev) => [...prev, corralRider!])
+          }
           return
         }
 
-        // Insert new Match row
+        if (deletedMatches && deletedMatches.length > 0) {
+          console.log(
+            `[handleSelectFromCorral] Deleted ${deletedMatches.length} existing match(es) for rider ${rider.name} (flight_id: ${rider.flight_id})`,
+          )
+        }
+
+        // Check if a match already exists for this rider in the destination group
+        // This can happen if the deletion didn't work or if there's a race condition
+        const { data: existingMatch } = await supabase
+          .from('Matches')
+          .select('ride_id, user_id, flight_id')
+          .eq('user_id', rider.user_id)
+          .eq('flight_id', rider.flight_id)
+          .eq('ride_id', group.ride_id)
+          .maybeSingle()
+
         const isSubsidized = isGroupSubsidized(
           group.airport,
           updatedRiders.length,
         )
-        const { error: matchError } = await supabase.from('Matches').insert({
-          ride_id: group.ride_id,
-          user_id: rider.user_id,
-          flight_id: rider.flight_id,
-          date: group.date,
-          time: formattedTime,
-          source: 'manual',
-          voucher: group.group_voucher || '',
-          contingency_voucher: null,
-          is_verified: false,
-          is_subsidized: isSubsidized,
-          uber_type: uberType,
-        })
+
+        let matchError = null
+        if (existingMatch) {
+          // Match already exists in destination group - update it instead of inserting
+          const { error: updateError } = await supabase
+            .from('Matches')
+            .update({
+              date: finalDate,
+              time: formattedTime,
+              source: 'manual',
+              voucher: group.group_voucher || '',
+              contingency_voucher: null,
+              is_verified: false,
+              is_subsidized: isSubsidized,
+              uber_type: uberType,
+            })
+            .eq('ride_id', group.ride_id)
+            .eq('user_id', rider.user_id)
+            .eq('flight_id', rider.flight_id)
+          matchError = updateError
+        } else {
+          // Insert new Match row
+          const { error: insertError } = await supabase.from('Matches').insert({
+            ride_id: group.ride_id,
+            user_id: rider.user_id,
+            flight_id: rider.flight_id,
+            date: finalDate,
+            time: formattedTime,
+            source: 'manual',
+            voucher: group.group_voucher || '',
+            contingency_voucher: null,
+            is_verified: false,
+            is_subsidized: isSubsidized,
+            uber_type: uberType,
+          })
+          matchError = insertError
+        }
 
         if (matchError) {
           console.error('Error adding rider to group:', matchError)
           setErrorMessage('Failed to add rider to group')
           setCorralSelectionMode(null)
           setTimeout(() => setErrorMessage(null), 3000)
+          // Rider was never removed from corral, so no need to restore
           return
+        }
+
+        // Only remove from corral AFTER successful database operations
+        if (isFromCorral && corralRider) {
+          setCorralRiders((prev) =>
+            prev.filter((r) => r.flight_id !== rider.flight_id),
+          )
         }
 
         // Update all existing matches in the group with the new time, uber_type, is_subsidized, and set is_verified to false
@@ -2948,7 +3651,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 uber_type: uberType, // Update uber_type in local state
               }
             }
-            // If rider came from another group, update source group too
+            // If rider came from another group, update source group (match already deleted above)
             if (sourceGroupId && g.ride_id === sourceGroupId) {
               // Calculate new uber_type for source group after removing rider
               const remainingRiders = g.riders.filter(
@@ -3021,6 +3724,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 (cg) => cg.group.ride_id === group.ride_id,
               )
               if (existing) {
+                // Merge new change description with existing ones
+                const newDescription = getChangeDescription('ADD_TO_GROUP')
+                const existingDescriptions = existing.changeDescriptions || []
+                const updatedDescriptions = consolidateChangeDescriptions([
+                  ...existingDescriptions,
+                  newDescription,
+                ])
                 return prevChanged.map((cg) =>
                   cg.group.ride_id === group.ride_id
                     ? {
@@ -3028,6 +3738,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         group: updatedGroup, // Update with latest group data
                         changedAt: new Date().toISOString(),
                         emailsSent: false,
+                        changeDescriptions: updatedDescriptions,
                       }
                     : cg,
                 )
@@ -3039,6 +3750,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   changeType: 'modified',
                   changedAt: new Date().toISOString(),
                   emailsSent: false,
+                  changeDescriptions: [getChangeDescription('ADD_TO_GROUP')],
                 },
               ]
             })
@@ -3058,6 +3770,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   (cg) => cg.group.ride_id === sourceGroupId,
                 )
                 if (existing) {
+                  // Merge new change description with existing ones
+                  const newDescription =
+                    getChangeDescription('REMOVE_FROM_GROUP')
+                  const existingDescriptions = existing.changeDescriptions || []
+                  const updatedDescriptions = consolidateChangeDescriptions([
+                    ...existingDescriptions,
+                    newDescription,
+                  ])
                   return prevChanged.map((cg) =>
                     cg.group.ride_id === sourceGroupId
                       ? {
@@ -3065,6 +3785,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           group: updatedSourceGroup, // Update with latest group data
                           changedAt: new Date().toISOString(),
                           emailsSent: false,
+                          changeDescriptions: updatedDescriptions,
                         }
                       : cg,
                   )
@@ -3076,6 +3797,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                     changeType: 'modified',
                     changedAt: new Date().toISOString(),
                     emailsSent: false,
+                    changeDescriptions: [
+                      getChangeDescription('REMOVE_FROM_GROUP'),
+                    ],
                   },
                 ]
               })
@@ -3085,18 +3809,37 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         }
 
         // Log to ChangeLog
-        // Note: target_group_id expects UUID, but ride_id is a number
-        // Storing ride_id in metadata as well for reference
+        // If rider came from another group, log REMOVE_FROM_GROUP first
+        if (sourceGroupId) {
+          await logToChangeLog(
+            'REMOVE_FROM_GROUP',
+            {
+              from_group: sourceGroupId,
+              to: 'corral', // Even if direct drag, we track it as going through corral conceptually
+              ride_id: sourceGroupId, // Store as number in metadata
+              rider_name: rider.name,
+              rider_user_id: rider.user_id,
+              rider_flight_id: rider.flight_id,
+              flight_id: rider.flight_id,
+            },
+            sourceGroupId, // Set target_group_id to the source group that was changed
+            rider.user_id,
+          )
+        }
+
+        // Then log ADD_TO_GROUP for the destination group
         await logToChangeLog(
           'ADD_TO_GROUP',
           {
             from: source,
             to_group: group.ride_id,
+            from_group: sourceGroupId, // Include source group if coming from another group
             ride_id: group.ride_id, // Store as number in metadata
             rider_name: rider.name,
             rider_user_id: rider.user_id,
+            rider_flight_id: rider.flight_id,
           },
-          undefined, // Don't set target_group_id if it's UUID type and we have a number
+          group.ride_id, // Set target_group_id to the group that was changed
           rider.user_id,
         )
 
@@ -3112,9 +3855,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     },
     [
       validateTimeCompatibility,
-      validateBagConstraints,
-      supabase,
       logToChangeLog,
+      supabase,
       corralRiders,
       isGroupSubsidized,
       calculateGroupTimeRange,
@@ -3227,13 +3969,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   }
 
   // Determine uber_type based on group size and bag units
-  const determineUberType = (
-    groupSize: number,
-    bagUnits: number,
-  ): string | null => {
-    // Max bag units: 12 for <= 3 people, 10 for > 3 people
-    const maxBagUnits = groupSize > 3 ? 10 : 12
-    if (bagUnits > maxBagUnits) return null // Hard limit based on group size
+  // Returns 'XXL*' for invalid combinations (default fallback)
+  const determineUberType = (groupSize: number, bagUnits: number): string => {
+    // Max bag units: 12 for < 3 people, 10 for >= 3 people
+    const maxBagUnits = groupSize >= 3 ? 10 : 12
+    if (bagUnits > maxBagUnits) return 'XXL*' // Hard limit exceeded, default to XXL*
 
     if (groupSize >= 2 && groupSize <= 3) {
       if (bagUnits >= 0 && bagUnits <= 4) return 'X'
@@ -3251,7 +3991,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       if (bagUnits >= 4 && bagUnits <= 6) return 'XXL'
     }
 
-    return null // Invalid combination
+    // Invalid combination - default to XXL*
+    return 'XXL*'
   }
 
   // Create new group in database
@@ -3301,14 +4042,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       const uberType = determineUberType(
         selectedRidersForNewGroup.length,
         bagUnits,
-      )
+      ) // Always returns a string (defaults to 'XXL*' for invalid combinations)
 
-      if (!uberType) {
-        setErrorMessage('Invalid group size and bag combination')
-        setTimeout(() => setErrorMessage(null), 3000)
-        setIsCreatingGroup(false)
-        return
-      }
+      // No need to check for null/undefined - uberType will always be a string
 
       // Calculate time range overlap from selected riders
       const calculatedTimeRange = calculateGroupTimeRange(
@@ -3565,7 +4301,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           uber_type: uberType,
           is_subsidized: calculatedIsSubsidized,
         },
-        undefined, // Don't set target_group_id if it's UUID type and we have a number
+        rideId, // Set target_group_id to the group that was created
       )
 
       console.log('Group creation completed successfully:', {
@@ -5432,7 +6168,26 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                               rider: draggedRider,
                               group,
                               onConfirm: async () => {
-                                if (isFromCorral) {
+                                // Check if rider is from another group (direct drag)
+                                const sourceGroup = groups.find((g) =>
+                                  g.riders.some(
+                                    (r) =>
+                                      r.flight_id === draggedRider.flight_id,
+                                  ),
+                                )
+                                const isFromGroup =
+                                  !!sourceGroup &&
+                                  sourceGroup.ride_id !== group.ride_id
+
+                                if (isFromGroup) {
+                                  // Direct drag from one group to another (bypassing validation)
+                                  await handleSelectFromCorral(
+                                    draggedRider,
+                                    group,
+                                    true, // Skip time validation
+                                    sourceGroup.ride_id, // Pass source group ID
+                                  )
+                                } else if (isFromCorral) {
                                   // Check if this is the original group
                                   const isOriginalGroup =
                                     corralRider?.originGroupId ===
@@ -5481,7 +6236,26 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             return
                           }
 
-                          if (isFromCorral) {
+                          // Check if rider is from another group (direct drag)
+                          const sourceGroup = groups.find((g) =>
+                            g.riders.some(
+                              (r) => r.flight_id === draggedRider.flight_id,
+                            ),
+                          )
+                          const isFromGroup =
+                            !!sourceGroup &&
+                            sourceGroup.ride_id !== group.ride_id
+
+                          if (isFromGroup) {
+                            // Direct drag from one group to another
+                            // Remove from source group and add to destination group
+                            await handleSelectFromCorral(
+                              draggedRider,
+                              group,
+                              false,
+                              sourceGroup.ride_id, // Pass source group ID
+                            )
+                          } else if (isFromCorral) {
                             // Check if this is the original group
                             const isOriginalGroup =
                               corralRider?.originGroupId === group.ride_id &&
@@ -5831,7 +6605,27 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                   rider: draggedRider,
                                   group,
                                   onConfirm: async () => {
-                                    if (isFromCorral) {
+                                    // Check if rider is from another group (direct drag)
+                                    const sourceGroup = groups.find((g) =>
+                                      g.riders.some(
+                                        (r) =>
+                                          r.flight_id ===
+                                          draggedRider.flight_id,
+                                      ),
+                                    )
+                                    const isFromGroup =
+                                      !!sourceGroup &&
+                                      sourceGroup.ride_id !== group.ride_id
+
+                                    if (isFromGroup) {
+                                      // Direct drag from one group to another (bypassing validation)
+                                      await handleSelectFromCorral(
+                                        draggedRider,
+                                        group,
+                                        true, // Skip time validation
+                                        sourceGroup.ride_id, // Pass source group ID
+                                      )
+                                    } else if (isFromCorral) {
                                       // Check if this is the original group
                                       const isOriginalGroup =
                                         corralRider?.originGroupId ===
@@ -5881,7 +6675,26 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                 return
                               }
 
-                              if (isFromCorral) {
+                              // Check if rider is from another group (direct drag)
+                              const sourceGroup = groups.find((g) =>
+                                g.riders.some(
+                                  (r) => r.flight_id === draggedRider.flight_id,
+                                ),
+                              )
+                              const isFromGroup =
+                                !!sourceGroup &&
+                                sourceGroup.ride_id !== group.ride_id
+
+                              if (isFromGroup) {
+                                // Direct drag from one group to another
+                                // Remove from source group and add to destination group
+                                await handleSelectFromCorral(
+                                  draggedRider,
+                                  group,
+                                  false,
+                                  sourceGroup.ride_id, // Pass source group ID
+                                )
+                              } else if (isFromCorral) {
                                 // Check if this is the original group
                                 const isOriginalGroup =
                                   corralRider?.originGroupId ===
@@ -7773,6 +8586,77 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:opacity-50"
                 >
                   {isUpdatingVoucher ? 'Updating...' : 'Update Voucher'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Validation Error Modal */}
+        {validationErrorModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+              <h3 className="mb-4 text-lg font-semibold text-red-600">
+                {validationErrorModal.issue === 'time'
+                  ? 'No Time Overlap'
+                  : 'Bag Capacity Exceeded'}
+              </h3>
+              <p className="mb-4 text-sm text-gray-700">
+                {validationErrorModal.issue === 'time'
+                  ? `The rider "${validationErrorModal.rider.name}" has no time overlap with group #${validationErrorModal.group.ride_id}.`
+                  : `Adding this rider would exceed the bag capacity limit (10 bags) for groups with 4+ members.`}
+              </p>
+              <div className="mb-4 rounded-lg bg-gray-50 p-4">
+                <p className="mb-2 text-xs font-semibold text-gray-600">
+                  Group #{validationErrorModal.group.ride_id}:
+                </p>
+                <p className="text-sm text-gray-900">
+                  Members: {validationErrorModal.group.riders.length + 1} (after
+                  adding)
+                </p>
+                {validationErrorModal.issue === 'bags' &&
+                  (() => {
+                    const allRiders = [
+                      ...validationErrorModal.group.riders,
+                      validationErrorModal.rider,
+                    ]
+                    let numLargeBags = 0
+                    let numNormalBags = 0
+                    for (const r of allRiders) {
+                      numLargeBags += r.checked_bags
+                      numNormalBags += r.carry_on_bags
+                    }
+                    const bagUnits = numLargeBags * 2 + numNormalBags
+                    return (
+                      <p className="text-sm text-gray-900">
+                        Bag Units: {bagUnits} (exceeds limit of 10)
+                      </p>
+                    )
+                  })()}
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => validationErrorModal.onCancel()}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await validationErrorModal.onAcknowledge()
+                    } catch (error) {
+                      console.error(
+                        'Error acknowledging validation error:',
+                        error,
+                      )
+                      setErrorMessage('Failed to add rider to group')
+                      setTimeout(() => setErrorMessage(null), 3000)
+                    }
+                  }}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
+                >
+                  Acknowledge & Continue
                 </button>
               </div>
             </div>

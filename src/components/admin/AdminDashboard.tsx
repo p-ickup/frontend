@@ -65,7 +65,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   const [changesCount, setChangesCount] = useState<number | null>(null)
   const [unmatchedFlightsCount, setUnmatchedFlightsCount] = useState<number>(0)
   const [unmatchedDateStart, setUnmatchedDateStart] =
-    useState<string>('2025-01-08')
+    useState<string>('2026-01-14')
   const [unmatchedDateEnd, setUnmatchedDateEnd] = useState<string>('')
 
   useEffect(() => {
@@ -167,7 +167,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           )
           setNextScheduledRunTarget(nextScheduledRun.target || 'All')
         } else {
-          setNextScheduledRunDate('Not scheduled')
+          setNextScheduledRunDate('N/A')
           setNextScheduledRunTarget('')
         }
 
@@ -247,7 +247,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   useEffect(() => {
     const fetchUnmatchedFlights = async () => {
       try {
-        const startDate = unmatchedDateStart || '2025-01-08'
+        const startDate = unmatchedDateStart || '2026-01-14'
         let query = supabase
           .from('Flights')
           .select('flight_id', { count: 'exact', head: true })
@@ -384,7 +384,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
             <div className="p-6">
               <p className="mb-2 text-sm text-gray-500">Next Scheduled Run</p>
               <p className="mb-2 text-2xl font-bold text-gray-900">
-                {nextScheduledRunDate || 'Not scheduled'}
+                {nextScheduledRunDate || 'N/A'}
               </p>
               {nextScheduledRunTarget && (
                 <div className="mt-2">
