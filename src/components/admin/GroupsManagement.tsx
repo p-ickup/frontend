@@ -4097,12 +4097,70 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     ],
   )
 
-  const isDatePassed = useCallback((dateString: string) => {
-    const groupDate = new Date(dateString)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    return groupDate < today
+  // Helper to get today's date in PST at midnight (returns date string in YYYY-MM-DD format)
+  const getTodayInPST = useCallback(() => {
+    const now = new Date()
+    // Get current date in PST as YYYY-MM-DD string
+    return now.toLocaleDateString('en-CA', {
+      timeZone: 'America/Los_Angeles',
+    })
   }, [])
+
+  // Helper to get a date string's date in PST (returns date string in YYYY-MM-DD format)
+  const getDateInPST = useCallback((dateString: string) => {
+    if (!dateString) return ''
+
+    // Trim whitespace
+    const trimmed = dateString.trim()
+
+    // Extract YYYY-MM-DD from the string (handles formats like "2026-01-14" or "2026-01-14T00:00:00Z")
+    const dateMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})/)
+    if (dateMatch) {
+      // Found YYYY-MM-DD pattern, extract just the date part
+      // This avoids timezone conversion issues (new Date("YYYY-MM-DD") interprets as UTC)
+      return dateMatch[1]
+    }
+
+    // For other formats, parse and convert to PST
+    const date = new Date(trimmed)
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      console.warn('Invalid date string:', dateString)
+      return trimmed // Return original if invalid
+    }
+    // Get the date components in PST as YYYY-MM-DD string
+    return date.toLocaleDateString('en-CA', {
+      timeZone: 'America/Los_Angeles',
+    })
+  }, [])
+
+  const isDatePassed = useCallback(
+    (dateString: string) => {
+      const groupDatePST = getDateInPST(dateString) // Returns YYYY-MM-DD string
+      const todayPST = getTodayInPST() // Returns YYYY-MM-DD string
+
+      // Compare date strings - only return true if group date is strictly before today (not today itself)
+      // YYYY-MM-DD format allows direct string comparison
+      // Example: "2026-01-13" < "2026-01-14" = true (past)
+      //          "2026-01-14" < "2026-01-14" = false (not past, it's today)
+      //          "2026-01-15" < "2026-01-14" = false (not past, it's future)
+      const isPast = groupDatePST < todayPST
+
+      // Debug logging (can be removed after verification)
+      if (groupDatePST === todayPST) {
+        console.log('Date comparison:', {
+          dateString,
+          groupDatePST,
+          todayPST,
+          isPast,
+          note: 'Date matches today, should NOT be past',
+        })
+      }
+
+      return isPast
+    },
+    [getDateInPST, getTodayInPST],
+  )
 
   const handleFiltersToggle = useCallback(() => {
     const isMobile = window.innerWidth < 768
@@ -4798,66 +4856,62 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   )
 
   // Apply sorting to filtered groups
-  const sortedGroups = useMemo(
-    () =>
-      [...filteredGroups].sort((a, b) => {
-        // Default: prioritize non-past date groups over past date groups
-        const dateA = new Date(a.date)
-        const dateB = new Date(b.date)
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        dateA.setHours(0, 0, 0, 0)
-        dateB.setHours(0, 0, 0, 0)
+  const sortedGroups = useMemo(() => {
+    const todayPST = getTodayInPST() // Get once per sort operation
+    return [...filteredGroups].sort((a, b) => {
+      // Default: prioritize non-past date groups over past date groups
+      // Use PST timezone for date comparisons
+      const dateAPST = getDateInPST(a.date) // Returns YYYY-MM-DD string
+      const dateBPST = getDateInPST(b.date) // Returns YYYY-MM-DD string
 
-        const aIsPast = dateA < today
-        const bIsPast = dateB < today
+      const aIsPast = dateAPST < todayPST
+      const bIsPast = dateBPST < todayPST
 
-        // If one is past and the other isn't, non-past comes first
-        if (aIsPast && !bIsPast) return 1
-        if (!aIsPast && bIsPast) return -1
+      // If one is past and the other isn't, non-past comes first
+      if (aIsPast && !bIsPast) return 1
+      if (!aIsPast && bIsPast) return -1
 
-        // If both are past or both are not past, continue with user-defined sorting
-        for (const rule of sortingRules) {
-          let comparison = 0
+      // If both are past or both are not past, continue with user-defined sorting
+      for (const rule of sortingRules) {
+        let comparison = 0
 
-          switch (rule.field) {
-            case 'bag_size': {
-              const bagsA = getTotalBags(a.riders)
-              const bagsB = getTotalBags(b.riders)
-              comparison = bagsA - bagsB
-              break
-            }
-            case 'group_size': {
-              comparison = a.riders.length - b.riders.length
-              break
-            }
-            case 'date': {
-              const dateA = new Date(a.date).getTime()
-              const dateB = new Date(b.date).getTime()
-              comparison = dateA - dateB
-              break
-            }
-            case 'time': {
-              // Compare by earliest time in the range
-              const timeA = a.time_range.split(' - ')[0]?.trim() || ''
-              const timeB = b.time_range.split(' - ')[0]?.trim() || ''
-              comparison = timeA.localeCompare(timeB)
-              break
-            }
-            case 'ride_id': {
-              comparison = a.ride_id - b.ride_id
-              break
-            }
+        switch (rule.field) {
+          case 'bag_size': {
+            const bagsA = getTotalBags(a.riders)
+            const bagsB = getTotalBags(b.riders)
+            comparison = bagsA - bagsB
+            break
           }
-
-          if (comparison !== 0) {
-            return rule.direction === 'asc' ? comparison : -comparison
+          case 'group_size': {
+            comparison = a.riders.length - b.riders.length
+            break
+          }
+          case 'date': {
+            const dateA = new Date(a.date).getTime()
+            const dateB = new Date(b.date).getTime()
+            comparison = dateA - dateB
+            break
+          }
+          case 'time': {
+            // Compare by earliest time in the range
+            const timeA = a.time_range.split(' - ')[0]?.trim() || ''
+            const timeB = b.time_range.split(' - ')[0]?.trim() || ''
+            comparison = timeA.localeCompare(timeB)
+            break
+          }
+          case 'ride_id': {
+            comparison = a.ride_id - b.ride_id
+            break
           }
         }
-        return 0
-      }),
-    [filteredGroups, sortingRules, getTotalBags],
-  )
+
+        if (comparison !== 0) {
+          return rule.direction === 'asc' ? comparison : -comparison
+        }
+      }
+      return 0
+    })
+  }, [filteredGroups, sortingRules, getTotalBags, getDateInPST, getTodayInPST])
 
   // Helper function to sort riders
   const sortRiders = useCallback(
