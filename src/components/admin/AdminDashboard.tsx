@@ -67,6 +67,41 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   const [unmatchedDateStart, setUnmatchedDateStart] =
     useState<string>('2026-01-14')
   const [unmatchedDateEnd, setUnmatchedDateEnd] = useState<string>('')
+  const [batchEmailLoading, setBatchEmailLoading] = useState(false)
+  const [batchEmailResult, setBatchEmailResult] = useState<{
+    sent: number
+    failed: number
+    total: number
+  } | null>(null)
+  const [dryRunResult, setDryRunResult] = useState<{
+    would_send: number
+    preview: Array<{ to: string; subject: string }>
+  } | null>(null)
+  const [matchEmailDateStart, setMatchEmailDateStart] = useState<string>(() => {
+    // Default to today's date
+    const today = new Date()
+    return today.toISOString().split('T')[0]
+  })
+  const [matchEmailDateEnd, setMatchEmailDateEnd] = useState<string>('')
+
+  // Unmatched emails state
+  const [unmatchedEmailLoading, setUnmatchedEmailLoading] = useState(false)
+  const [unmatchedEmailDateStart, setUnmatchedEmailDateStart] =
+    useState<string>(() => {
+      // Default to today's date
+      const today = new Date()
+      return today.toISOString().split('T')[0]
+    })
+  const [unmatchedEmailDateEnd, setUnmatchedEmailDateEnd] = useState<string>('')
+  const [unmatchedDryRunResult, setUnmatchedDryRunResult] = useState<{
+    would_send: number
+    preview: Array<{ to: string; subject: string }>
+  } | null>(null)
+  const [unmatchedEmailResult, setUnmatchedEmailResult] = useState<{
+    sent: number
+    failed: number
+    total: number
+  } | null>(null)
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -333,9 +368,341 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     setChangesCount(Math.floor(Math.random() * 20) + 1)
   }
 
-  const handleSendEmail = () => {
-    // In production, this would open an email composer dialog
-    alert('Email composer would open here')
+  const handleDryRunBatchEmails = async () => {
+    try {
+      setBatchEmailLoading(true)
+      setDryRunResult(null)
+      setBatchEmailResult(null)
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error('Missing Supabase configuration')
+      }
+
+      const body: any = { dry_run: true }
+
+      // Add date range if provided
+      if (matchEmailDateStart) {
+        body.date_start = matchEmailDateStart
+      }
+      if (matchEmailDateEnd) {
+        body.date_end = matchEmailDateEnd
+      }
+
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/send-all-match-emails-batch`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${supabaseAnonKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+      )
+
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || `HTTP ${response.status}`)
+      }
+
+      const result = await response.json()
+
+      if (result.success) {
+        const wouldSend = result.would_send ?? 0
+        const preview = result.preview || []
+
+        setDryRunResult({
+          would_send: wouldSend,
+          preview: preview,
+        })
+
+        if (wouldSend === 0) {
+          alert(
+            `📋 Dry Run Results:\n\nNo emails to send.\n\nAll verified matches have already been sent, or there are no verified matches that need emails.`,
+          )
+        } else {
+          const previewText =
+            preview.length > 0
+              ? preview.map((p: any) => `- ${p.to}: ${p.subject}`).join('\n')
+              : 'No preview available'
+          alert(
+            `📋 Dry Run Results:\n\nWould send: ${wouldSend} emails\n\nPreview (first ${Math.min(3, preview.length)}):\n${previewText}`,
+          )
+        }
+      } else {
+        throw new Error(result.message || 'Dry run failed')
+      }
+    } catch (error) {
+      console.error('Error in dry run:', error)
+      alert(
+        `❌ Error in dry run: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      )
+    } finally {
+      setBatchEmailLoading(false)
+    }
+  }
+
+  const handleSendBatchEmails = async () => {
+    const dateRangeMsg =
+      matchEmailDateStart && matchEmailDateEnd
+        ? ` between ${matchEmailDateStart} and ${matchEmailDateEnd}`
+        : matchEmailDateStart
+          ? ` from ${matchEmailDateStart} onwards`
+          : ''
+
+    if (
+      !confirm(
+        `Send emails to all verified matches that haven't been emailed yet${dateRangeMsg}? This will send all pending match emails at once using batch API.`,
+      )
+    ) {
+      return
+    }
+
+    try {
+      setBatchEmailLoading(true)
+      setBatchEmailResult(null)
+      setDryRunResult(null)
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error('Missing Supabase configuration')
+      }
+
+      const body: any = {}
+
+      // Add date range if provided
+      if (matchEmailDateStart) {
+        body.date_start = matchEmailDateStart
+      }
+      if (matchEmailDateEnd) {
+        body.date_end = matchEmailDateEnd
+      }
+
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/send-all-match-emails-batch`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${supabaseAnonKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+      )
+
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || `HTTP ${response.status}`)
+      }
+
+      const result = await response.json()
+
+      if (result.success) {
+        const sent = result.sent ?? 0
+        const failed = result.failed ?? 0
+        const total = result.total ?? 0
+
+        setBatchEmailResult({
+          sent: sent,
+          failed: failed,
+          total: total,
+        })
+
+        if (total === 0) {
+          alert(
+            `✅ Batch email sending complete!\n\nNo emails to send.\n\nAll verified matches have already been sent, or there are no verified matches that need emails.`,
+          )
+        } else {
+          alert(
+            `✅ Batch email sending complete!\n\nSent: ${sent}\nFailed: ${failed}\nTotal: ${total}`,
+          )
+        }
+      } else {
+        throw new Error(result.message || 'Batch email sending failed')
+      }
+    } catch (error) {
+      console.error('Error sending batch emails:', error)
+      alert(
+        `❌ Error sending batch emails: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      )
+    } finally {
+      setBatchEmailLoading(false)
+    }
+  }
+
+  const handleDryRunUnmatchedEmails = async () => {
+    try {
+      setUnmatchedEmailLoading(true)
+      setUnmatchedDryRunResult(null)
+      setUnmatchedEmailResult(null)
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error('Missing Supabase configuration')
+      }
+
+      if (!unmatchedEmailDateStart || !unmatchedEmailDateEnd) {
+        alert(
+          '⚠️ Please select both start and end dates for the unmatched email range.',
+        )
+        return
+      }
+
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/send-unmatched-emails-batch`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${supabaseAnonKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            date_start: unmatchedEmailDateStart,
+            date_end: unmatchedEmailDateEnd,
+            dry_run: true,
+          }),
+        },
+      )
+
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || `HTTP ${response.status}`)
+      }
+
+      const result = await response.json()
+
+      if (result.success) {
+        const wouldSend = result.would_send ?? 0
+        const preview = result.preview || []
+
+        setUnmatchedDryRunResult({
+          would_send: wouldSend,
+          preview: preview,
+        })
+
+        if (wouldSend === 0) {
+          alert(
+            `📋 Dry Run Results (Unmatched Emails):\n\nNo unmatched flights found in date range ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}.`,
+          )
+        } else {
+          const previewText =
+            preview.length > 0
+              ? preview.map((p: any) => `- ${p.to}: ${p.subject}`).join('\n')
+              : 'No preview available'
+          alert(
+            `📋 Dry Run Results (Unmatched Emails):\n\nWould send: ${wouldSend} emails\nDate range: ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}\n\nPreview (first ${Math.min(3, preview.length)}):\n${previewText}`,
+          )
+        }
+      } else {
+        throw new Error(result.message || 'Dry run failed')
+      }
+    } catch (error) {
+      console.error('Error in unmatched emails dry run:', error)
+      alert(
+        `❌ Error in dry run: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      )
+    } finally {
+      setUnmatchedEmailLoading(false)
+    }
+  }
+
+  const handleSendUnmatchedEmails = async () => {
+    if (!unmatchedEmailDateStart || !unmatchedEmailDateEnd) {
+      alert(
+        '⚠️ Please select both start and end dates for the unmatched email range.',
+      )
+      return
+    }
+
+    if (
+      !confirm(
+        `Send emails to all unmatched riders between ${unmatchedEmailDateStart} and ${unmatchedEmailDateEnd}? This will notify them that no match was found.`,
+      )
+    ) {
+      return
+    }
+
+    try {
+      setUnmatchedEmailLoading(true)
+      setUnmatchedEmailResult(null)
+      setUnmatchedDryRunResult(null)
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error('Missing Supabase configuration')
+      }
+
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/send-unmatched-emails-batch`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${supabaseAnonKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            date_start: unmatchedEmailDateStart,
+            date_end: unmatchedEmailDateEnd,
+            dry_run: false,
+          }),
+        },
+      )
+
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || `HTTP ${response.status}`)
+      }
+
+      const result = await response.json()
+
+      if (result.success) {
+        const sent = result.sent ?? 0
+        const failed = result.failed ?? 0
+        const total = result.total ?? 0
+
+        setUnmatchedEmailResult({
+          sent: sent,
+          failed: failed,
+          total: total,
+        })
+
+        if (total === 0) {
+          alert(
+            `✅ Unmatched email sending complete!\n\nNo unmatched flights found in date range ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}.`,
+          )
+        } else {
+          alert(
+            `✅ Unmatched email sending complete!\n\nSent: ${sent}\nFailed: ${failed}\nTotal: ${total}\nDate range: ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}`,
+          )
+        }
+      } else {
+        throw new Error(result.message || 'Unmatched email sending failed')
+      }
+    } catch (error) {
+      console.error('Error sending unmatched emails:', error)
+      alert(
+        `❌ Error sending unmatched emails: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      )
+    } finally {
+      setUnmatchedEmailLoading(false)
+    }
   }
 
   const handleViewGroups = () => {
@@ -503,33 +870,424 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           </button>
 
           <button
-            onClick={handleSendEmail}
-            disabled={true}
-            className="flex cursor-not-allowed items-center gap-2 rounded-lg bg-gray-300 px-6 py-3 font-medium text-gray-500 opacity-50 transition-all"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            </svg>
-            Send Email to Matches
-          </button>
-
-          <button
             onClick={handleViewGroups}
             className="rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 px-6 py-3 font-medium text-white transition-all hover:from-teal-600 hover:to-cyan-600"
           >
             View & Manage Groups
           </button>
+        </div>
+
+        {/* Match Emails Section */}
+        <div className="pointer-events-none mb-8 rounded-lg bg-white opacity-50 shadow-md">
+          <div className="border-b border-gray-200 bg-gradient-to-r from-gray-400 to-gray-500 px-6 py-4">
+            <h2 className="text-xl font-bold text-white">Send Match Emails</h2>
+            <p className="mt-1 text-sm text-white/90">Temporarily disabled</p>
+          </div>
+
+          <div className="p-6">
+            <div className="mb-4 flex flex-wrap items-end gap-4">
+              <div className="min-w-[200px] flex-1">
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Start Date (optional)
+                </label>
+                <input
+                  type="date"
+                  value={matchEmailDateStart}
+                  onChange={(e) => setMatchEmailDateStart(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="min-w-[200px] flex-1">
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  End Date (optional)
+                </label>
+                <input
+                  type="date"
+                  value={matchEmailDateEnd}
+                  onChange={(e) => setMatchEmailDateEnd(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={handleDryRunBatchEmails}
+                disabled={batchEmailLoading}
+                className={`flex items-center gap-2 rounded-lg px-6 py-3 font-medium text-white transition-all ${
+                  batchEmailLoading
+                    ? 'cursor-not-allowed bg-gray-400 opacity-50'
+                    : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700'
+                }`}
+                title="Preview what emails would be sent without actually sending them"
+              >
+                {batchEmailLoading ? (
+                  <>
+                    <svg
+                      className="h-5 w-5 animate-spin"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    Checking...
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                      />
+                    </svg>
+                    Preview Match Emails (Dry Run)
+                  </>
+                )}
+                {dryRunResult && dryRunResult.would_send !== undefined && (
+                  <span className="ml-2 rounded-full bg-white/20 px-2 py-1 text-xs font-semibold">
+                    {dryRunResult.would_send}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={handleSendBatchEmails}
+                disabled={batchEmailLoading}
+                className={`flex items-center gap-2 rounded-lg px-6 py-3 font-medium text-white transition-all ${
+                  batchEmailLoading
+                    ? 'cursor-not-allowed bg-gray-400 opacity-50'
+                    : 'bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600'
+                }`}
+                title="Send all pending match emails at once using Resend Batch API (avoids rate limits)"
+              >
+                {batchEmailLoading ? (
+                  <>
+                    <svg
+                      className="h-5 w-5 animate-spin"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                      />
+                    </svg>
+                    Send All Match Emails
+                  </>
+                )}
+                {batchEmailResult && batchEmailResult.total !== undefined && (
+                  <span className="ml-2 rounded-full bg-white/20 px-2 py-1 text-xs font-semibold">
+                    {batchEmailResult.sent}/{batchEmailResult.total}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {dryRunResult && (
+              <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50 p-4">
+                <p className="text-sm font-medium text-purple-900">
+                  📋 Preview: Would send {dryRunResult.would_send} email
+                  {dryRunResult.would_send !== 1 ? 's' : ''}
+                </p>
+                {dryRunResult.preview && dryRunResult.preview.length > 0 && (
+                  <ul className="mt-2 space-y-1 text-xs text-purple-800">
+                    {dryRunResult.preview.map((p, idx) => (
+                      <li key={idx}>• {p.to}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {batchEmailResult && (
+              <div
+                className={`mt-4 rounded-lg border p-4 ${
+                  batchEmailResult.failed > 0
+                    ? 'border-red-200 bg-red-50'
+                    : 'border-green-200 bg-green-50'
+                }`}
+              >
+                <p
+                  className={`text-sm font-medium ${
+                    batchEmailResult.failed > 0
+                      ? 'text-red-900'
+                      : 'text-green-900'
+                  }`}
+                >
+                  {batchEmailResult.failed > 0 ? '❌' : '✅'} Sent{' '}
+                  {batchEmailResult.sent} email
+                  {batchEmailResult.sent !== 1 ? 's' : ''}
+                  {batchEmailResult.failed > 0 &&
+                    ` (${batchEmailResult.failed} failed)`}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Unmatched Emails Section */}
+        <div className="pointer-events-none mb-8 rounded-lg bg-white opacity-50 shadow-md">
+          <div className="border-b border-gray-200 bg-gradient-to-r from-gray-400 to-gray-500 px-6 py-4">
+            <h2 className="text-xl font-bold text-white">
+              Send Unmatched Rider Emails
+            </h2>
+            <p className="mt-1 text-sm text-white/90">Temporarily disabled</p>
+          </div>
+
+          <div className="p-6">
+            <div className="mb-4 flex flex-wrap items-end gap-4">
+              <div className="min-w-[200px] flex-1">
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={unmatchedEmailDateStart}
+                  onChange={(e) => setUnmatchedEmailDateStart(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div className="min-w-[200px] flex-1">
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={unmatchedEmailDateEnd}
+                  onChange={(e) => setUnmatchedEmailDateEnd(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={handleDryRunUnmatchedEmails}
+                disabled={unmatchedEmailLoading}
+                className={`flex items-center gap-2 rounded-lg px-6 py-3 font-medium text-white transition-all ${
+                  unmatchedEmailLoading
+                    ? 'cursor-not-allowed bg-gray-400 opacity-50'
+                    : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700'
+                }`}
+                title="Preview what unmatched emails would be sent"
+              >
+                {unmatchedEmailLoading ? (
+                  <>
+                    <svg
+                      className="h-5 w-5 animate-spin"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    Checking...
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                      />
+                    </svg>
+                    Preview Unmatched (Dry Run)
+                  </>
+                )}
+                {unmatchedDryRunResult &&
+                  unmatchedDryRunResult.would_send !== undefined && (
+                    <span className="ml-2 rounded-full bg-white/20 px-2 py-1 text-xs font-semibold">
+                      {unmatchedDryRunResult.would_send}
+                    </span>
+                  )}
+              </button>
+
+              <button
+                onClick={handleSendUnmatchedEmails}
+                disabled={unmatchedEmailLoading}
+                className={`flex items-center gap-2 rounded-lg px-6 py-3 font-medium text-white transition-all ${
+                  unmatchedEmailLoading
+                    ? 'cursor-not-allowed bg-gray-400 opacity-50'
+                    : 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600'
+                }`}
+                title="Send emails to all unmatched riders in the date range"
+              >
+                {unmatchedEmailLoading ? (
+                  <>
+                    <svg
+                      className="h-5 w-5 animate-spin"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                      />
+                    </svg>
+                    Send Unmatched Emails
+                  </>
+                )}
+                {unmatchedEmailResult &&
+                  unmatchedEmailResult.total !== undefined && (
+                    <span className="ml-2 rounded-full bg-white/20 px-2 py-1 text-xs font-semibold">
+                      {unmatchedEmailResult.sent}/{unmatchedEmailResult.total}
+                    </span>
+                  )}
+              </button>
+            </div>
+
+            {unmatchedDryRunResult && (
+              <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50 p-4">
+                <p className="text-sm font-medium text-purple-900">
+                  📋 Preview: Would send {unmatchedDryRunResult.would_send}{' '}
+                  email{unmatchedDryRunResult.would_send !== 1 ? 's' : ''}
+                </p>
+                {unmatchedDryRunResult.preview &&
+                  unmatchedDryRunResult.preview.length > 0 && (
+                    <ul className="mt-2 space-y-1 text-xs text-purple-800">
+                      {unmatchedDryRunResult.preview.map((p, idx) => (
+                        <li key={idx}>• {p.to}</li>
+                      ))}
+                    </ul>
+                  )}
+              </div>
+            )}
+
+            {unmatchedEmailResult && (
+              <div
+                className={`mt-4 rounded-lg border p-4 ${
+                  unmatchedEmailResult.failed > 0
+                    ? 'border-red-200 bg-red-50'
+                    : 'border-green-200 bg-green-50'
+                }`}
+              >
+                <p
+                  className={`text-sm font-medium ${
+                    unmatchedEmailResult.failed > 0
+                      ? 'text-red-900'
+                      : 'text-green-900'
+                  }`}
+                >
+                  {unmatchedEmailResult.failed > 0 ? '❌' : '✅'} Sent{' '}
+                  {unmatchedEmailResult.sent} email
+                  {unmatchedEmailResult.sent !== 1 ? 's' : ''}
+                  {unmatchedEmailResult.failed > 0 &&
+                    ` (${unmatchedEmailResult.failed} failed)`}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Dry Run Results Table */}

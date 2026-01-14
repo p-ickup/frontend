@@ -13,6 +13,7 @@ import {
   Luggage,
   Mail,
   Pencil,
+  Phone,
   Plane,
   PlaneLanding,
   PlaneTakeoff,
@@ -131,6 +132,7 @@ const ChangedGroupCard = ({
   changedGroup,
   onConfirmEmail,
   supabase,
+  isConfirming = false,
 }: {
   changedGroup: {
     group: Group
@@ -141,15 +143,24 @@ const ChangedGroupCard = ({
   }
   onConfirmEmail: () => Promise<void>
   supabase: any
+  isConfirming?: boolean
 }) => {
-  const [showEmails, setShowEmails] = useState(false)
+  const [showContactInfo, setShowContactInfo] = useState(false)
+  const [contactView, setContactView] = useState<'emails' | 'phones'>('emails')
   const [memberEmails, setMemberEmails] = useState<string[]>([])
+  const [memberPhones, setMemberPhones] = useState<string[]>([])
   const [loadingEmails, setLoadingEmails] = useState(false)
+  const [loadingPhones, setLoadingPhones] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const fetchMemberEmails = async () => {
     if (memberEmails.length > 0) {
-      setShowEmails(!showEmails)
+      if (contactView === 'emails' && showContactInfo) {
+        setShowContactInfo(false)
+      } else {
+        setContactView('emails')
+        setShowContactInfo(true)
+      }
       return
     }
 
@@ -169,7 +180,8 @@ const ChangedGroupCard = ({
 
       const emails = users?.map((u: any) => u.email).filter(Boolean) || []
       setMemberEmails(emails)
-      setShowEmails(true)
+      setContactView('emails')
+      setShowContactInfo(true)
     } catch (error) {
       console.error('Error fetching emails:', error)
     } finally {
@@ -177,16 +189,56 @@ const ChangedGroupCard = ({
     }
   }
 
-  const copyEmailsToClipboard = async () => {
-    if (memberEmails.length === 0) return
+  const fetchMemberPhones = async () => {
+    if (memberPhones.length > 0) {
+      if (contactView === 'phones' && showContactInfo) {
+        setShowContactInfo(false)
+      } else {
+        setContactView('phones')
+        setShowContactInfo(true)
+      }
+      return
+    }
+
+    setLoadingPhones(true)
+    try {
+      const userIds = changedGroup.group.riders.map((r) => r.user_id)
+      const { data: users, error } = await supabase
+        .from('Users')
+        .select('phonenumber')
+        .in('user_id', userIds)
+
+      if (error) {
+        console.error('Error fetching phone numbers:', error)
+        setLoadingPhones(false)
+        return
+      }
+
+      const phones = users?.map((u: any) => u.phonenumber).filter(Boolean) || []
+      setMemberPhones(phones)
+      setContactView('phones')
+      setShowContactInfo(true)
+    } catch (error) {
+      console.error('Error fetching phone numbers:', error)
+    } finally {
+      setLoadingPhones(false)
+    }
+  }
+
+  const copyToClipboard = async () => {
+    const textToCopy =
+      contactView === 'emails'
+        ? memberEmails.join('\n')
+        : memberPhones.join('\n')
+
+    if (textToCopy.length === 0) return
 
     try {
-      const emailsText = memberEmails.join('\n')
-      await navigator.clipboard.writeText(emailsText)
+      await navigator.clipboard.writeText(textToCopy)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
-      console.error('Failed to copy emails:', error)
+      console.error('Failed to copy to clipboard:', error)
     }
   }
 
@@ -196,10 +248,10 @@ const ChangedGroupCard = ({
         changedGroup.emailsSent
           ? 'border-gray-200 bg-gray-50'
           : 'border-yellow-300 bg-yellow-50'
-      } ${showEmails ? 'p-0' : 'p-3'}`}
+      } ${showContactInfo ? 'p-0' : 'p-3'}`}
     >
       <div
-        className={`flex items-start justify-between ${showEmails ? 'p-3 pb-0' : ''}`}
+        className={`flex items-start justify-between ${showContactInfo ? 'p-3 pb-0' : ''}`}
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -239,35 +291,58 @@ const ChangedGroupCard = ({
           </p>
         </div>
         <div className="ml-4 flex flex-shrink-0 flex-col gap-1">
-          <button
-            onClick={fetchMemberEmails}
-            disabled={loadingEmails}
-            className="rounded p-1 text-gray-600 hover:bg-gray-200"
-            title="View member emails"
-          >
-            <Mail className="h-4 w-4" />
-          </button>
+          <div className="flex gap-0.5">
+            <button
+              onClick={fetchMemberEmails}
+              disabled={loadingEmails}
+              className={`rounded p-0.5 text-gray-600 hover:bg-gray-200 ${
+                showContactInfo && contactView === 'emails' ? 'bg-gray-200' : ''
+              }`}
+              title="View member emails"
+            >
+              <Mail className="h-4 w-4" />
+            </button>
+            <button
+              onClick={fetchMemberPhones}
+              disabled={loadingPhones}
+              className={`rounded p-0.5 text-gray-600 hover:bg-gray-200 ${
+                showContactInfo && contactView === 'phones' ? 'bg-gray-200' : ''
+              }`}
+              title="View member phone numbers"
+            >
+              <Phone className="h-4 w-4" />
+            </button>
+          </div>
           {!changedGroup.emailsSent && (
             <button
               onClick={onConfirmEmail}
-              className="rounded bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
+              disabled={isConfirming}
+              className={`rounded px-2 py-1 text-xs font-medium transition-all ${
+                isConfirming
+                  ? 'cursor-not-allowed bg-gray-400 text-gray-200'
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
             >
-              Confirm
+              {isConfirming ? 'Confirming...' : 'Confirm'}
             </button>
           )}
         </div>
       </div>
-      {showEmails && (
+      {showContactInfo && (
         <div className="mt-3 w-full rounded-b-lg bg-white p-3">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-semibold text-gray-700">
-              Member Emails:
+              {contactView === 'emails'
+                ? 'Member Emails:'
+                : 'Member Phone Numbers:'}
             </p>
-            {memberEmails.length > 0 && (
+            {(contactView === 'emails'
+              ? memberEmails.length > 0
+              : memberPhones.length > 0) && (
               <button
-                onClick={copyEmailsToClipboard}
+                onClick={copyToClipboard}
                 className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
-                title="Copy emails to clipboard"
+                title={`Copy ${contactView === 'emails' ? 'emails' : 'phone numbers'} to clipboard`}
               >
                 <Copy className="h-3 w-3" />
                 {copied ? 'Copied!' : 'Copy'}
@@ -275,16 +350,28 @@ const ChangedGroupCard = ({
             )}
           </div>
           <div className="max-h-96 overflow-y-auto">
-            {memberEmails.length > 0 ? (
+            {contactView === 'emails' ? (
+              memberEmails.length > 0 ? (
+                <div className="space-y-1">
+                  {memberEmails.map((email, idx) => (
+                    <p key={idx} className="break-words text-xs text-gray-600">
+                      {email}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500">No emails found</p>
+              )
+            ) : memberPhones.length > 0 ? (
               <div className="space-y-1">
-                {memberEmails.map((email, idx) => (
+                {memberPhones.map((phone, idx) => (
                   <p key={idx} className="break-words text-xs text-gray-600">
-                    {email}
+                    {phone}
                   </p>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-gray-500">No emails found</p>
+              <p className="text-xs text-gray-500">No phone numbers found</p>
             )}
           </div>
         </div>
@@ -298,6 +385,7 @@ const UnmatchedIndividualCard = ({
   item,
   onConfirmEmail,
   supabase,
+  isConfirming = false,
 }: {
   item: {
     rider: Rider
@@ -306,15 +394,24 @@ const UnmatchedIndividualCard = ({
   }
   onConfirmEmail: () => Promise<void>
   supabase: any
+  isConfirming?: boolean
 }) => {
-  const [showEmail, setShowEmail] = useState(false)
+  const [showContactInfo, setShowContactInfo] = useState(false)
+  const [contactView, setContactView] = useState<'emails' | 'phones'>('emails')
   const [email, setEmail] = useState<string>('')
+  const [phone, setPhone] = useState<string>('')
   const [loadingEmail, setLoadingEmail] = useState(false)
+  const [loadingPhone, setLoadingPhone] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const fetchEmail = async () => {
     if (email) {
-      setShowEmail(!showEmail)
+      if (contactView === 'emails' && showContactInfo) {
+        setShowContactInfo(false)
+      } else {
+        setContactView('emails')
+        setShowContactInfo(true)
+      }
       return
     }
 
@@ -333,7 +430,8 @@ const UnmatchedIndividualCard = ({
       }
 
       setEmail(user?.email || 'No email found')
-      setShowEmail(true)
+      setContactView('emails')
+      setShowContactInfo(true)
     } catch (error) {
       console.error('Error fetching email:', error)
     } finally {
@@ -341,27 +439,70 @@ const UnmatchedIndividualCard = ({
     }
   }
 
-  const copyEmailToClipboard = async () => {
-    if (!email || email === 'No email found') return
+  const fetchPhone = async () => {
+    if (phone) {
+      if (contactView === 'phones' && showContactInfo) {
+        setShowContactInfo(false)
+      } else {
+        setContactView('phones')
+        setShowContactInfo(true)
+      }
+      return
+    }
+
+    setLoadingPhone(true)
+    try {
+      const { data: user, error } = await supabase
+        .from('Users')
+        .select('phonenumber')
+        .eq('user_id', item.rider.user_id)
+        .single()
+
+      if (error) {
+        console.error('Error fetching phone number:', error)
+        setLoadingPhone(false)
+        return
+      }
+
+      setPhone(user?.phonenumber || 'No phone number found')
+      setContactView('phones')
+      setShowContactInfo(true)
+    } catch (error) {
+      console.error('Error fetching phone number:', error)
+    } finally {
+      setLoadingPhone(false)
+    }
+  }
+
+  const copyToClipboard = async () => {
+    const textToCopy = contactView === 'emails' ? email : phone
+    if (
+      !textToCopy ||
+      textToCopy === 'No email found' ||
+      textToCopy === 'No phone number found'
+    )
+      return
 
     try {
-      await navigator.clipboard.writeText(email)
+      await navigator.clipboard.writeText(textToCopy)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (error) {
-      console.error('Failed to copy email:', error)
+      console.error('Failed to copy to clipboard:', error)
     }
   }
 
   return (
     <div
-      className={`rounded-lg border p-3 ${
+      className={`rounded-lg border ${
         item.emailSent
           ? 'border-gray-200 bg-gray-50'
           : 'border-orange-300 bg-orange-50'
-      }`}
+      } ${showContactInfo ? 'p-0' : 'p-3'}`}
     >
-      <div className="flex items-start justify-between">
+      <div
+        className={`flex items-start justify-between ${showContactInfo ? 'p-3 pb-0' : ''}`}
+      >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="font-semibold text-gray-900">{item.rider.name}</p>
@@ -375,44 +516,74 @@ const UnmatchedIndividualCard = ({
             Became unmatched:{' '}
             {new Date(item.becameUnmatchedAt).toLocaleString()}
           </p>
-          {showEmail && (
-            <div className="mt-2 rounded bg-white p-2">
-              <div className="mb-1 flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-700">Email:</p>
-                {email && email !== 'No email found' && (
-                  <button
-                    onClick={copyEmailToClipboard}
-                    className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100"
-                    title="Copy email to clipboard"
-                  >
-                    <Copy className="h-3 w-3" />
-                    {copied ? 'Copied!' : 'Copy'}
-                  </button>
-                )}
-              </div>
-              <p className="break-words text-xs text-gray-600">{email}</p>
-            </div>
-          )}
         </div>
         <div className="ml-4 flex flex-shrink-0 flex-col gap-1">
-          <button
-            onClick={fetchEmail}
-            disabled={loadingEmail}
-            className="rounded p-1 text-gray-600 hover:bg-gray-200"
-            title="View email"
-          >
-            <Mail className="h-4 w-4" />
-          </button>
+          <div className="flex gap-0.5">
+            <button
+              onClick={fetchEmail}
+              disabled={loadingEmail}
+              className={`rounded p-0.5 text-gray-600 hover:bg-gray-200 ${
+                showContactInfo && contactView === 'emails' ? 'bg-gray-200' : ''
+              }`}
+              title="View email"
+            >
+              <Mail className="h-4 w-4" />
+            </button>
+            <button
+              onClick={fetchPhone}
+              disabled={loadingPhone}
+              className={`rounded p-0.5 text-gray-600 hover:bg-gray-200 ${
+                showContactInfo && contactView === 'phones' ? 'bg-gray-200' : ''
+              }`}
+              title="View phone number"
+            >
+              <Phone className="h-4 w-4" />
+            </button>
+          </div>
           {!item.emailSent && (
             <button
               onClick={onConfirmEmail}
-              className="rounded bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
+              disabled={isConfirming}
+              className={`rounded px-2 py-1 text-xs font-medium transition-all ${
+                isConfirming
+                  ? 'cursor-not-allowed bg-gray-400 text-gray-200'
+                  : 'bg-green-600 text-white hover:bg-green-700'
+              }`}
             >
-              Confirm
+              {isConfirming ? 'Confirming...' : 'Confirm'}
             </button>
           )}
         </div>
       </div>
+      {showContactInfo && (
+        <div className="mt-3 w-full rounded-b-lg bg-white p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-semibold text-gray-700">
+              {contactView === 'emails' ? 'Email:' : 'Phone Number:'}
+            </p>
+            {((contactView === 'emails' &&
+              email &&
+              email !== 'No email found') ||
+              (contactView === 'phones' &&
+                phone &&
+                phone !== 'No phone number found')) && (
+              <button
+                onClick={copyToClipboard}
+                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                title={`Copy ${contactView === 'emails' ? 'email' : 'phone number'} to clipboard`}
+              >
+                <Copy className="h-3 w-3" />
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            )}
+          </div>
+          <div className="max-h-96 overflow-y-auto">
+            <p className="break-words text-xs text-gray-600">
+              {contactView === 'emails' ? email : phone}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -568,6 +739,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     new Map(),
   )
   const [searchQuery, setSearchQuery] = useState<string>('')
+  const [searchInput, setSearchInput] = useState<string>('')
+  const [searchFeedback, setSearchFeedback] = useState(false)
+  const [confirmingGroups, setConfirmingGroups] = useState<Set<number>>(
+    new Set(),
+  )
+  const [confirmingIndividuals, setConfirmingIndividuals] = useState<
+    Set<string>
+  >(new Set())
 
   // Load unconfirmed changes from ChangeLog
   const loadUnconfirmedChanges = useCallback(async () => {
@@ -3947,6 +4126,23 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     setCorralCollapsed(!corralCollapsed)
   }, [corralCollapsed])
 
+  const handleSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        setSearchQuery(searchInput)
+        // Provide visual feedback
+        setSearchFeedback(true)
+        setTimeout(() => setSearchFeedback(false), 300)
+      }
+    },
+    [searchInput],
+  )
+
+  const handleClearSearch = useCallback(() => {
+    setSearchInput('')
+    setSearchQuery('')
+  }, [])
+
   // Handle section drop
   const formatTime = (timeStr: string): string => {
     // timeStr can be "HH:MM:SS" or "HH:MM" format
@@ -5401,14 +5597,17 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 <input
                   type="text"
                   placeholder="Search by ride ID (#Num), name, flight, or voucher..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 pr-20 text-sm text-gray-900 placeholder-gray-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                  className={`w-full rounded-lg border border-gray-300 bg-white px-4 py-2 pr-20 text-sm text-gray-900 placeholder-gray-500 transition-all focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 ${
+                    searchFeedback ? 'bg-teal-50 ring-2 ring-teal-500' : ''
+                  }`}
                 />
                 <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
-                  {searchQuery && (
+                  {(searchInput || searchQuery) && (
                     <button
-                      onClick={() => setSearchQuery('')}
+                      onClick={handleClearSearch}
                       className="flex items-center justify-center rounded p-0.5 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
                       title="Clear search"
                     >
@@ -5424,11 +5623,15 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         <span className="font-mono font-semibold">
                           #[RideID Num]
                         </span>{' '}
-                        to search by ride ID only
+                        to search by ride ID
                       </p>
                       <p>
                         • Otherwise searches across names, flights, vouchers,
                         and ride IDs
+                      </p>
+                      <p>
+                        • Must press enter to search after typing your search
+                        query.
                       </p>
                       <div className="absolute right-2 top-full h-0 w-0 border-4 border-transparent border-t-gray-900"></div>
                     </div>
@@ -5583,14 +5786,17 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 <input
                   type="text"
                   placeholder="Search by ride ID (#Num), name, flight, or voucher..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 pr-20 text-sm text-gray-900 placeholder-gray-500 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                  className={`w-full rounded-lg border border-gray-300 bg-white px-4 py-2 pr-20 text-sm text-gray-900 placeholder-gray-500 transition-all focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 ${
+                    searchFeedback ? 'bg-teal-50 ring-2 ring-teal-500' : ''
+                  }`}
                 />
                 <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
-                  {searchQuery && (
+                  {(searchInput || searchQuery) && (
                     <button
-                      onClick={() => setSearchQuery('')}
+                      onClick={handleClearSearch}
                       className="flex items-center justify-center rounded p-0.5 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
                       title="Clear search"
                     >
@@ -5606,7 +5812,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         <span className="font-mono font-semibold">
                           #[RideID Num]
                         </span>{' '}
-                        to search by ride ID only
+                        to search by ride ID
                       </p>
                       <p>
                         • Otherwise searches across names, flights, vouchers,
@@ -7805,175 +8011,195 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                               <ChangedGroupCard
                                 key={changedGroup.group.ride_id}
                                 changedGroup={changedGroup}
+                                isConfirming={confirmingGroups.has(
+                                  changedGroup.group.ride_id,
+                                )}
                                 onConfirmEmail={async () => {
-                                  console.log(
-                                    '[onConfirmEmail] Starting confirmation for group:',
-                                    {
-                                      groupId: changedGroup.group.ride_id,
-                                      changeLogId: changedGroup.changeLogId,
-                                      changeType: changedGroup.changeType,
-                                    },
-                                  )
-
-                                  // Find ALL unconfirmed ChangeLog entries related to this group
-                                  // This includes entries where the group is the source (from_group) or destination (to_group/ride_id)
-                                  const {
-                                    data: relatedEntries,
-                                    error: findError,
-                                  } = await supabase
-                                    .from('ChangeLog')
-                                    .select('id, action, metadata')
-                                    .eq('confirmed', false)
-                                    .in('action', [
-                                      'UPDATE_GROUP_TIME',
-                                      'ADD_TO_GROUP',
-                                      'REMOVE_FROM_GROUP',
-                                      'CREATE_GROUP',
-                                      'DELETE_GROUP',
-                                    ])
-                                    .or(
-                                      `metadata->>ride_id.eq.${changedGroup.group.ride_id},metadata->>to_group.eq.${changedGroup.group.ride_id},metadata->>from_group.eq.${changedGroup.group.ride_id}`,
-                                    )
-
-                                  if (findError) {
-                                    console.error(
-                                      '[onConfirmEmail] Error finding related ChangeLog entries:',
-                                      findError,
-                                    )
-                                  } else {
-                                    console.log(
-                                      '[onConfirmEmail] Found related ChangeLog entries:',
-                                      relatedEntries?.length || 0,
-                                      relatedEntries,
-                                    )
-                                  }
-
-                                  // Update ALL related ChangeLog entries to confirmed = true
-                                  if (
-                                    relatedEntries &&
-                                    relatedEntries.length > 0
-                                  ) {
-                                    const entryIds = relatedEntries.map(
-                                      (e) => e.id,
-                                    )
-                                    console.log(
-                                      '[onConfirmEmail] Updating ChangeLog entries to confirmed:',
-                                      entryIds,
-                                    )
-
-                                    const { error: updateError } =
-                                      await supabase
-                                        .from('ChangeLog')
-                                        .update({ confirmed: true })
-                                        .in('id', entryIds)
-
-                                    if (updateError) {
-                                      console.error(
-                                        '[onConfirmEmail] Error confirming changes:',
-                                        updateError,
-                                      )
-                                      setErrorMessage(
-                                        'Failed to confirm change',
-                                      )
-                                      setTimeout(
-                                        () => setErrorMessage(null),
-                                        3000,
-                                      )
-                                      return
-                                    }
-                                    console.log(
-                                      '[onConfirmEmail] Successfully updated',
-                                      entryIds.length,
-                                      'ChangeLog entries to confirmed',
-                                    )
-                                  } else if (changedGroup.changeLogId) {
-                                    // Fallback to single entry if no related entries found
-                                    console.log(
-                                      '[onConfirmEmail] No related entries found, updating single entry:',
-                                      changedGroup.changeLogId,
-                                    )
-                                    const { error } = await supabase
-                                      .from('ChangeLog')
-                                      .update({ confirmed: true })
-                                      .eq('id', changedGroup.changeLogId)
-
-                                    if (error) {
-                                      console.error(
-                                        '[onConfirmEmail] Error confirming change:',
-                                        error,
-                                      )
-                                      setErrorMessage(
-                                        'Failed to confirm change',
-                                      )
-                                      setTimeout(
-                                        () => setErrorMessage(null),
-                                        3000,
-                                      )
-                                      return
-                                    }
-                                  }
-
-                                  // Log email confirmation to ChangeLog
-                                  // Note: EMAIL_CONFIRMED is not in the database constraint, so we use UPDATE_GROUP_TIME
-                                  // with email_confirmed: true in metadata to track this
-                                  console.log(
-                                    '[onConfirmEmail] Creating email confirmation entry for group:',
-                                    changedGroup.group.ride_id,
-                                  )
-                                  try {
-                                    const emailConfirmedResult =
-                                      await logToChangeLog(
-                                        'UPDATE_GROUP_TIME', // Use allowed action type
-                                        {
-                                          email_confirmed: true, // Flag to indicate this is an email confirmation
-                                          ride_id: changedGroup.group.ride_id, // Store as number in metadata
-                                          change_type: changedGroup.changeType,
-                                          rider_count:
-                                            changedGroup.group.riders.length,
-                                          rider_names:
-                                            changedGroup.group.riders.map(
-                                              (r) => r.name,
-                                            ),
-                                          rider_user_ids:
-                                            changedGroup.group.riders.map(
-                                              (r) => r.user_id,
-                                            ),
-                                        },
-                                        undefined, // Don't set target_group_id if it's UUID type and we have a number
-                                        undefined, // targetUserId
-                                        true, // confirmed = true for email confirmations
-                                      )
-                                    console.log(
-                                      '[onConfirmEmail] Email confirmation entry creation result:',
-                                      emailConfirmedResult,
-                                    )
-                                  } catch (emailError) {
-                                    console.error(
-                                      '[onConfirmEmail] Error creating email confirmation entry:',
-                                      emailError,
-                                    )
-                                    // Don't fail the whole operation if logging fails
-                                  }
-
-                                  // Update local state
-                                  setChangedGroups((prev) =>
-                                    prev.map((cg) =>
-                                      cg.group.ride_id ===
-                                      changedGroup.group.ride_id
-                                        ? { ...cg, emailsSent: true }
-                                        : cg,
+                                  // Set confirming state immediately
+                                  setConfirmingGroups((prev) =>
+                                    new Set(prev).add(
+                                      changedGroup.group.ride_id,
                                     ),
                                   )
 
-                                  // Refresh ChangeLog to show the new EMAIL_CONFIRMED entry
-                                  await fetchChangeLog()
+                                  try {
+                                    console.log(
+                                      '[onConfirmEmail] Starting confirmation for group:',
+                                      {
+                                        groupId: changedGroup.group.ride_id,
+                                        changeLogId: changedGroup.changeLogId,
+                                        changeType: changedGroup.changeType,
+                                      },
+                                    )
 
-                                  // Reload unconfirmed changes after a delay to ensure DB commit
-                                  // The loadUnconfirmedChanges will now check for EMAIL_CONFIRMED entries
-                                  // and preserve the emailsSent state
-                                  setTimeout(() => {
-                                    loadUnconfirmedChanges()
-                                  }, 500)
+                                    // Find ALL unconfirmed ChangeLog entries related to this group
+                                    // This includes entries where the group is the source (from_group) or destination (to_group/ride_id)
+                                    const {
+                                      data: relatedEntries,
+                                      error: findError,
+                                    } = await supabase
+                                      .from('ChangeLog')
+                                      .select('id, action, metadata')
+                                      .eq('confirmed', false)
+                                      .in('action', [
+                                        'UPDATE_GROUP_TIME',
+                                        'ADD_TO_GROUP',
+                                        'REMOVE_FROM_GROUP',
+                                        'CREATE_GROUP',
+                                        'DELETE_GROUP',
+                                      ])
+                                      .or(
+                                        `metadata->>ride_id.eq.${changedGroup.group.ride_id},metadata->>to_group.eq.${changedGroup.group.ride_id},metadata->>from_group.eq.${changedGroup.group.ride_id}`,
+                                      )
+
+                                    if (findError) {
+                                      console.error(
+                                        '[onConfirmEmail] Error finding related ChangeLog entries:',
+                                        findError,
+                                      )
+                                    } else {
+                                      console.log(
+                                        '[onConfirmEmail] Found related ChangeLog entries:',
+                                        relatedEntries?.length || 0,
+                                        relatedEntries,
+                                      )
+                                    }
+
+                                    // Update ALL related ChangeLog entries to confirmed = true
+                                    if (
+                                      relatedEntries &&
+                                      relatedEntries.length > 0
+                                    ) {
+                                      const entryIds = relatedEntries.map(
+                                        (e) => e.id,
+                                      )
+                                      console.log(
+                                        '[onConfirmEmail] Updating ChangeLog entries to confirmed:',
+                                        entryIds,
+                                      )
+
+                                      const { error: updateError } =
+                                        await supabase
+                                          .from('ChangeLog')
+                                          .update({ confirmed: true })
+                                          .in('id', entryIds)
+
+                                      if (updateError) {
+                                        console.error(
+                                          '[onConfirmEmail] Error confirming changes:',
+                                          updateError,
+                                        )
+                                        setErrorMessage(
+                                          'Failed to confirm change',
+                                        )
+                                        setTimeout(
+                                          () => setErrorMessage(null),
+                                          3000,
+                                        )
+                                        return
+                                      }
+                                      console.log(
+                                        '[onConfirmEmail] Successfully updated',
+                                        entryIds.length,
+                                        'ChangeLog entries to confirmed',
+                                      )
+                                    } else if (changedGroup.changeLogId) {
+                                      // Fallback to single entry if no related entries found
+                                      console.log(
+                                        '[onConfirmEmail] No related entries found, updating single entry:',
+                                        changedGroup.changeLogId,
+                                      )
+                                      const { error } = await supabase
+                                        .from('ChangeLog')
+                                        .update({ confirmed: true })
+                                        .eq('id', changedGroup.changeLogId)
+
+                                      if (error) {
+                                        console.error(
+                                          '[onConfirmEmail] Error confirming change:',
+                                          error,
+                                        )
+                                        setErrorMessage(
+                                          'Failed to confirm change',
+                                        )
+                                        setTimeout(
+                                          () => setErrorMessage(null),
+                                          3000,
+                                        )
+                                        return
+                                      }
+                                    }
+
+                                    // Log email confirmation to ChangeLog
+                                    // Note: EMAIL_CONFIRMED is not in the database constraint, so we use UPDATE_GROUP_TIME
+                                    // with email_confirmed: true in metadata to track this
+                                    console.log(
+                                      '[onConfirmEmail] Creating email confirmation entry for group:',
+                                      changedGroup.group.ride_id,
+                                    )
+                                    try {
+                                      const emailConfirmedResult =
+                                        await logToChangeLog(
+                                          'UPDATE_GROUP_TIME', // Use allowed action type
+                                          {
+                                            email_confirmed: true, // Flag to indicate this is an email confirmation
+                                            ride_id: changedGroup.group.ride_id, // Store as number in metadata
+                                            change_type:
+                                              changedGroup.changeType,
+                                            rider_count:
+                                              changedGroup.group.riders.length,
+                                            rider_names:
+                                              changedGroup.group.riders.map(
+                                                (r) => r.name,
+                                              ),
+                                            rider_user_ids:
+                                              changedGroup.group.riders.map(
+                                                (r) => r.user_id,
+                                              ),
+                                          },
+                                          undefined, // Don't set target_group_id if it's UUID type and we have a number
+                                          undefined, // targetUserId
+                                          true, // confirmed = true for email confirmations
+                                        )
+                                      console.log(
+                                        '[onConfirmEmail] Email confirmation entry creation result:',
+                                        emailConfirmedResult,
+                                      )
+                                    } catch (emailError) {
+                                      console.error(
+                                        '[onConfirmEmail] Error creating email confirmation entry:',
+                                        emailError,
+                                      )
+                                      // Don't fail the whole operation if logging fails
+                                    }
+
+                                    // Update local state
+                                    setChangedGroups((prev) =>
+                                      prev.map((cg) =>
+                                        cg.group.ride_id ===
+                                        changedGroup.group.ride_id
+                                          ? { ...cg, emailsSent: true }
+                                          : cg,
+                                      ),
+                                    )
+
+                                    // Refresh ChangeLog to show the new EMAIL_CONFIRMED entry
+                                    await fetchChangeLog()
+
+                                    // Reload unconfirmed changes after a delay to ensure DB commit
+                                    // The loadUnconfirmedChanges will now check for EMAIL_CONFIRMED entries
+                                    // and preserve the emailsSent state
+                                    setTimeout(() => {
+                                      loadUnconfirmedChanges()
+                                    }, 500)
+                                  } finally {
+                                    // Clear confirming state
+                                    setConfirmingGroups((prev) => {
+                                      const newSet = new Set(prev)
+                                      newSet.delete(changedGroup.group.ride_id)
+                                      return newSet
+                                    })
+                                  }
                                 }}
                                 supabase={supabase}
                               />
@@ -8025,165 +8251,183 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                               <UnmatchedIndividualCard
                                 key={`${item.rider.user_id}-${item.rider.flight_id}`}
                                 item={item}
+                                isConfirming={confirmingIndividuals.has(
+                                  `${item.rider.user_id}-${item.rider.flight_id}`,
+                                )}
                                 onConfirmEmail={async () => {
-                                  console.log(
-                                    '[onConfirmEmail] Starting confirmation for unmatched individual:',
-                                    {
-                                      flightId: item.rider.flight_id,
-                                      userId: item.rider.user_id,
-                                      changeLogId: item.changeLogId,
-                                    },
+                                  // Set confirming state immediately
+                                  const individualKey = `${item.rider.user_id}-${item.rider.flight_id}`
+                                  setConfirmingIndividuals((prev) =>
+                                    new Set(prev).add(individualKey),
                                   )
 
-                                  // Find ALL unconfirmed ChangeLog entries related to this flight/user
-                                  // This includes REMOVE_FROM_GROUP entries where this flight was removed to unmatched
-                                  const {
-                                    data: relatedEntries,
-                                    error: findError,
-                                  } = await supabase
-                                    .from('ChangeLog')
-                                    .select('id, action, metadata')
-                                    .eq('confirmed', false)
-                                    .eq('action', 'REMOVE_FROM_GROUP')
-                                    .eq('target_user_id', item.rider.user_id)
-                                    .or(
-                                      `metadata->>rider_flight_id.eq.${item.rider.flight_id},metadata->>flight_id.eq.${item.rider.flight_id}`,
-                                    )
-
-                                  if (findError) {
-                                    console.error(
-                                      '[onConfirmEmail] Error finding related ChangeLog entries:',
-                                      findError,
-                                    )
-                                  } else {
+                                  try {
                                     console.log(
-                                      '[onConfirmEmail] Found related ChangeLog entries:',
-                                      relatedEntries?.length || 0,
-                                      relatedEntries,
-                                    )
-                                  }
-
-                                  // Update ALL related ChangeLog entries to confirmed = true
-                                  if (
-                                    relatedEntries &&
-                                    relatedEntries.length > 0
-                                  ) {
-                                    const entryIds = relatedEntries.map(
-                                      (e) => e.id,
-                                    )
-                                    console.log(
-                                      '[onConfirmEmail] Updating ChangeLog entries to confirmed:',
-                                      entryIds,
+                                      '[onConfirmEmail] Starting confirmation for unmatched individual:',
+                                      {
+                                        flightId: item.rider.flight_id,
+                                        userId: item.rider.user_id,
+                                        changeLogId: item.changeLogId,
+                                      },
                                     )
 
-                                    const { error: updateError } =
-                                      await supabase
+                                    // Find ALL unconfirmed ChangeLog entries related to this flight/user
+                                    // This includes REMOVE_FROM_GROUP entries where this flight was removed to unmatched
+                                    const {
+                                      data: relatedEntries,
+                                      error: findError,
+                                    } = await supabase
+                                      .from('ChangeLog')
+                                      .select('id, action, metadata')
+                                      .eq('confirmed', false)
+                                      .eq('action', 'REMOVE_FROM_GROUP')
+                                      .eq('target_user_id', item.rider.user_id)
+                                      .or(
+                                        `metadata->>rider_flight_id.eq.${item.rider.flight_id},metadata->>flight_id.eq.${item.rider.flight_id}`,
+                                      )
+
+                                    if (findError) {
+                                      console.error(
+                                        '[onConfirmEmail] Error finding related ChangeLog entries:',
+                                        findError,
+                                      )
+                                    } else {
+                                      console.log(
+                                        '[onConfirmEmail] Found related ChangeLog entries:',
+                                        relatedEntries?.length || 0,
+                                        relatedEntries,
+                                      )
+                                    }
+
+                                    // Update ALL related ChangeLog entries to confirmed = true
+                                    if (
+                                      relatedEntries &&
+                                      relatedEntries.length > 0
+                                    ) {
+                                      const entryIds = relatedEntries.map(
+                                        (e) => e.id,
+                                      )
+                                      console.log(
+                                        '[onConfirmEmail] Updating ChangeLog entries to confirmed:',
+                                        entryIds,
+                                      )
+
+                                      const { error: updateError } =
+                                        await supabase
+                                          .from('ChangeLog')
+                                          .update({ confirmed: true })
+                                          .in('id', entryIds)
+
+                                      if (updateError) {
+                                        console.error(
+                                          '[onConfirmEmail] Error confirming changes:',
+                                          updateError,
+                                        )
+                                        setErrorMessage(
+                                          'Failed to confirm change',
+                                        )
+                                        setTimeout(
+                                          () => setErrorMessage(null),
+                                          3000,
+                                        )
+                                        return
+                                      }
+                                      console.log(
+                                        '[onConfirmEmail] Successfully updated',
+                                        entryIds.length,
+                                        'ChangeLog entries to confirmed',
+                                      )
+                                    } else if (item.changeLogId) {
+                                      // Fallback to single entry if no related entries found
+                                      console.log(
+                                        '[onConfirmEmail] No related entries found, updating single entry:',
+                                        item.changeLogId,
+                                      )
+                                      const { error } = await supabase
                                         .from('ChangeLog')
                                         .update({ confirmed: true })
-                                        .in('id', entryIds)
+                                        .eq('id', item.changeLogId)
 
-                                    if (updateError) {
-                                      console.error(
-                                        '[onConfirmEmail] Error confirming changes:',
-                                        updateError,
-                                      )
-                                      setErrorMessage(
-                                        'Failed to confirm change',
-                                      )
-                                      setTimeout(
-                                        () => setErrorMessage(null),
-                                        3000,
-                                      )
-                                      return
+                                      if (error) {
+                                        console.error(
+                                          '[onConfirmEmail] Error confirming change:',
+                                          error,
+                                        )
+                                        setErrorMessage(
+                                          'Failed to confirm change',
+                                        )
+                                        setTimeout(
+                                          () => setErrorMessage(null),
+                                          3000,
+                                        )
+                                        return
+                                      }
                                     }
+
+                                    // Log email confirmation to ChangeLog
                                     console.log(
-                                      '[onConfirmEmail] Successfully updated',
-                                      entryIds.length,
-                                      'ChangeLog entries to confirmed',
+                                      '[onConfirmEmail] Creating EMAIL_CONFIRMED entry for individual:',
+                                      item.rider.flight_id,
                                     )
-                                  } else if (item.changeLogId) {
-                                    // Fallback to single entry if no related entries found
+                                    const emailConfirmedResult =
+                                      await logToChangeLog(
+                                        'EMAIL_CONFIRMED',
+                                        {
+                                          rider_name: item.rider.name,
+                                          rider_user_id: item.rider.user_id,
+                                          rider_flight_id: item.rider.flight_id,
+                                          date: item.rider.date,
+                                        },
+                                        undefined, // targetGroupId
+                                        item.rider.user_id,
+                                        true, // confirmed = true for email confirmations
+                                      )
                                     console.log(
-                                      '[onConfirmEmail] No related entries found, updating single entry:',
-                                      item.changeLogId,
+                                      '[onConfirmEmail] EMAIL_CONFIRMED entry creation result:',
+                                      emailConfirmedResult,
                                     )
-                                    const { error } = await supabase
-                                      .from('ChangeLog')
-                                      .update({ confirmed: true })
-                                      .eq('id', item.changeLogId)
 
-                                    if (error) {
-                                      console.error(
-                                        '[onConfirmEmail] Error confirming change:',
-                                        error,
-                                      )
-                                      setErrorMessage(
-                                        'Failed to confirm change',
-                                      )
-                                      setTimeout(
-                                        () => setErrorMessage(null),
-                                        3000,
-                                      )
-                                      return
-                                    }
-                                  }
-
-                                  // Log email confirmation to ChangeLog
-                                  console.log(
-                                    '[onConfirmEmail] Creating EMAIL_CONFIRMED entry for individual:',
-                                    item.rider.flight_id,
-                                  )
-                                  const emailConfirmedResult =
-                                    await logToChangeLog(
-                                      'EMAIL_CONFIRMED',
-                                      {
-                                        rider_name: item.rider.name,
-                                        rider_user_id: item.rider.user_id,
-                                        rider_flight_id: item.rider.flight_id,
-                                        date: item.rider.date,
-                                      },
-                                      undefined, // targetGroupId
-                                      item.rider.user_id,
-                                      true, // confirmed = true for email confirmations
-                                    )
-                                  console.log(
-                                    '[onConfirmEmail] EMAIL_CONFIRMED entry creation result:',
-                                    emailConfirmedResult,
-                                  )
-
-                                  // Update local state immediately
-                                  setUnmatchedIndividuals((prev) =>
-                                    prev.map((ui) =>
-                                      ui.rider.flight_id ===
-                                      item.rider.flight_id
-                                        ? { ...ui, emailSent: true }
-                                        : ui,
-                                    ),
-                                  )
-
-                                  // Refresh ChangeLog to show the new EMAIL_CONFIRMED entry
-                                  await fetchChangeLog()
-
-                                  // Reload unconfirmed changes after a delay to ensure DB commit
-                                  // But preserve entries that are already marked as emailSent
-                                  setTimeout(async () => {
-                                    await loadUnconfirmedChanges()
-                                    // Re-apply emailSent status to prevent overwriting
+                                    // Update local state immediately
                                     setUnmatchedIndividuals((prev) =>
-                                      prev.map((ui) => {
-                                        const wasEmailed =
-                                          unmatchedIndividuals.find(
-                                            (ui2) =>
-                                              ui2.rider.flight_id ===
-                                              ui.rider.flight_id,
-                                          )?.emailSent
-                                        if (wasEmailed) {
-                                          return { ...ui, emailSent: true }
-                                        }
-                                        return ui
-                                      }),
+                                      prev.map((ui) =>
+                                        ui.rider.flight_id ===
+                                        item.rider.flight_id
+                                          ? { ...ui, emailSent: true }
+                                          : ui,
+                                      ),
                                     )
-                                  }, 500)
+
+                                    // Refresh ChangeLog to show the new EMAIL_CONFIRMED entry
+                                    await fetchChangeLog()
+
+                                    // Reload unconfirmed changes after a delay to ensure DB commit
+                                    // But preserve entries that are already marked as emailSent
+                                    setTimeout(async () => {
+                                      await loadUnconfirmedChanges()
+                                      // Re-apply emailSent status to prevent overwriting
+                                      setUnmatchedIndividuals((prev) =>
+                                        prev.map((ui) => {
+                                          const wasEmailed =
+                                            unmatchedIndividuals.find(
+                                              (ui2) =>
+                                                ui2.rider.flight_id ===
+                                                ui.rider.flight_id,
+                                            )?.emailSent
+                                          if (wasEmailed) {
+                                            return { ...ui, emailSent: true }
+                                          }
+                                          return ui
+                                        }),
+                                      )
+                                    }, 500)
+                                  } finally {
+                                    // Clear confirming state
+                                    setConfirmingIndividuals((prev) => {
+                                      const newSet = new Set(prev)
+                                      newSet.delete(individualKey)
+                                      return newSet
+                                    })
+                                  }
                                 }}
                                 supabase={supabase}
                               />
