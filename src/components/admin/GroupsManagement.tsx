@@ -70,6 +70,7 @@ interface ChangeLogEntry {
     | 'IGNORE_ERROR'
     | 'UPDATE_GROUP_TIME'
     | 'UPDATE_VOUCHER'
+    | 'UPDATE_RIDER_DETAILS'
     | 'EMAIL_CONFIRMED'
   algorithm_run_id?: string | null
   target_group_id?: string | null
@@ -93,6 +94,8 @@ const getChangeDescription = (action: string): string => {
       return 'Updated time'
     case 'UPDATE_VOUCHER':
       return 'Updated voucher'
+    case 'UPDATE_RIDER_DETAILS':
+      return 'Updated rider details'
     case 'CREATE_GROUP':
       return 'Group created'
     case 'DELETE_GROUP':
@@ -675,6 +678,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     group: Group
   } | null>(null)
   const [editTimeValue, setEditTimeValue] = useState<string>('')
+  const [editDateValue, setEditDateValue] = useState<string>('')
   const [isUpdatingTime, setIsUpdatingTime] = useState(false)
   const [editVoucherModal, setEditVoucherModal] = useState<{
     group: Group
@@ -693,6 +697,18 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     onAcknowledge: () => Promise<void>
     onCancel: () => void
   } | null>(null)
+  const [editRiderModal, setEditRiderModal] = useState<{
+    rider: Rider
+  } | null>(null)
+  const [editRiderForm, setEditRiderForm] = useState<{
+    flight_no: string
+    airline_iata: string
+    airport: string
+    to_airport: boolean
+    date: string
+    time_range: string
+  } | null>(null)
+  const [isUpdatingRider, setIsUpdatingRider] = useState(false)
 
   // Log validation error modal state changes
   useEffect(() => {
@@ -913,6 +929,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           } else if (
             change.action === 'UPDATE_GROUP_TIME' ||
             change.action === 'UPDATE_VOUCHER' ||
+            change.action === 'UPDATE_RIDER_DETAILS' ||
             change.action === 'CREATE_GROUP'
           ) {
             // Use target_group_id if available (int8 type), otherwise use metadata.ride_id
@@ -1312,6 +1329,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               } else if (
                 change.action === 'UPDATE_GROUP_TIME' ||
                 change.action === 'UPDATE_VOUCHER' ||
+                change.action === 'UPDATE_RIDER_DETAILS' ||
                 change.action === 'CREATE_GROUP' ||
                 change.action === 'DELETE_GROUP'
               ) {
@@ -1370,6 +1388,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               } else if (
                 change.action === 'UPDATE_GROUP_TIME' ||
                 change.action === 'UPDATE_VOUCHER' ||
+                change.action === 'UPDATE_RIDER_DETAILS' ||
                 change.action === 'CREATE_GROUP' ||
                 change.action === 'DELETE_GROUP'
               ) {
@@ -2355,9 +2374,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     [timeToMinutes, minutesToTime],
   )
 
-  // Update group time for all members
+  // Update group time and date for all members
   const handleUpdateGroupTime = useCallback(
-    async (groupId: number, newTime: string) => {
+    async (groupId: number, newTime: string, newDate?: string) => {
       if (!newTime || !newTime.includes(':')) {
         setErrorMessage('Invalid time format. Please use HH:MM format.')
         setTimeout(() => setErrorMessage(null), 3000)
@@ -2373,10 +2392,19 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             ? `${roundedTime}:00`
             : roundedTime
 
-        // Update all Matches for this group (set is_verified to false when time changes)
+        // Prepare update object
+        const updateData: any = {
+          time: formattedTime,
+          is_verified: false,
+        }
+        if (newDate) {
+          updateData.date = newDate
+        }
+
+        // Update all Matches for this group (set is_verified to false when time/date changes)
         const { error: updateError } = await supabase
           .from('Matches')
-          .update({ time: formattedTime, is_verified: false })
+          .update(updateData)
           .eq('ride_id', groupId)
 
         if (updateError) {
@@ -2386,28 +2414,40 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           return
         }
 
+        // Get old group data before updating state (for ChangeLog)
+        const oldGroup = groups.find((g) => g.ride_id === groupId)
+
+        // Log to ChangeLog (only once, outside of state setter)
+        if (oldGroup) {
+          const logMetadata: any = {
+            ride_id: groupId, // Store as number in metadata
+            old_time: oldGroup.match_time || 'N/A',
+            new_time: formattedTime,
+            rider_count: oldGroup.riders.length,
+          }
+          if (newDate) {
+            logMetadata.old_date = oldGroup.date || 'N/A'
+            logMetadata.new_date = newDate
+          }
+          await logToChangeLog(
+            'UPDATE_GROUP_TIME',
+            logMetadata,
+            groupId, // Set target_group_id to the group that was changed
+          )
+        }
+
         // Update local state and track changes
         setGroups((prev) => {
-          const oldGroup = prev.find((g) => g.ride_id === groupId)
-          const updatedGroups = prev.map((g) =>
-            g.ride_id === groupId ? { ...g, match_time: formattedTime } : g,
-          )
-          const updatedGroup = updatedGroups.find((g) => g.ride_id === groupId)
-
-          // Log to ChangeLog
-          if (oldGroup) {
-            logToChangeLog(
-              'UPDATE_GROUP_TIME',
-              {
-                ride_id: groupId, // Store as number in metadata
-                old_time: oldGroup.match_time || 'N/A',
-                new_time: formattedTime,
-                rider_count: oldGroup.riders.length,
-              },
-              groupId, // Set target_group_id to the group that was changed
-            )
-          }
-
+          const updatedGroups = prev.map((g) => {
+            if (g.ride_id === groupId) {
+              const updates: Partial<Group> = { match_time: formattedTime }
+              if (newDate) {
+                updates.date = newDate
+              }
+              return { ...g, ...updates }
+            }
+            return g
+          })
           return updatedGroups
         })
 
@@ -2457,6 +2497,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         })
 
         setEditTimeModal(null)
+        setEditTimeValue('')
+        setEditDateValue('')
         setErrorMessage(null)
       } catch (error) {
         console.error('Error in handleUpdateGroupTime:', error)
@@ -2466,7 +2508,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         setIsUpdatingTime(false)
       }
     },
-    [supabase, logToChangeLog, roundToNearest5Minutes],
+    [supabase, logToChangeLog, roundToNearest5Minutes, groups],
   )
 
   // Update group voucher for all members
@@ -3064,6 +3106,195 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       }
     },
     [groups, supabase, logToChangeLog, isGroupSubsidized],
+  )
+
+  // Update individual rider fields
+  const handleUpdateRider = useCallback(
+    async (
+      flightId: number,
+      updates: {
+        flight_no?: string
+        airline_iata?: string
+        airport?: string
+        to_airport?: boolean
+        date?: string
+        time_range?: string
+      },
+    ) => {
+      setIsUpdatingRider(true)
+      try {
+        // Get current rider information before updating
+        let oldRider: Rider | null = null
+        let riderGroupId: number | undefined = undefined
+
+        // Find rider in groups
+        for (const group of groups) {
+          const rider = group.riders.find((r) => r.flight_id === flightId)
+          if (rider) {
+            oldRider = rider
+            riderGroupId = group.ride_id
+            break
+          }
+        }
+
+        // If not found in groups, check unmatched riders
+        if (!oldRider) {
+          const rider = unmatchedRiders.find((r) => r.flight_id === flightId)
+          if (rider) {
+            oldRider = rider
+          }
+        }
+
+        // If still not found, fetch from database
+        if (!oldRider) {
+          const { data: flightData, error: fetchError } = await supabase
+            .from('Flights')
+            .select(
+              'flight_id, user_id, flight_no, airline_iata, airport, to_airport, date, earliest_time, latest_time',
+            )
+            .eq('flight_id', flightId)
+            .single()
+
+          if (!fetchError && flightData) {
+            const { data: userData } = await supabase
+              .from('Users')
+              .select('firstname, lastname')
+              .eq('user_id', flightData.user_id)
+              .single()
+
+            const timeRange =
+              flightData.earliest_time && flightData.latest_time
+                ? `${flightData.earliest_time} - ${flightData.latest_time}`
+                : ''
+
+            oldRider = {
+              user_id: flightData.user_id,
+              flight_id: flightData.flight_id,
+              name: userData
+                ? `${userData.firstname} ${userData.lastname}`
+                : 'Unknown',
+              phone: '',
+              checked_bags: 0,
+              carry_on_bags: 0,
+              time_range: timeRange,
+              airport: flightData.airport || '',
+              to_airport: flightData.to_airport ?? true,
+              date: flightData.date || '',
+              flight_no: flightData.flight_no || '',
+              airline_iata: flightData.airline_iata || '',
+            }
+          }
+        }
+
+        // Update Flights table
+        const flightUpdates: any = {}
+        if (updates.flight_no !== undefined)
+          flightUpdates.flight_no = updates.flight_no
+        if (updates.airline_iata !== undefined)
+          flightUpdates.airline_iata = updates.airline_iata
+        if (updates.airport !== undefined)
+          flightUpdates.airport = updates.airport
+        if (updates.to_airport !== undefined)
+          flightUpdates.to_airport = updates.to_airport
+        if (updates.date !== undefined) flightUpdates.date = updates.date
+        if (updates.time_range !== undefined) {
+          const [earliest, latest] = updates.time_range
+            .split(' - ')
+            .map((t) => t.trim())
+          if (earliest) flightUpdates.earliest_time = earliest
+          if (latest) flightUpdates.latest_time = latest
+        }
+
+        if (Object.keys(flightUpdates).length > 0) {
+          const { error: flightError } = await supabase
+            .from('Flights')
+            .update(flightUpdates)
+            .eq('flight_id', flightId)
+
+          if (flightError) {
+            console.error('Error updating flight:', flightError)
+            setErrorMessage('Failed to update rider details')
+            setTimeout(() => setErrorMessage(null), 3000)
+            return
+          }
+        }
+
+        // Log to ChangeLog
+        if (oldRider) {
+          const metadata: any = {
+            rider_name: oldRider.name,
+            rider_user_id: oldRider.user_id,
+            rider_flight_id: flightId,
+          }
+
+          // Add old and new values for changed fields
+          if (
+            updates.flight_no !== undefined &&
+            updates.flight_no !== oldRider.flight_no
+          ) {
+            metadata.old_flight_no = oldRider.flight_no || 'N/A'
+            metadata.new_flight_no = updates.flight_no
+          }
+          if (
+            updates.airline_iata !== undefined &&
+            updates.airline_iata !== oldRider.airline_iata
+          ) {
+            metadata.old_airline_iata = oldRider.airline_iata || 'N/A'
+            metadata.new_airline_iata = updates.airline_iata
+          }
+          if (
+            updates.airport !== undefined &&
+            updates.airport !== oldRider.airport
+          ) {
+            metadata.old_airport = oldRider.airport || 'N/A'
+            metadata.new_airport = updates.airport
+          }
+          if (
+            updates.to_airport !== undefined &&
+            updates.to_airport !== oldRider.to_airport
+          ) {
+            metadata.old_to_airport = oldRider.to_airport
+            metadata.new_to_airport = updates.to_airport
+          }
+          if (updates.date !== undefined && updates.date !== oldRider.date) {
+            metadata.old_date = oldRider.date || 'N/A'
+            metadata.new_date = updates.date
+          }
+          if (
+            updates.time_range !== undefined &&
+            updates.time_range !== oldRider.time_range
+          ) {
+            metadata.old_time_range = oldRider.time_range || 'N/A'
+            metadata.new_time_range = updates.time_range
+          }
+
+          if (riderGroupId) {
+            metadata.ride_id = riderGroupId
+          }
+
+          await logToChangeLog(
+            'UPDATE_RIDER_DETAILS',
+            metadata,
+            riderGroupId,
+            oldRider.user_id,
+          )
+        }
+
+        // Update local state - refresh groups and unmatched riders
+        await fetchData()
+
+        setEditRiderModal(null)
+        setEditRiderForm(null)
+        setErrorMessage(null)
+      } catch (error) {
+        console.error('Error in handleUpdateRider:', error)
+        setErrorMessage('Failed to update rider details')
+        setTimeout(() => setErrorMessage(null), 3000)
+      } finally {
+        setIsUpdatingRider(false)
+      }
+    },
+    [supabase, fetchData, groups, unmatchedRiders, logToChangeLog],
   )
 
   const handleRemoveFromGroupToUnmatched = useCallback(
@@ -5264,6 +5495,75 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             }
           }
           break
+        case 'UPDATE_RIDER_DETAILS':
+          const riderName =
+            entry.metadata?.rider_name || personName || 'a rider'
+          const changes: string[] = []
+
+          if (
+            entry.metadata?.old_flight_no !== undefined &&
+            entry.metadata?.old_flight_no !== entry.metadata?.new_flight_no
+          ) {
+            changes.push(
+              `flight number: ${entry.metadata.old_flight_no} → ${entry.metadata.new_flight_no}`,
+            )
+          }
+          if (
+            entry.metadata?.old_airline_iata !== undefined &&
+            entry.metadata?.old_airline_iata !==
+              entry.metadata?.new_airline_iata
+          ) {
+            changes.push(
+              `airline: ${entry.metadata.old_airline_iata} → ${entry.metadata.new_airline_iata}`,
+            )
+          }
+          if (
+            entry.metadata?.old_airport !== undefined &&
+            entry.metadata?.old_airport !== entry.metadata?.new_airport
+          ) {
+            changes.push(
+              `airport: ${entry.metadata.old_airport} → ${entry.metadata.new_airport}`,
+            )
+          }
+          if (
+            entry.metadata?.old_to_airport !== undefined &&
+            entry.metadata?.old_to_airport !== entry.metadata?.new_to_airport
+          ) {
+            const oldDir = entry.metadata.old_to_airport ? 'to' : 'from'
+            const newDir = entry.metadata.new_to_airport ? 'to' : 'from'
+            changes.push(`direction: ${oldDir} → ${newDir}`)
+          }
+          if (
+            entry.metadata?.old_date !== undefined &&
+            entry.metadata?.old_date !== entry.metadata?.new_date
+          ) {
+            changes.push(
+              `date: ${entry.metadata.old_date} → ${entry.metadata.new_date}`,
+            )
+          }
+          if (
+            entry.metadata?.old_time_range !== undefined &&
+            entry.metadata?.old_time_range !== entry.metadata?.new_time_range
+          ) {
+            changes.push(
+              `time: ${entry.metadata.old_time_range} → ${entry.metadata.new_time_range}`,
+            )
+          }
+
+          if (changes.length > 0) {
+            if (groupId) {
+              actionText = `updated ${riderName}'s details in group ${groupId} (${changes.join(', ')})`
+            } else {
+              actionText = `updated ${riderName}'s details (${changes.join(', ')})`
+            }
+          } else {
+            if (groupId) {
+              actionText = `updated ${riderName}'s details in group ${groupId}`
+            } else {
+              actionText = `updated ${riderName}'s details`
+            }
+          }
+          break
       }
 
       return {
@@ -7087,6 +7387,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                     ? group.match_time.substring(0, 5)
                                     : '',
                                 )
+                                setEditDateValue(group.date || '')
                               }
                             }}
                             disabled={datePassed}
@@ -7484,6 +7785,39 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                       </div>
                                       <div className="flex gap-1">
                                         <button
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            if (!datePassed) {
+                                              setEditRiderModal({ rider })
+                                              setEditRiderForm({
+                                                flight_no:
+                                                  rider.flight_no || '',
+                                                airline_iata:
+                                                  rider.airline_iata || '',
+                                                airport: rider.airport || '',
+                                                to_airport:
+                                                  rider.to_airport ?? true,
+                                                date: rider.date || '',
+                                                time_range:
+                                                  rider.time_range || '',
+                                              })
+                                            }
+                                          }}
+                                          disabled={datePassed}
+                                          className={`rounded p-1 ${
+                                            datePassed
+                                              ? 'cursor-not-allowed text-gray-400'
+                                              : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                                          }`}
+                                          title={
+                                            datePassed
+                                              ? 'Cannot modify past groups'
+                                              : 'Edit rider details'
+                                          }
+                                        >
+                                          <Pencil className="h-5 w-5" />
+                                        </button>
+                                        <button
                                           onClick={() => {
                                             if (!datePassed) {
                                               handleAddToCorral(
@@ -7670,7 +8004,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         {rider.date} • {formatTimeRange(rider.time_range)}
                       </p>
                       {/* Add to corral and new group links at bottom */}
-                      <div className="mt-2 flex gap-3">
+                      <div className="mt-2 flex items-center gap-3">
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -7702,6 +8036,31 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           }`}
                         >
                           Add to new group
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!riderDatePassed) {
+                              setEditRiderModal({ rider })
+                              setEditRiderForm({
+                                flight_no: rider.flight_no || '',
+                                airline_iata: rider.airline_iata || '',
+                                airport: rider.airport || '',
+                                to_airport: rider.to_airport ?? true,
+                                date: rider.date || '',
+                                time_range: rider.time_range || '',
+                              })
+                            }
+                          }}
+                          disabled={riderDatePassed}
+                          className={`rounded p-1 ${
+                            riderDatePassed
+                              ? 'cursor-not-allowed text-gray-400'
+                              : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                          }`}
+                          title="Edit rider details"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </div>
@@ -8847,6 +9206,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           { value: 'IGNORE_ERROR', label: 'Ignore Error' },
                           { value: 'UPDATE_GROUP_TIME', label: 'Update Time' },
                           { value: 'UPDATE_VOUCHER', label: 'Update Voucher' },
+                          {
+                            value: 'UPDATE_RIDER_DETAILS',
+                            label: 'Update Rider Details',
+                          },
                         ].map((action) => (
                           <label
                             key={action.value}
@@ -9103,49 +9466,68 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
             <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
               <h3 className="mb-4 text-lg font-semibold text-gray-900">
-                Edit Group Time
+                Edit Group Date and Time
               </h3>
               <p className="mb-4 text-sm text-gray-600">
                 Group #{editTimeModal.group.ride_id} •{' '}
                 {editTimeModal.group.riders.length} rider
                 {editTimeModal.group.riders.length !== 1 ? 's' : ''}
               </p>
-              <div className="mb-4">
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  New Time (HH:MM)
-                </label>
-                <div className="relative">
+              <div className="mb-4 space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Date
+                  </label>
                   <input
-                    type="time"
-                    value={editTimeValue}
-                    onChange={(e) => setEditTimeValue(e.target.value)}
+                    type="date"
+                    value={editDateValue}
+                    onChange={(e) => setEditDateValue(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                   />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      const input = e.currentTarget
-                        .previousElementSibling as HTMLInputElement
-                      input?.showPicker?.()
-                    }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    title="Open time picker"
-                  >
-                    <Clock className="h-4 w-4" />
-                  </button>
+                  {editTimeModal.group.date && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      Current date: {editTimeModal.group.date}
+                    </p>
+                  )}
                 </div>
-                {editTimeModal.group.match_time && (
-                  <p className="mt-2 text-xs text-gray-500">
-                    Current time:{' '}
-                    {editTimeModal.group.match_time.substring(0, 5)}
-                  </p>
-                )}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Time (HH:MM)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="time"
+                      value={editTimeValue}
+                      onChange={(e) => setEditTimeValue(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        const input = e.currentTarget
+                          .previousElementSibling as HTMLInputElement
+                        input?.showPicker?.()
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      title="Open time picker"
+                    >
+                      <Clock className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {editTimeModal.group.match_time && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      Current time:{' '}
+                      {editTimeModal.group.match_time.substring(0, 5)}
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => {
                     setEditTimeModal(null)
                     setEditTimeValue('')
+                    setEditDateValue('')
                   }}
                   disabled={isUpdatingTime}
                   className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
@@ -9158,13 +9540,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       await handleUpdateGroupTime(
                         editTimeModal.group.ride_id,
                         editTimeValue,
+                        editDateValue || undefined,
                       )
                     }
                   }}
                   disabled={isUpdatingTime || !editTimeValue}
                   className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:opacity-50"
                 >
-                  {isUpdatingTime ? 'Updating...' : 'Update Time'}
+                  {isUpdatingTime ? 'Updating...' : 'Update Date/Time'}
                 </button>
               </div>
             </div>
@@ -9367,6 +9750,154 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
                 >
                   OK
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Rider Modal */}
+        {editRiderModal && editRiderForm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="mx-4 w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
+              <h3 className="mb-4 text-lg font-semibold text-gray-900">
+                Edit Rider Details
+              </h3>
+              <p className="mb-4 text-sm text-gray-600">
+                {editRiderModal.rider.name} • Flight #
+                {editRiderModal.rider.flight_id}
+              </p>
+              <div className="max-h-96 space-y-4 overflow-y-auto">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Flight Number
+                  </label>
+                  <input
+                    type="text"
+                    value={editRiderForm.flight_no}
+                    onChange={(e) =>
+                      setEditRiderForm({
+                        ...editRiderForm,
+                        flight_no: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Airline Code (IATA)
+                  </label>
+                  <input
+                    type="text"
+                    value={editRiderForm.airline_iata}
+                    onChange={(e) =>
+                      setEditRiderForm({
+                        ...editRiderForm,
+                        airline_iata: e.target.value.toUpperCase(),
+                      })
+                    }
+                    maxLength={3}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Airport
+                  </label>
+                  <input
+                    type="text"
+                    value={editRiderForm.airport}
+                    onChange={(e) =>
+                      setEditRiderForm({
+                        ...editRiderForm,
+                        airport: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Direction
+                  </label>
+                  <select
+                    value={editRiderForm.to_airport ? 'to' : 'from'}
+                    onChange={(e) =>
+                      setEditRiderForm({
+                        ...editRiderForm,
+                        to_airport: e.target.value === 'to',
+                      })
+                    }
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  >
+                    <option value="to">To Airport</option>
+                    <option value="from">From Airport</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editRiderForm.date}
+                    onChange={(e) =>
+                      setEditRiderForm({
+                        ...editRiderForm,
+                        date: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Time Range (HH:MM - HH:MM)
+                  </label>
+                  <input
+                    type="text"
+                    value={editRiderForm.time_range}
+                    onChange={(e) =>
+                      setEditRiderForm({
+                        ...editRiderForm,
+                        time_range: e.target.value,
+                      })
+                    }
+                    placeholder="09:00 - 12:00"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Format: HH:MM - HH:MM (24-hour format)
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setEditRiderModal(null)
+                    setEditRiderForm(null)
+                  }}
+                  disabled={isUpdatingRider}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    await handleUpdateRider(editRiderModal.rider.flight_id, {
+                      flight_no: editRiderForm.flight_no,
+                      airline_iata: editRiderForm.airline_iata,
+                      airport: editRiderForm.airport,
+                      to_airport: editRiderForm.to_airport,
+                      date: editRiderForm.date,
+                      time_range: editRiderForm.time_range,
+                    })
+                  }}
+                  disabled={isUpdatingRider}
+                  className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:opacity-50"
+                >
+                  {isUpdatingRider ? 'Updating...' : 'Update Rider'}
                 </button>
               </div>
             </div>
