@@ -17,9 +17,11 @@ import {
   Plane,
   PlaneLanding,
   PlaneTakeoff,
+  UserPlus,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import AddRider from './AddRider'
 
 interface AdminDashboardProps {
   user: User
@@ -72,6 +74,7 @@ interface ChangeLogEntry {
     | 'UPDATE_VOUCHER'
     | 'UPDATE_RIDER_DETAILS'
     | 'EMAIL_CONFIRMED'
+    | 'ADD_FLIGHT'
   algorithm_run_id?: string | null
   target_group_id?: string | null
   target_user_id?: string | null
@@ -100,6 +103,8 @@ const getChangeDescription = (action: string): string => {
       return 'Group created'
     case 'DELETE_GROUP':
       return 'Group deleted'
+    case 'ADD_FLIGHT':
+      return 'Added flight'
     default:
       return 'Modified'
   }
@@ -709,6 +714,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     time_range: string
   } | null>(null)
   const [isUpdatingRider, setIsUpdatingRider] = useState(false)
+  const [isAddRiderOpen, setIsAddRiderOpen] = useState(false)
 
   // Log validation error modal state changes
   useEffect(() => {
@@ -4042,11 +4048,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           )
         }
 
-        // Update all existing matches in the group with the new time, uber_type, is_subsidized, and set is_verified to false
+        // Update all existing matches in the group with uber_type, is_subsidized, and set is_verified to false
+        // Note: We do NOT update the time automatically - time should be updated separately using the clock icon
         const { error: updateMatchesError } = await supabase
           .from('Matches')
           .update({
-            time: formattedTime,
             uber_type: uberType,
             is_subsidized: isSubsidized,
             is_verified: false,
@@ -5402,7 +5408,28 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               actionText = 'moved a rider to corral'
             }
           } else if (entry.metadata?.to === 'unmatched') {
-            if (personName && groupId) {
+            // Check if this is a newly added rider (not removed from a group)
+            if (
+              entry.metadata?.source === 'manual_add' ||
+              entry.metadata?.action_description
+            ) {
+              // Use the explicit action description if provided
+              if (entry.metadata?.action_description) {
+                actionText = entry.metadata.action_description
+              } else {
+                const flightInfo = entry.metadata?.flight_no
+                  ? entry.metadata?.airline_iata
+                    ? `${entry.metadata.airline_iata} ${entry.metadata.flight_no}`
+                    : `Flight ${entry.metadata.flight_no}`
+                  : 'a flight'
+                const dateInfo = entry.metadata?.date || ''
+                if (personName) {
+                  actionText = `added new unmatched rider ${personName} with ${flightInfo} on ${dateInfo}`
+                } else {
+                  actionText = `added new unmatched rider with ${flightInfo} on ${dateInfo}`
+                }
+              }
+            } else if (personName && groupId) {
               actionText = `removed user ${personName} from group ${groupId} and left them as unmatched`
             } else if (personName) {
               actionText = `removed user ${personName} from a group and left them as unmatched`
@@ -5562,6 +5589,24 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             } else {
               actionText = `updated ${riderName}'s details`
             }
+          }
+          break
+        case 'ADD_FLIGHT':
+          // New flight added (typically unmatched)
+          const addFlightIdentifier =
+            entry.metadata?.airline_iata && entry.metadata?.flight_no
+              ? `${entry.metadata.airline_iata} ${entry.metadata.flight_no}`
+              : entry.metadata?.flight_no
+                ? `Flight ${entry.metadata.flight_no}`
+                : 'a flight'
+          const addFlightDate = entry.metadata?.date || ''
+          const addFlightRiderName =
+            entry.metadata?.rider_name || personName || 'a rider'
+
+          if (entry.metadata?.action_description) {
+            actionText = entry.metadata.action_description
+          } else {
+            actionText = `added new flight ${addFlightIdentifier} for ${addFlightRiderName} on ${addFlightDate}`
           }
           break
       }
@@ -6970,6 +7015,15 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             >
               <Download className="h-3.5 w-3.5" />
               <span>Unmatched CSV</span>
+            </button>
+            {/* Add Rider Button */}
+            <button
+              onClick={() => setIsAddRiderOpen(true)}
+              className="ml-auto flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-700"
+              title="Add New Rider"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span>Add Rider</span>
             </button>
           </div>
 
@@ -9210,6 +9264,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             value: 'UPDATE_RIDER_DETAILS',
                             label: 'Update Rider Details',
                           },
+                          { value: 'ADD_FLIGHT', label: 'Add Flight' },
                         ].map((action) => (
                           <label
                             key={action.value}
@@ -9903,6 +9958,17 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             </div>
           </div>
         )}
+
+        {/* Add Rider Modal */}
+        <AddRider
+          isOpen={isAddRiderOpen}
+          onClose={() => setIsAddRiderOpen(false)}
+          onSuccess={async () => {
+            // Refresh data after adding rider
+            await fetchData()
+          }}
+          logToChangeLog={logToChangeLog}
+        />
       </div>
     </div>
   )
