@@ -3466,20 +3466,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               updatedRiders.length,
             )
 
-            // Recalculate time range and midpoint for the group
-            const newTimeRange = calculateGroupTimeRange(updatedRiders)
-            const midpointTime = calculateTimeMidpoint(newTimeRange)
-            const formattedTime =
-              midpointTime.includes(':') && midpointTime.split(':').length === 2
-                ? `${midpointTime}:00`
-                : midpointTime
-
+            // Don't recalculate time - keep existing group time
+            // Only update uber_type, is_subsidized, and is_verified
             if (uberType) {
-              // Update all matches in the group with new time, uber_type, is_subsidized, and set is_verified to false
+              // Update all matches in the group with uber_type, is_subsidized, and set is_verified to false
+              // Do NOT update time - time should be changed manually only
               const { error: updateError } = await supabase
                 .from('Matches')
                 .update({
-                  time: formattedTime,
                   uber_type: uberType,
                   is_subsidized: isSubsidized,
                   is_verified: false,
@@ -3505,28 +3499,17 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               const remainingRiders = g.riders.filter(
                 (r) => r.flight_id !== rider.flight_id,
               )
-              // Recalculate time range if there are remaining riders
+              // Recalculate time range for display only, but keep existing match_time
               const newTimeRange =
                 remainingRiders.length > 0
                   ? calculateGroupTimeRange(remainingRiders)
                   : g.time_range
-              const midpointTime =
-                remainingRiders.length > 0
-                  ? calculateTimeMidpoint(newTimeRange)
-                  : g.match_time
-              const formattedTime =
-                remainingRiders.length > 0 && midpointTime
-                  ? midpointTime.includes(':') &&
-                    midpointTime.split(':').length === 2
-                    ? `${midpointTime}:00`
-                    : midpointTime
-                  : g.match_time
-
+              // Keep existing match_time - don't recalculate
               return {
                 ...g,
                 riders: remainingRiders,
-                time_range: newTimeRange,
-                match_time: formattedTime,
+                time_range: newTimeRange, // Update time range for display only
+                match_time: g.match_time, // Keep existing time - don't change
                 uber_type: newUberType !== null ? newUberType : g.uber_type, // Update uber_type if calculated
               }
             }
@@ -3916,10 +3899,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           updatedRidersCount: updatedRiders.length,
         })
 
-        // Use custom time/date if provided, otherwise calculate from overlap
+        // Use custom time/date if provided, otherwise check for overlap
         let formattedTime: string
         let finalDate: string
         let newTimeRange: string
+        let shouldUpdateGroupTime = false
 
         if (customTime && customDate) {
           // Use custom time/date provided by user
@@ -3931,18 +3915,43 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           // For custom time, we still need a time range - use the custom time as both start and end
           // Or calculate from the group's existing time range
           newTimeRange = calculateGroupTimeRange(updatedRiders)
+          shouldUpdateGroupTime = true // Custom time should update the group
         } else {
           // Calculate new time range overlap for the group
           newTimeRange = calculateGroupTimeRange(updatedRiders)
 
-          // Calculate midpoint of the overlap
-          const midpointTime = calculateTimeMidpoint(newTimeRange)
+          // Check if there's actually an overlap (not just a fallback to first rider's range)
+          const hasOverlap = validateTimeCompatibility(group, rider)
 
-          // Format time to HH:MM:SS
-          formattedTime =
-            midpointTime.includes(':') && midpointTime.split(':').length === 2
-              ? `${midpointTime}:00`
-              : midpointTime
+          if (hasOverlap && newTimeRange && newTimeRange !== rider.time_range) {
+            // There's an overlap - calculate midpoint and update group time
+            const midpointTime = calculateTimeMidpoint(newTimeRange)
+            formattedTime =
+              midpointTime.includes(':') && midpointTime.split(':').length === 2
+                ? `${midpointTime}:00`
+                : midpointTime
+            shouldUpdateGroupTime = true
+          } else {
+            // No overlap - keep existing group time (don't update existing matches)
+            if (group.match_time) {
+              formattedTime = group.match_time
+              // Ensure formattedTime has seconds
+              if (formattedTime.split(':').length === 2) {
+                formattedTime = `${formattedTime}:00`
+              }
+            } else {
+              // No existing time - use calculated time for new rider only (don't update existing matches)
+              const midpointTime = calculateTimeMidpoint(
+                newTimeRange || group.time_range || '12:00 - 12:00',
+              )
+              formattedTime =
+                midpointTime.includes(':') &&
+                midpointTime.split(':').length === 2
+                  ? `${midpointTime}:00`
+                  : midpointTime
+            }
+            shouldUpdateGroupTime = false
+          }
           finalDate = group.date
         }
 
@@ -4049,14 +4058,18 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         }
 
         // Update all existing matches in the group with uber_type, is_subsidized, and set is_verified to false
-        // Note: We do NOT update the time automatically - time should be updated separately using the clock icon
+        // Only update time if there's an overlap, otherwise keep existing time
+        const updateData: any = {
+          uber_type: uberType,
+          is_subsidized: isSubsidized,
+          is_verified: false,
+        }
+        if (shouldUpdateGroupTime) {
+          updateData.time = formattedTime
+        }
         const { error: updateMatchesError } = await supabase
           .from('Matches')
-          .update({
-            uber_type: uberType,
-            is_subsidized: isSubsidized,
-            is_verified: false,
-          })
+          .update(updateData)
           .eq('ride_id', group.ride_id)
 
         if (updateMatchesError) {
@@ -4116,8 +4129,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               return {
                 ...g,
                 riders: [...g.riders, rider],
-                time_range: newTimeRange, // Update time range
-                match_time: formattedTime, // Update match time
+                time_range: newTimeRange, // Update time range (for display)
+                match_time: shouldUpdateGroupTime
+                  ? formattedTime
+                  : g.match_time, // Only update if overlap exists
                 uber_type: uberType, // Update uber_type in local state
               }
             }
@@ -4133,22 +4148,15 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   remainingRiders.length,
                   bagUnits,
                 )
-                // Recalculate time range and midpoint for source group
+                // Recalculate time range for display only, but keep existing match_time
                 const newSourceTimeRange =
                   calculateGroupTimeRange(remainingRiders)
-                const sourceMidpointTime =
-                  calculateTimeMidpoint(newSourceTimeRange)
-                const formattedSourceTime =
-                  sourceMidpointTime.includes(':') &&
-                  sourceMidpointTime.split(':').length === 2
-                    ? `${sourceMidpointTime}:00`
-                    : sourceMidpointTime
 
-                // Update all matches in source group with new time
+                // Update all matches in source group with uber_type, but NOT time
+                // Time should be changed manually only
                 supabase
                   .from('Matches')
                   .update({
-                    time: formattedSourceTime,
                     uber_type: newUberType || g.uber_type,
                     is_verified: false,
                   })
@@ -4165,8 +4173,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 return {
                   ...g,
                   riders: remainingRiders,
-                  time_range: newSourceTimeRange,
-                  match_time: formattedSourceTime,
+                  time_range: newSourceTimeRange, // Update time range for display only
+                  match_time: g.match_time, // Keep existing time - don't change
                   uber_type: newUberType || g.uber_type,
                 }
               }
@@ -4591,17 +4599,26 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
       // No need to check for null/undefined - uberType will always be a string
 
-      // Calculate time range overlap from selected riders
+      // Use manually set time if provided, otherwise calculate from overlap
+      let formattedTime: string
       const calculatedTimeRange = calculateGroupTimeRange(
         selectedRidersForNewGroup,
       )
-      const midpointTime = calculateTimeMidpoint(calculatedTimeRange)
 
-      // Format time to HH:MM:SS (database expects seconds)
-      const formattedTime =
-        midpointTime.includes(':') && midpointTime.split(':').length === 2
-          ? `${midpointTime}:00`
-          : midpointTime
+      if (newGroupTime) {
+        // Use manually set time
+        formattedTime =
+          newGroupTime.includes(':') && newGroupTime.split(':').length === 2
+            ? `${newGroupTime}:00`
+            : newGroupTime
+      } else {
+        // Calculate from overlap if no time is manually set
+        const midpointTime = calculateTimeMidpoint(calculatedTimeRange)
+        formattedTime =
+          midpointTime.includes(':') && midpointTime.split(':').length === 2
+            ? `${midpointTime}:00`
+            : midpointTime
+      }
 
       // Format date for database (YYYY-MM-DD)
       const rideDate = new Date(newGroupDate).toISOString().split('T')[0]

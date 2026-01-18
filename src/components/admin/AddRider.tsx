@@ -1,8 +1,8 @@
 'use client'
 
 import { createBrowserClient } from '@/utils/supabase'
-import { useState, useEffect, useMemo } from 'react'
-import { X, User, Plane, Search } from 'lucide-react'
+import { Plane, Search, User, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 
 type ChangeLogAction =
   | 'RUN_ALGORITHM'
@@ -311,47 +311,7 @@ export default function AddRider({
         }
       }
 
-      // Check for duplicate flight number if flight_no is provided
-      if (finalFlightNo) {
-        const { data: existingFlights, error: checkError } = await supabase
-          .from('Flights')
-          .select('flight_id, flight_no, airline_iata, date, user_id')
-          .eq('user_id', selectedUser.user_id)
-          .eq('flight_no', finalFlightNo)
-          .eq('date', date)
-
-        if (checkError) {
-          console.error('Error checking for duplicates:', checkError)
-          setError('Error checking for duplicate flights')
-          setSubmitting(false)
-          return
-        }
-
-        if (existingFlights && existingFlights.length > 0) {
-          // If airline_iata is also provided, check if it matches
-          if (airlineIata) {
-            const exactMatch = existingFlights.find(
-              (f) => f.airline_iata === airlineIata.toUpperCase(),
-            )
-            if (exactMatch) {
-              setError(
-                `Flight ${airlineIata.toUpperCase()} ${finalFlightNo} already exists for this user on ${date}`,
-              )
-              setSubmitting(false)
-              return
-            }
-          } else {
-            // If no airline code provided but flight number exists, warn
-            setError(
-              `Flight number ${finalFlightNo} already exists for this user on ${date}. Please provide an airline code if this is a different flight.`,
-            )
-            setSubmitting(false)
-            return
-          }
-        }
-      }
-
-      // Insert flight
+      // Insert flight (no duplicate check - multiple people can have the same flight on the same date)
       const { data: flightData, error: flightError } = await supabase
         .from('Flights')
         .insert({
