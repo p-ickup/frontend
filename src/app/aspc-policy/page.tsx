@@ -81,7 +81,7 @@ export default function ASPCPolicy() {
               {/* Spring Break */}
               <div className="mb-6 rounded-xl bg-gradient-to-r from-orange-50 to-amber-50 p-6">
                 <h3 className="mb-3 text-xl font-semibold text-gray-800">
-                  🦃 Spring Break
+                  Spring Break
                 </h3>
                 <div className="space-y-3">
                   <div>
