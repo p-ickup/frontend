@@ -161,6 +161,15 @@ const SERVICE_PERIODS: ServicePeriod[] = [
     deadline: '2026-01-09T23:59:59-08:00',
     name: 'Winter Break (Return)',
   },
+  // Spring Break (Mar 13-15 departure + Mar 21-22 return)
+  // With 5-day start buffer, 4-day end buffer: Mar 8 - Mar 26
+  // Deadline: Mar 6 @ 11:59 PM PT
+  {
+    start: '2026-03-08', // 5 days before Mar 13
+    end: '2026-03-26', // 4 days after Mar 22
+    deadline: '2026-03-06T23:59:59-08:00',
+    name: 'Spring Break',
+  },
 ]
 
 /**

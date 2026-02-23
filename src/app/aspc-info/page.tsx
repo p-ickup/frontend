@@ -141,8 +141,9 @@ export default function ASPCInfoPage() {
           </div>
         </div>
 
-        {/* Featured Subsidy Policy Box */}
-        <div className="mb-8">
+        {/* Featured Policy Boxes */}
+        <div className="mb-8 space-y-6">
+          {/* Subsidy Policy Box */}
           <div
             className="hover:shadow-3xl transform cursor-pointer rounded-2xl border-2 border-teal-300/30 bg-gradient-to-br from-teal-400/20 to-teal-600/20 shadow-2xl backdrop-blur-sm transition-all duration-300 hover:-translate-y-1"
             onClick={() => handleLinkClick('/aspc-policy', true)}
@@ -167,6 +168,37 @@ export default function ASPCInfoPage() {
                 <div className="mt-4 border-t border-gray-300/30 pt-4">
                   <p className="text-sm text-gray-600">
                     Click to view PICKUP subsidy policy
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Cancellation & Change Fees Box */}
+          <div
+            className="hover:shadow-3xl transform cursor-pointer rounded-2xl border-2 border-orange-300/30 bg-gradient-to-br from-orange-400/20 to-red-500/20 shadow-2xl backdrop-blur-sm transition-all duration-300 hover:-translate-y-1"
+            onClick={() => handleLinkClick('/aspc-fees', true)}
+            onMouseEnter={() => setHoveredLink('Fees Policy')}
+            onMouseLeave={() => setHoveredLink(null)}
+          >
+            <div className="p-8 text-gray-800">
+              <div className="mb-4 flex items-center gap-4">
+                <div className="rounded-xl bg-orange-500/20 p-4 backdrop-blur-sm">
+                  <FileText className="h-8 w-8 text-orange-700" />
+                </div>
+                <div>
+                  <h3 className="mb-1 text-2xl font-bold text-gray-800">
+                    Cancellation & Change Fees
+                  </h3>
+                  <p className="text-lg text-gray-600">
+                    Fee structure for cancellations and changes
+                  </p>
+                </div>
+              </div>
+              {hoveredLink === 'Fees Policy' && (
+                <div className="mt-4 border-t border-gray-300/30 pt-4">
+                  <p className="text-sm text-gray-600">
+                    Click to view cancellation and change fee policy
                   </p>
                 </div>
               )}
