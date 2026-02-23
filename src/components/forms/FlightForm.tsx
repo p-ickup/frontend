@@ -254,6 +254,10 @@ export default function FlightForm({
       { start: '2025-12-09', end: '2025-12-13', type: 'departure' },
       // Winter Break Return: January 17-21, 2026
       { start: '2026-01-17', end: '2026-01-21', type: 'return' },
+      // Spring Break Departure: March 13-15, 2026
+      { start: '2026-03-13', end: '2026-03-15', type: 'departure' },
+      // Spring Break Return: March 21-22, 2026
+      { start: '2026-03-21', end: '2026-03-22', type: 'return' },
     ]
 
     // Check if date is within any operational period
@@ -273,7 +277,7 @@ export default function FlightForm({
 
     if (!isWithinOperationalPeriod) {
       setAspcWarningMessage(
-        'Your flight date is not within ASPC RideLink operational periods (Thanksgiving Break or Winter Break). You can still use P-ICKUP to coordinate non-subsidized rides.',
+        'Your flight date is not within ASPC RideLink operational periods. You can still use P-ICKUP to coordinate non-subsidized rides.',
       )
       setIsASPCGuaranteed(false)
       setShowASPCWarning(true)
