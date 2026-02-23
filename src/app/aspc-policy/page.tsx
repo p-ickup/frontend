@@ -61,6 +61,15 @@ export default function ASPCPolicy() {
                   ridelink@aspc.pomona.edu
                 </a>
               </p>
+              <p className="mt-3 text-center text-sm text-gray-600">
+                📋 View{' '}
+                <button
+                  onClick={() => router.push('/aspc-fees')}
+                  className="font-semibold text-teal-700 hover:underline"
+                >
+                  Cancellation & Change Fees
+                </button>
+              </p>
             </div>
 
             {/* Operational Periods */}
@@ -69,10 +78,10 @@ export default function ASPCPolicy() {
                 📅 Operational Periods
               </h2>
 
-              {/* Thanksgiving Break */}
+              {/* Spring Break */}
               <div className="mb-6 rounded-xl bg-gradient-to-r from-orange-50 to-amber-50 p-6">
                 <h3 className="mb-3 text-xl font-semibold text-gray-800">
-                  🦃 Thanksgiving Break
+                  🦃 Spring Break
                 </h3>
                 <div className="space-y-3">
                   <div>
@@ -80,7 +89,7 @@ export default function ASPCPolicy() {
                       Deadline to request:
                     </p>
                     <p className="text-gray-700">
-                      Friday, November 14, 2025 at 11:59 PM PST
+                      Friday, March 6, 2026 at 11:59 PM PST
                     </p>
                   </div>
                   <div>
@@ -88,61 +97,9 @@ export default function ASPCPolicy() {
                       Service Window:
                     </p>
                     <ul className="ml-5 list-disc space-y-1 text-gray-700">
-                      <li>Departures: November 21-26</li>
-                      <li>Returns: November 29-December 1</li>
+                      <li>Departures: March 13-15</li>
+                      <li>Returns: March 21-22</li>
                     </ul>
-                  </div>
-                </div>
-              </div>
-
-              {/* Winter Break Departure */}
-              <div className="mb-6 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 p-6">
-                <h3 className="mb-3 text-xl font-semibold text-gray-800">
-                  ❄️ Winter Break Departure
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="font-semibold text-gray-800">
-                      Deadline to request:
-                    </p>
-                    <p className="text-gray-700">
-                      Wednesday, December 3, 2025 at 11:59 PM PST
-                    </p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-800">
-                      Service Window:
-                    </p>
-                    <p className="text-gray-700">December 9-13</p>
-                  </div>
-                  <div className="rounded-lg bg-yellow-100 p-3">
-                    <p className="text-sm font-semibold text-yellow-900">
-                      ⚠️ Pomona College dorms and facilities close at 12:00 PM
-                      on December 13.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Winter Break Return */}
-              <div className="rounded-xl bg-gradient-to-r from-teal-50 to-cyan-50 p-6">
-                <h3 className="mb-3 text-xl font-semibold text-gray-800">
-                  🎉 Winter Break Return
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="font-semibold text-gray-800">
-                      Deadline to request:
-                    </p>
-                    <p className="text-gray-700">
-                      Friday, January 9, 2026 at 11:59 PM PST
-                    </p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-800">
-                      Service Window:
-                    </p>
-                    <p className="text-gray-700">January 17-21</p>
                   </div>
                 </div>
               </div>
