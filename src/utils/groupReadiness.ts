@@ -10,6 +10,7 @@ export function isGroupReady(
     reported_missing_user_ids: string[] | null
   }[],
 ): boolean {
+  if (matches.length === 0) return false
   const accountedFor = new Set<string>()
   for (const m of matches) {
     if (m.ready_for_pickup_at) accountedFor.add(m.user_id)

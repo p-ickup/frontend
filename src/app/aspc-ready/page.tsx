@@ -252,15 +252,21 @@ function AspcReadyContent() {
       return
     }
 
-    const { data: updatedMatches } = await supabase
+    const { data: updatedMatches, error: selectError } = await supabase
       .from('Matches')
       .select(
         'user_id, ready_for_pickup_at, ready_for_pickup_status, reported_missing_user_ids',
       )
       .eq('ride_id', rideId)
 
+    if (selectError) {
+      setError(selectError.message)
+      setSubmitting(false)
+      return
+    }
+
     const matchesData = (updatedMatches || []) as MatchRow[]
-    const nowReady = isGroupReady(matchesData)
+    const nowReady = matchesData.length > 0 && isGroupReady(matchesData)
 
     if (nowReady) {
       await supabase
