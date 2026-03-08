@@ -573,8 +573,8 @@ function AspcReadyContent() {
                 />
                 <span className="text-sm font-medium text-gray-700">
                   I acknowledge the suggested vehicle size (Uber {uberType}). If
-                  there are more people or bags than expected, you can order a
-                  larger ride.
+                  not all people or luggage will fit, you can order a larger
+                  ride.
                 </span>
               </label>
               <label className="flex min-h-[44px] cursor-pointer items-start gap-3 sm:min-h-0 sm:items-center">
