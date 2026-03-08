@@ -6,6 +6,7 @@ import { createBrowserClient } from '@/utils/supabase'
 import { useSearchParams } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import RedirectButton from '@/components/buttons/RedirectButton'
 import { isGroupReady } from '@/utils/groupReadiness'
 
@@ -43,9 +44,6 @@ const getPickupLocation = (airport: string, toAirport: boolean): string => {
   }
   return `${airport}'s rideshare location`
 }
-
-const DELAY_VERIFICATION_FORM_URL =
-  'https://docs.google.com/forms/d/e/1FAIpQLSfmAK5eeJK1Z-zgH-5f3YLpD4sywjpsjYZwgiZPGlis5a-04A/viewform'
 
 function countConfirmed(matches: MatchRow[]): number {
   return matches.filter((m) => m.ready_for_pickup_at).length
@@ -438,10 +436,8 @@ function AspcReadyContent() {
       <div className="relative mx-auto max-w-2xl px-4 py-6 sm:py-12">
         <div className="rounded-2xl bg-white/80 p-4 shadow-xl backdrop-blur-sm sm:p-8">
           {/* Delayed / Missing notice */}
-          <a
-            href={DELAY_VERIFICATION_FORM_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href={`/aspc-delay/${rideId}`}
             className="mb-6 flex w-full items-center gap-3 rounded-xl border-2 border-orange-200 bg-orange-50 p-4 transition hover:border-orange-300 hover:bg-orange-100"
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-200">
@@ -464,8 +460,8 @@ function AspcReadyContent() {
                 Delayed or missing?
               </p>
               <p className="text-sm text-orange-800">
-                If you are delayed or will miss this ride, fill out the Delay
-                Verification Form.
+                If you are delayed and will miss this ride, report it here and
+                get rematched or a contingency voucher.
               </p>
             </div>
             <svg
@@ -481,7 +477,7 @@ function AspcReadyContent() {
                 d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
               />
             </svg>
-          </a>
+          </Link>
 
           <h1 className="mb-2 text-xl font-bold text-gray-800 sm:text-2xl">
             Confirm your group is ready to receive voucher
