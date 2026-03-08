@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import Link from 'next/link'
 import { MatchWithDetails } from '@/app/results/page'
 import { useState } from 'react'
 import { createBrowserClient } from '@/utils/supabase'
@@ -9,6 +10,8 @@ interface MatchCardProps {
   matches: MatchWithDetails[]
   upcoming: boolean
   onDelete?: (rideId: number) => Promise<void>
+  rideId?: number
+  isGroupReady?: boolean
 }
 
 const getAirportAddress = (airport: string): string => {
@@ -79,7 +82,13 @@ END:VCALENDAR`
   URL.revokeObjectURL(url)
 }
 
-const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
+const MatchCard = ({
+  matches,
+  upcoming,
+  onDelete,
+  rideId,
+  isGroupReady,
+}: MatchCardProps) => {
   const firstMatch = matches[0]
   const supabase = createBrowserClient()
   const [isDeleting, setIsDeleting] = useState(false)
@@ -204,7 +213,7 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
                 {getAirportAddress(firstMatch.Flights.airport)}
               </span>
             </p>
-            {firstMatch.voucher && (
+            {firstMatch.voucher && isGroupReady ? (
               <p className="flex items-center gap-1.5">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -221,10 +230,65 @@ const MatchCard = ({ matches, upcoming, onDelete }: MatchCardProps) => {
                   />
                 </svg>
                 <span className="font-medium text-gray-800">
-                  Voucher: {firstMatch.voucher}
+                  Voucher:{' '}
+                  {firstMatch.voucher?.startsWith('https') ? (
+                    <a
+                      href={firstMatch.voucher}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-600 underline hover:text-indigo-800"
+                    >
+                      {firstMatch.voucher}
+                    </a>
+                  ) : (
+                    firstMatch.voucher
+                  )}
                 </span>
               </p>
-            )}
+            ) : firstMatch.voucher && rideId && upcoming ? (
+              <Link
+                href={`/aspc-ready?ride_id=${rideId}`}
+                className="flex flex-col gap-2 rounded-lg border-2 border-teal-300 bg-teal-50 p-3 transition hover:border-teal-400 hover:bg-teal-100 sm:flex-row sm:items-center sm:gap-3"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 shrink-0 text-teal-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-teal-800">
+                    Confirm your group is ready to unlock your voucher
+                  </p>
+                  <p className="text-sm text-teal-600">
+                    Everyone in your group must confirm they&apos;re at the
+                    pickup location
+                  </p>
+                </div>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 shrink-0 text-teal-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </Link>
+            ) : null}
           </div>
 
           {upcoming && (
