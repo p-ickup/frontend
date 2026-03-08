@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import RedirectButton from '@/components/buttons/RedirectButton'
+import { isGroupReady } from '@/utils/groupReadiness'
 
 type MatchRow = {
   ride_id: number
@@ -34,25 +35,17 @@ const getPickupLocation = (airport: string, toAirport: boolean): string => {
   if (toAirport) {
     return '647 N College Way (outside Lincoln Hall)'
   }
+  if (airport === 'LAX') {
+    return 'Take the LAX-it shuttle to rideshare area'
+  }
+  if (airport === 'ONT') {
+    return 'At ONT: Group picks a curbside terminal meeting point. Use the inter-terminal bus between T2 and T4 if needed.'
+  }
   return `${airport}'s rideshare location`
 }
 
 const DELAY_VERIFICATION_FORM_URL =
   'https://docs.google.com/forms/d/e/1FAIpQLSfmAK5eeJK1Z-zgH-5f3YLpD4sywjpsjYZwgiZPGlis5a-04A/viewform'
-
-function isGroupReady(matches: MatchRow[]): boolean {
-  const members = matches.map((m) => m.user_id)
-  const accountedFor = new Set<string>()
-
-  for (const m of matches) {
-    if (m.ready_for_pickup_at) accountedFor.add(m.user_id)
-    for (const id of m.reported_missing_user_ids || []) {
-      accountedFor.add(id)
-    }
-  }
-
-  return members.every((m) => accountedFor.has(m))
-}
 
 function countConfirmed(matches: MatchRow[]): number {
   return matches.filter((m) => m.ready_for_pickup_at).length
@@ -141,7 +134,8 @@ function AspcReadyContent() {
         return
       }
 
-      const rides = (userMatches || []).map(
+      const now = new Date()
+      const rideEntries = (userMatches || []).map(
         (m: {
           ride_id: number
           date: string | null
@@ -162,17 +156,37 @@ function AspcReadyContent() {
                 date?: string
               } | null)
           const date = m.date || flight?.date || ''
+          const time = m.time || '00:00'
           const d = date
             ? new Date(date + 'T00:00:00').toLocaleDateString()
             : 'Unknown'
           const dir = flight?.to_airport ? 'School → ' : ''
+          const sortKey =
+            date && time ? new Date(date + 'T' + time).getTime() : 0
           return {
             ride_id: m.ride_id,
             label: `${dir}${flight?.airport || 'Airport'} | ${d}`,
+            sortKey,
           }
         },
       )
-      setUserRides(rides)
+      // Deduplicate by ride_id (keep first)
+      const seenRideIds = new Set<number>()
+      const deduped = rideEntries.filter((r) => {
+        if (seenRideIds.has(r.ride_id)) return false
+        seenRideIds.add(r.ride_id)
+        return true
+      })
+      // Sort: upcoming first (soonest first), then past (most recent past first)
+      const sorted = deduped.sort((a, b) => {
+        const aUpcoming = a.sortKey >= now.getTime()
+        const bUpcoming = b.sortKey >= now.getTime()
+        if (aUpcoming && !bUpcoming) return -1
+        if (!aUpcoming && bUpcoming) return 1
+        if (aUpcoming && bUpcoming) return a.sortKey - b.sortKey
+        return b.sortKey - a.sortKey
+      })
+      setUserRides(sorted.map(({ ride_id, label }) => ({ ride_id, label })))
     }
   }, [user, rideId, supabase])
 
@@ -464,7 +478,7 @@ function AspcReadyContent() {
           </a>
 
           <h1 className="mb-2 text-xl font-bold text-gray-800 sm:text-2xl">
-            Confirm your group is ready for pickup
+            Confirm your group is ready to receive voucher
           </h1>
           <p className="mb-6 text-gray-600">
             {firstMatch?.Flights?.to_airport
@@ -556,7 +570,7 @@ function AspcReadyContent() {
                   className="mt-1 h-5 w-5 shrink-0 rounded border-gray-300 text-teal-600 sm:mt-0"
                 />
                 <span className="text-sm font-medium text-gray-700">
-                  I acknowledge the suggested vehicle size ({uberType}). If
+                  I acknowledge the suggested vehicle size (Uber {uberType}). If
                   there are more people or bags than expected, you can order a
                   larger ride.
                 </span>
@@ -569,10 +583,10 @@ function AspcReadyContent() {
                   className="mt-1 h-5 w-5 shrink-0 rounded border-gray-300 text-teal-600 sm:mt-0"
                 />
                 <span className="text-sm font-medium text-gray-700">
-                  I acknowledge that to the best of my knowledge I will wait for
-                  everyone in my group before requesting the ride, unless I know
-                  they are not showing up, are delayed, or I have waited a
-                  reasonable time for them.
+                  I acknowledge that I will wait for everyone in my group before
+                  requesting the ride. If I know they are not showing up, are
+                  delayed, or we have waited at least 15 minutes for them, I
+                  will report them missing from the group.
                 </span>
               </label>
             </div>

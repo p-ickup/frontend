@@ -5,6 +5,7 @@ import EmptyState from '@/components/results/EmptyState'
 import MatchCard from '@/components/results/MatchCard'
 import type { Database } from '@/lib/database.types'
 import { createBrowserClient } from '@/utils/supabase'
+import { isGroupReady } from '@/utils/groupReadiness'
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -40,23 +41,6 @@ const groupMatchesByRideId = (matches: MatchWithDetails[]) => {
   })
 
   return grouped
-}
-
-function isGroupReadyForRide(
-  matches: {
-    user_id: string
-    ready_for_pickup_at: string | null
-    reported_missing_user_ids: string[] | null
-  }[],
-): boolean {
-  const accountedFor = new Set<string>()
-  for (const m of matches) {
-    if (m.ready_for_pickup_at) accountedFor.add(m.user_id)
-    for (const id of m.reported_missing_user_ids || []) {
-      accountedFor.add(id)
-    }
-  }
-  return matches.every((m) => accountedFor.has(m.user_id))
 }
 
 export default function Results() {
@@ -207,10 +191,10 @@ export default function Results() {
         const groupReadyAt = (
           rideMatches[0] as { group_ready_at?: string | null }
         )?.group_ready_at
-        const computedReady = isGroupReadyForRide(rideMatches)
+        const computedReady = isGroupReady(rideMatches)
         const timePassed =
           matchDateTime != null &&
-          matchDateTime.getTime() + 60 * 60 * 1000 < Date.now()
+          matchDateTime.getTime() + 15 * 60 * 1000 < Date.now()
         const isReady = groupReadyAt != null || computedReady || timePassed
 
         if (computedReady && groupReadyAt == null) {
