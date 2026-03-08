@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { createBrowserClient } from '@/utils/supabase'
 import { useSearchParams } from 'next/navigation'
@@ -57,7 +58,7 @@ function countConfirmed(matches: MatchRow[]): number {
   return matches.filter((m) => m.ready_for_pickup_at).length
 }
 
-export default function AspcReadyPage() {
+function AspcReadyContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const rideIdParam = searchParams.get('ride_id')
@@ -649,5 +650,19 @@ export default function AspcReadyPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AspcReadyPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="from-slate-50 relative flex min-h-screen items-center justify-center bg-gradient-to-br via-blue-50 to-indigo-100">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-200 border-t-teal-500" />
+        </div>
+      }
+    >
+      <AspcReadyContent />
+    </Suspense>
   )
 }
