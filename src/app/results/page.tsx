@@ -5,6 +5,7 @@ import EmptyState from '@/components/results/EmptyState'
 import MatchCard from '@/components/results/MatchCard'
 import type { Database } from '@/lib/database.types'
 import { createBrowserClient } from '@/utils/supabase'
+import { isGroupReady } from '@/utils/groupReadiness'
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -47,6 +48,9 @@ export default function Results() {
     upcoming: {},
     previous: {},
   })
+  const [rideReadiness, setRideReadiness] = useState<
+    Record<number, { isReady: boolean; matchDateTime: Date | null }>
+  >({})
   const [showPrevious, setShowPrevious] = useState(false)
   const [loading, setLoading] = useState(true)
   const supabase = createBrowserClient()
@@ -79,6 +83,7 @@ export default function Results() {
       if (rideError) throw rideError
       if (!userRideIds || userRideIds.length === 0) {
         setMatches({ upcoming: {}, previous: {} })
+        setRideReadiness({})
         return
       }
 
@@ -147,8 +152,11 @@ export default function Results() {
           }
           const rideId = match.ride_id
 
-          // Determine if upcoming or previous
-          const category = matchDateTime > now ? 'upcoming' : 'previous'
+          // Determine if upcoming or previous (keep in upcoming with comment section for 1hr after match time)
+          const oneHourAfterMatch = new Date(
+            matchDateTime.getTime() + 60 * 60 * 1000,
+          )
+          const category = oneHourAfterMatch > now ? 'upcoming' : 'previous'
 
           // Initialize the ride_id array if it doesn't exist
           if (!acc[category][rideId]) {
@@ -162,11 +170,55 @@ export default function Results() {
         },
         { upcoming: {}, previous: {} },
       )
+
+      const readiness: Record<
+        number,
+        { isReady: boolean; matchDateTime: Date | null }
+      > = {}
+      const rideIds = Array.from(new Set(allMatches.map((m) => m.ride_id)))
+      for (const rideId of rideIds) {
+        const rideMatches = allMatches.filter((m) => m.ride_id === rideId)
+        const firstMatch = rideMatches[0]
+        let matchDateTime: Date | null = null
+        if (firstMatch?.date && firstMatch?.time) {
+          const [y, mo, d] = firstMatch.date.split('-').map(Number)
+          const [h, min] = firstMatch.time.split(':').map(Number)
+          matchDateTime = new Date(y, mo - 1, d, h, min)
+        } else if (firstMatch?.Flights?.date) {
+          const [y, mo, d] = firstMatch.Flights.date.split('-').map(Number)
+          matchDateTime = new Date(y, mo - 1, d)
+        }
+        const groupReadyAt = (
+          rideMatches[0] as { group_ready_at?: string | null }
+        )?.group_ready_at
+        const computedReady = isGroupReady(rideMatches)
+        const timePassed =
+          matchDateTime != null &&
+          matchDateTime.getTime() + 15 * 60 * 1000 < Date.now()
+        const isReady = groupReadyAt != null || computedReady || timePassed
+
+        if (computedReady && groupReadyAt == null) {
+          const { error: updateError } = await supabase
+            .from('Matches')
+            .update({ group_ready_at: new Date().toISOString() })
+            .eq('ride_id', rideId)
+          if (updateError) {
+            console.error(
+              `[results] Failed to set group_ready_at for ride ${rideId}:`,
+              updateError,
+            )
+          }
+        }
+
+        readiness[rideId] = { isReady, matchDateTime }
+      }
+      setRideReadiness(readiness)
       setMatches(grouped)
       console.log('Grouped matches:', grouped)
     } catch (error) {
       console.error('Error details:', error)
       setMatches({ upcoming: {}, previous: {} })
+      setRideReadiness({})
     } finally {
       setLoading(false)
     }
@@ -382,6 +434,10 @@ export default function Results() {
                             matches={matchesForRide}
                             upcoming={true}
                             onDelete={deleteMatch}
+                            rideId={parseInt(rideId)}
+                            isGroupReady={
+                              rideReadiness[parseInt(rideId)]?.isReady ?? false
+                            }
                           />
                           <CommentSection rideId={parseInt(rideId)} />
                         </div>
@@ -477,6 +533,10 @@ export default function Results() {
                             key={rideId}
                             matches={matchesForRide}
                             upcoming={false}
+                            rideId={parseInt(rideId)}
+                            isGroupReady={
+                              rideReadiness[parseInt(rideId)]?.isReady ?? false
+                            }
                           />
                         ),
                       )
