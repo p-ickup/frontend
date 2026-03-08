@@ -30,6 +30,11 @@ export type Database = {
           is_subsidized: boolean | null
           contingency_voucher: string | null
           email_sent: boolean
+          ready_for_pickup_at: string | null
+          ready_for_pickup_status: 'ready' | 'reporting_missing' | null
+          reported_missing_user_ids: string[] | null
+          group_ready_at: string | null
+          uber_type: string | null
         }
       }
       Flights: {
