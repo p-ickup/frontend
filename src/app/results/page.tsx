@@ -198,10 +198,16 @@ export default function Results() {
         const isReady = groupReadyAt != null || computedReady || timePassed
 
         if (computedReady && groupReadyAt == null) {
-          void supabase
+          const { error: updateError } = await supabase
             .from('Matches')
             .update({ group_ready_at: new Date().toISOString() })
             .eq('ride_id', rideId)
+          if (updateError) {
+            console.error(
+              `[results] Failed to set group_ready_at for ride ${rideId}:`,
+              updateError,
+            )
+          }
         }
 
         readiness[rideId] = { isReady, matchDateTime }
