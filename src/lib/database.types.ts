@@ -35,6 +35,10 @@ export type Database = {
           reported_missing_user_ids: string[] | null
           group_ready_at: string | null
           uber_type: string | null
+          /** When true, is_subsidized is manual and must not be overwritten by add/move logic */
+          subsidized_override?: boolean
+          /** When true, uber_type is manual and must not be overwritten by add/move logic */
+          uber_type_override?: boolean
         }
       }
       Flights: {
