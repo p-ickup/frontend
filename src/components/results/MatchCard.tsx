@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { MatchWithDetails } from '@/app/results/page'
 import { useState } from 'react'
 import { createBrowserClient } from '@/utils/supabase'
+import { formatTime12Hour } from '@/utils/formatTime'
 
 interface MatchCardProps {
   matches: MatchWithDetails[]
@@ -174,7 +175,8 @@ const MatchCard = ({
                     return new Date(year, month - 1, day).toLocaleDateString()
                   })()
                 : 'No date'}
-              , {firstMatch.time || 'No time'}
+              ,{' '}
+              {firstMatch.time ? formatTime12Hour(firstMatch.time) : 'No time'}
             </p>
             <p className="mt-1 text-xl font-semibold text-gray-800">
               You are matched with{' '}

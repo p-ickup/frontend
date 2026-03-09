@@ -1,6 +1,7 @@
 'use client'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useSubsidyLogic } from '@/hooks/useSubsidyLogic'
 import { createBrowserClient } from '@/utils/supabase'
 import { User } from '@supabase/supabase-js'
 import {
@@ -9,6 +10,7 @@ import {
   Clock,
   Copy,
   Download,
+  Flag,
   Info,
   Luggage,
   Mail,
@@ -41,6 +43,7 @@ interface Rider {
   originGroupId?: number // Track which group the rider came from (if from a group)
   originType?: 'unmatched' | 'group' // Track if rider came from unmatched or group
   school?: string // User's school for admin scope filtering
+  original_unmatched?: boolean // True if user was originally unmatched (from Flights.original_unmatched, never change)
 }
 
 interface Group {
@@ -54,6 +57,8 @@ interface Group {
   recommended_time?: string
   group_voucher?: string
   uber_type?: string | null // Uber type from Matches table
+  /** From Matches table; use for display/filter so UI matches DB */
+  is_subsidized?: boolean | null
 }
 
 interface ChangeLogEntry {
@@ -69,6 +74,7 @@ interface ChangeLogEntry {
     | 'IGNORE_ERROR'
     | 'UPDATE_GROUP_TIME'
     | 'UPDATE_VOUCHER'
+    | 'UPDATE_RIDER_DETAILS'
     | 'EMAIL_CONFIRMED'
   algorithm_run_id?: string | null
   target_group_id?: string | null
@@ -92,6 +98,8 @@ const getChangeDescription = (action: string): string => {
       return 'Updated time'
     case 'UPDATE_VOUCHER':
       return 'Updated voucher'
+    case 'UPDATE_RIDER_DETAILS':
+      return 'Updated rider details'
     case 'CREATE_GROUP':
       return 'Group created'
     case 'DELETE_GROUP':
@@ -364,7 +372,14 @@ const UnmatchedIndividualCard = ({
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="font-semibold text-gray-900">{item.rider.name}</p>
+            <p className="flex items-center gap-1.5 font-semibold text-gray-900">
+              {item.rider.name}
+              {item.rider.original_unmatched && (
+                <span title="Originally unmatched">
+                  <Flag className="h-3 w-3 flex-shrink-0 text-amber-500" />
+                </span>
+              )}
+            </p>
             {item.emailSent && (
               <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">
                 Emailed
@@ -420,6 +435,7 @@ const UnmatchedIndividualCard = ({
 export default function GroupsManagement({ user }: AdminDashboardProps) {
   const supabase = createBrowserClient()
   const { user: authUser } = useAuth()
+  const { computeGroupSubsidized } = useSubsidyLogic()
   const [adminScope, setAdminScope] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'matched' | 'unmatched'>('matched')
@@ -432,6 +448,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const [subsidyFilter, setSubsidyFilter] = useState<
     'subsidized' | 'unsubsidized' | 'all'
   >('all')
+  const [selectedUberTypes, setSelectedUberTypes] = useState<Set<string>>(
+    () => new Set(['X', 'XL', 'XXL', 'Connect']),
+  )
   const [minBags, setMinBags] = useState<string>('')
   const [maxBags, setMaxBags] = useState<string>('')
   const [lastAlgorithmRunDate, setLastAlgorithmRunDate] = useState<
@@ -505,6 +524,18 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   } | null>(null)
   const [editTimeValue, setEditTimeValue] = useState<string>('')
   const [isUpdatingTime, setIsUpdatingTime] = useState(false)
+  const [editRiderModal, setEditRiderModal] = useState<{ rider: Rider } | null>(
+    null,
+  )
+  const [editRiderForm, setEditRiderForm] = useState<{
+    flight_no: string
+    airline_iata: string
+    airport: string
+    to_airport: boolean
+    date: string
+    time_range: string
+  } | null>(null)
+  const [isUpdatingRider, setIsUpdatingRider] = useState(false)
   const [editVoucherModal, setEditVoucherModal] = useState<{
     group: Group
   } | null>(null)
@@ -1069,31 +1100,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
             if (rideId && !isNaN(rideId)) {
               groupsWithNonRevertedChanges.add(rideId)
-              console.log(
-                '[loadUnconfirmedChanges] Added group to non-reverted changes:',
-                rideId,
-                'from action:',
-                change.action,
-                'target_group_id:',
-                change.target_group_id,
-              )
-            } else {
-              console.log(
-                '[loadUnconfirmedChanges] Could not determine rideId for change:',
-                change.id,
-                change.action,
-                'target_group_id:',
-                change.target_group_id,
-                'metadata:',
-                change.metadata,
-              )
             }
           })
-
-          console.log(
-            '[loadUnconfirmedChanges] Groups with non-reverted changes:',
-            Array.from(groupsWithNonRevertedChanges),
-          )
 
           // Rebuild groupChangesMap to only include non-reverted changes, using the most recent non-reverted change per group
           const finalGroupChangesMap = new Map<
@@ -1160,11 +1168,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             }
           })
 
-          console.log(
-            '[loadUnconfirmedChanges] Final group changes map:',
-            Array.from(finalGroupChangesMap.keys()),
-          )
-
           // Collect all unique change types for each group to build change descriptions
           // Note: Reversed changes have been deleted from the database, so they won't be in processedUnconfirmedChanges
           const groupChangeTypesMap = new Map<number, Set<string>>()
@@ -1209,21 +1212,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           finalGroupChangesMap.forEach((changeInfo) => {
             // Skip if this group has no non-reverted changes (all changes were reverted)
             if (!groupsWithNonRevertedChanges.has(changeInfo.ride_id)) {
-              console.log(
-                '[loadUnconfirmedChanges] Skipping group',
-                changeInfo.ride_id,
-                'because all changes have been reverted (no net change). ChangeInfo:',
-                changeInfo,
-              )
               return
             }
-
-            console.log(
-              '[loadUnconfirmedChanges] Processing group change:',
-              changeInfo.ride_id,
-              'action:',
-              changeInfo.action,
-            )
 
             // Note: We no longer filter by group-level confirmation
             // Each change is confirmed individually via the `confirmed` field
@@ -1235,10 +1225,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             if (group) {
               // For DELETE_GROUP, check if group still exists (if it does, it wasn't actually deleted)
               if (changeInfo.changeType === 'deleted') {
-                console.log(
-                  '[loadUnconfirmedChanges] Skipping deleted group that still exists:',
-                  changeInfo.ride_id,
-                )
                 return // Don't show deleted groups that still exist
               }
 
@@ -1250,14 +1236,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               const changeDescriptions =
                 consolidateChangeDescriptions(rawDescriptions)
 
-              console.log(
-                '[loadUnconfirmedChanges] Adding group to changed groups:',
-                changeInfo.ride_id,
-                'actions:',
-                Array.from(changeTypes),
-                'descriptions:',
-                changeDescriptions,
-              )
               newChangedGroups.push({
                 group,
                 changeType: changeInfo.changeType,
@@ -1266,13 +1244,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 changeLogId: changeInfo.changeLogId,
                 changeDescriptions,
               })
-            } else {
-              console.log(
-                '[loadUnconfirmedChanges] Group not found in prevGroups:',
-                changeInfo.ride_id,
-                'This might be why the card disappears',
-              )
             }
+            // Group not in prevGroups (e.g. deleted or not yet loaded) — skip without logging
           })
 
           if (newChangedGroups.length > 0) {
@@ -1545,7 +1518,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             matched,
             flight_no,
             airline_iata,
-            opt_in
+            opt_in,
+            original_unmatched
           `,
           )
           .range(from, from + pageSize - 1)
@@ -1654,7 +1628,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       while (hasMoreMatches) {
         const { data: matchesPage, error: matchesError } = await supabase
           .from('Matches')
-          .select('ride_id, flight_id, user_id, voucher, time, uber_type')
+          .select(
+            'ride_id, flight_id, user_id, voucher, time, uber_type, is_subsidized',
+          )
           .range(matchesFrom, matchesFrom + matchesPageSize - 1)
 
         if (matchesError) {
@@ -1698,6 +1674,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               flight_no: flight.flight_no || '',
               airline_iata: flight.airline_iata || '',
               school: userData?.school || undefined,
+              original_unmatched: flight.original_unmatched ?? false,
             }
           })
 
@@ -1741,7 +1718,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               user_id,
               matched,
               flight_no,
-              airline_iata
+              airline_iata,
+              original_unmatched
             `,
             )
             .in('flight_id', batch)
@@ -1830,6 +1808,40 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           console.warn(
             `Match has no associated flight (flight_id: ${match.flight_id}, ride_id: ${match.ride_id}). This match will not appear in groups. Check if: 1) Flight exists in Flights table, 2) RLS policies allow access to this flight, 3) Flight has Users relationship data.`,
           )
+          // Still ensure the group exists so ride_id appears in the list (e.g. group 353)
+          if (!groupsMap.has(match.ride_id)) {
+            groupsMap.set(match.ride_id, {
+              ride_id: match.ride_id,
+              airport: '—',
+              date: '',
+              time_range: '—',
+              match_time: match.time || undefined,
+              to_airport: true,
+              riders: [],
+              group_voucher: match.voucher || undefined,
+              uber_type: match.uber_type || undefined,
+              is_subsidized:
+                (match as { is_subsidized?: boolean | null }).is_subsidized ??
+                undefined,
+            })
+          }
+          const group = groupsMap.get(match.ride_id)!
+          group.riders.push({
+            user_id: (match as any).user_id ?? '',
+            flight_id: match.flight_id,
+            name: '[Missing flight data]',
+            phone: 'N/A',
+            checked_bags: 0,
+            carry_on_bags: 0,
+            time_range: '—',
+            airport: '—',
+            to_airport: true,
+            date: '',
+            flight_no: '',
+            airline_iata: '',
+            school: undefined,
+            original_unmatched: false,
+          })
           return
         }
 
@@ -1846,6 +1858,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             riders: [],
             group_voucher: match.voucher || undefined,
             uber_type: match.uber_type || undefined,
+            is_subsidized:
+              (match as { is_subsidized?: boolean | null }).is_subsidized ??
+              undefined,
           })
         }
 
@@ -1868,6 +1883,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           flight_no: flight.flight_no || '',
           airline_iata: flight.airline_iata || '',
           school: userData?.school || undefined,
+          original_unmatched: flight.original_unmatched ?? false,
         })
       })
 
@@ -1880,35 +1896,40 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         }
       })
 
-      // Filter groups by admin scope and mask non-matching users
-      // Only filter if admin has an admin_scope set (super_admins might not have one)
+      // When admin has scope set: show all groups but mask name/phone for riders outside scope
+      // (So groups like ride_id 353 always appear; only PII is hidden when rider.school !== scope)
       if (currentAdminScope) {
-        finalGroups = finalGroups
-          .filter((group) => {
-            // Only show groups that have at least one user matching admin_scope
-            return group.riders.some(
-              (rider) => rider.school === currentAdminScope,
-            )
-          })
-          .map((group) => {
-            // Hide name and phone for users that don't match admin_scope
-            return {
-              ...group,
-              riders: group.riders.map((rider) => {
-                if (rider.school !== currentAdminScope) {
-                  return {
-                    ...rider,
-                    name: '[Hidden]',
-                    phone: '[Hidden]',
-                  }
+        finalGroups = finalGroups.map((group) => {
+          return {
+            ...group,
+            riders: group.riders.map((rider) => {
+              if (rider.school !== currentAdminScope) {
+                return {
+                  ...rider,
+                  name: '[Hidden]',
+                  phone: '[Hidden]',
                 }
-                return rider
-              }),
-            }
-          })
+              }
+              return rider
+            }),
+          }
+        })
       }
 
       setGroups(finalGroups)
+
+      // Debug: whether group 353 is in fetched data (remove once confirmed)
+      const has353 = finalGroups.some(
+        (g: { ride_id: number }) => g.ride_id === 353,
+      )
+      if (typeof console !== 'undefined' && console.log) {
+        console.log(
+          '[GroupsManagement] Group 353 in fetched groups:',
+          has353,
+          '| ride_ids sample:',
+          finalGroups.slice(0, 10).map((g: { ride_id: number }) => g.ride_id),
+        )
+      }
 
       // Get unmatched riders
       const unmatched = flightsDataToUse
@@ -1940,6 +1961,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             reason: 'unmatched',
             flight_no: flight.flight_no || '',
             airline_iata: flight.airline_iata || '',
+            original_unmatched: flight.original_unmatched ?? false,
           }
         })
 
@@ -2426,19 +2448,37 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     )
   }, [])
 
-  const getCapacityBarColor = useCallback((totalBags: number) => {
-    if (totalBags === 0) return 'bg-green-500'
-    if (totalBags <= 3) return 'bg-gradient-to-r from-green-500 to-yellow-500'
-    if (totalBags <= 6) return 'bg-gradient-to-r from-yellow-500 to-orange-500'
-    if (totalBags <= 9) return 'bg-gradient-to-r from-orange-500 to-red-500'
-    return 'bg-red-700'
-  }, [])
+  const getCapacityBarColor = useCallback(
+    (totalBags: number, uberType?: string | null) => {
+      // Connect has unlimited bag capacity — always show green
+      if (uberType?.toLowerCase() === 'connect') return 'bg-green-500'
+      if (totalBags === 0) return 'bg-green-500'
+      if (totalBags <= 3) return 'bg-gradient-to-r from-green-500 to-yellow-500'
+      if (totalBags <= 6)
+        return 'bg-gradient-to-r from-yellow-500 to-orange-500'
+      if (totalBags <= 9) return 'bg-gradient-to-r from-orange-500 to-red-500'
+      return 'bg-red-700'
+    },
+    [],
+  )
 
   const getUberType = useCallback((riderCount: number) => {
     if (riderCount <= 3) return 'X'
     if (riderCount === 4) return 'XL'
     return 'XXL'
   }, [])
+
+  // Display: "Connect Shuttle" instead of "Uber Connect"
+  const formatUberTypeDisplay = useCallback(
+    (uberType: string | null | undefined, fallback: string) => {
+      const raw = uberType || fallback
+      if (raw?.toLowerCase() === 'connect') return 'Connect Shuttle'
+      return `Uber ${raw}`
+    },
+    [],
+  )
+
+  const UBER_TYPE_OPTIONS = ['X', 'XL', 'XXL', 'Connect'] as const
 
   // Helper function to determine if a group is subsidized
   // ONT: at least 2 riders = subsidized
@@ -2746,10 +2786,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             // Calculate new bag units and uber_type
             const bagUnits = calculateBagUnits(updatedRiders)
             const uberType = determineUberType(updatedRiders.length, bagUnits)
-            const isSubsidized = isGroupSubsidized(
-              group.airport,
-              updatedRiders.length,
-            )
+            const { subsidized: isSubsidized } = computeGroupSubsidized({
+              date: group.date,
+              toAirport: group.to_airport,
+              airport: group.airport,
+              riderCount: updatedRiders.length,
+              riderSchools: updatedRiders.map((r) => r.school),
+              uberType: uberType ?? undefined,
+            })
 
             if (uberType) {
               // Update all matches in the group with new uber_type, is_subsidized, and set is_verified to false
@@ -2809,6 +2853,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       (r) => r.flight_id !== rider.flight_id,
                     ),
                     uber_type: newUberType || g.uber_type, // Update uber_type (always a string, defaults to 'XXL*' for invalid)
+                    is_subsidized: newIsSubsidized ?? g.is_subsidized,
                   }
                 : g,
             )
@@ -2884,7 +2929,197 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         )
       }
     },
-    [groups, supabase, logToChangeLog, isGroupSubsidized],
+    [groups, supabase, logToChangeLog, computeGroupSubsidized],
+  )
+
+  // Update individual rider fields
+  const handleUpdateRider = useCallback(
+    async (
+      flightId: number,
+      updates: {
+        flight_no?: string
+        airline_iata?: string
+        airport?: string
+        to_airport?: boolean
+        date?: string
+        time_range?: string
+      },
+    ) => {
+      setIsUpdatingRider(true)
+      try {
+        // Get current rider information before updating
+        let oldRider: Rider | null = null
+        let riderGroupId: number | undefined = undefined
+
+        // Find rider in groups
+        for (const group of groups) {
+          const rider = group.riders.find((r) => r.flight_id === flightId)
+          if (rider) {
+            oldRider = rider
+            riderGroupId = group.ride_id
+            break
+          }
+        }
+
+        // If not found in groups, check unmatched riders
+        if (!oldRider) {
+          const rider = unmatchedRiders.find((r) => r.flight_id === flightId)
+          if (rider) {
+            oldRider = rider
+          }
+        }
+
+        // If still not found, fetch from database
+        if (!oldRider) {
+          const { data: flightData, error: fetchError } = await supabase
+            .from('Flights')
+            .select(
+              'flight_id, user_id, flight_no, airline_iata, airport, to_airport, date, earliest_time, latest_time, original_unmatched',
+            )
+            .eq('flight_id', flightId)
+            .single()
+
+          if (!fetchError && flightData) {
+            const { data: userData } = await supabase
+              .from('Users')
+              .select('firstname, lastname')
+              .eq('user_id', flightData.user_id)
+              .single()
+
+            const timeRange =
+              flightData.earliest_time && flightData.latest_time
+                ? `${flightData.earliest_time} - ${flightData.latest_time}`
+                : ''
+
+            oldRider = {
+              user_id: flightData.user_id,
+              flight_id: flightData.flight_id,
+              name: userData
+                ? `${userData.firstname} ${userData.lastname}`
+                : 'Unknown',
+              phone: '',
+              checked_bags: 0,
+              carry_on_bags: 0,
+              time_range: timeRange,
+              airport: flightData.airport || '',
+              to_airport: flightData.to_airport ?? true,
+              date: flightData.date || '',
+              flight_no: flightData.flight_no || '',
+              airline_iata: flightData.airline_iata || '',
+              original_unmatched: flightData.original_unmatched ?? false,
+            }
+          }
+        }
+
+        // Update Flights table
+        const flightUpdates: any = {}
+        if (updates.flight_no !== undefined)
+          flightUpdates.flight_no = updates.flight_no
+        if (updates.airline_iata !== undefined)
+          flightUpdates.airline_iata = updates.airline_iata
+        if (updates.airport !== undefined)
+          flightUpdates.airport = updates.airport
+        if (updates.to_airport !== undefined)
+          flightUpdates.to_airport = updates.to_airport
+        if (updates.date !== undefined) flightUpdates.date = updates.date
+        if (updates.time_range !== undefined) {
+          const [earliest, latest] = updates.time_range
+            .split(' - ')
+            .map((t) => t.trim())
+          if (earliest) flightUpdates.earliest_time = earliest
+          if (latest) flightUpdates.latest_time = latest
+        }
+
+        if (Object.keys(flightUpdates).length > 0) {
+          const { error: flightError } = await supabase
+            .from('Flights')
+            .update(flightUpdates)
+            .eq('flight_id', flightId)
+
+          if (flightError) {
+            console.error('Error updating flight:', flightError)
+            setErrorMessage('Failed to update rider details')
+            setTimeout(() => setErrorMessage(null), 3000)
+            return
+          }
+        }
+
+        // Log to ChangeLog
+        if (oldRider) {
+          const metadata: any = {
+            rider_name: oldRider.name,
+            rider_user_id: oldRider.user_id,
+            rider_flight_id: flightId,
+          }
+
+          // Add old and new values for changed fields
+          if (
+            updates.flight_no !== undefined &&
+            updates.flight_no !== oldRider.flight_no
+          ) {
+            metadata.old_flight_no = oldRider.flight_no || 'N/A'
+            metadata.new_flight_no = updates.flight_no
+          }
+          if (
+            updates.airline_iata !== undefined &&
+            updates.airline_iata !== oldRider.airline_iata
+          ) {
+            metadata.old_airline_iata = oldRider.airline_iata || 'N/A'
+            metadata.new_airline_iata = updates.airline_iata
+          }
+          if (
+            updates.airport !== undefined &&
+            updates.airport !== oldRider.airport
+          ) {
+            metadata.old_airport = oldRider.airport || 'N/A'
+            metadata.new_airport = updates.airport
+          }
+          if (
+            updates.to_airport !== undefined &&
+            updates.to_airport !== oldRider.to_airport
+          ) {
+            metadata.old_to_airport = oldRider.to_airport
+            metadata.new_to_airport = updates.to_airport
+          }
+          if (updates.date !== undefined && updates.date !== oldRider.date) {
+            metadata.old_date = oldRider.date || 'N/A'
+            metadata.new_date = updates.date
+          }
+          if (
+            updates.time_range !== undefined &&
+            updates.time_range !== oldRider.time_range
+          ) {
+            metadata.old_time_range = oldRider.time_range || 'N/A'
+            metadata.new_time_range = updates.time_range
+          }
+
+          if (riderGroupId) {
+            metadata.ride_id = riderGroupId
+          }
+
+          await logToChangeLog(
+            'UPDATE_RIDER_DETAILS',
+            metadata,
+            riderGroupId,
+            oldRider.user_id,
+          )
+        }
+
+        // Update local state - refresh groups and unmatched riders
+        await fetchData()
+
+        setEditRiderModal(null)
+        setEditRiderForm(null)
+        setErrorMessage(null)
+      } catch (error) {
+        console.error('Error in handleUpdateRider:', error)
+        setErrorMessage('Failed to update rider details')
+        setTimeout(() => setErrorMessage(null), 3000)
+      } finally {
+        setIsUpdatingRider(false)
+      }
+    },
+    [supabase, fetchData, groups, unmatchedRiders, logToChangeLog],
   )
 
   const handleRemoveFromGroupToUnmatched = useCallback(
@@ -2917,6 +3152,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         // Find the group to get updated rider list
         const group = groups.find((g) => g.ride_id === groupId)
         let newUberType: string | null = null
+        let newIsSubsidized: boolean | null = null
         if (group) {
           const updatedRiders = group.riders.filter(
             (r) => r.flight_id !== rider.flight_id,
@@ -3045,10 +3281,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             // Calculate new bag units and uber_type
             const bagUnits = calculateBagUnits(updatedRiders)
             const uberType = determineUberType(updatedRiders.length, bagUnits)
-            const isSubsidized = isGroupSubsidized(
-              group.airport,
-              updatedRiders.length,
-            )
+            const { subsidized: isSubsidized } = computeGroupSubsidized({
+              date: group.date,
+              toAirport: group.to_airport,
+              airport: group.airport,
+              riderCount: updatedRiders.length,
+              riderSchools: updatedRiders.map((r) => r.school),
+              uberType: uberType ?? undefined,
+            })
 
             // Recalculate time range and midpoint for the group
             const newTimeRange = calculateGroupTimeRange(updatedRiders)
@@ -3077,6 +3317,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 )
               } else {
                 newUberType = uberType
+                newIsSubsidized = isSubsidized
               }
             }
           }
@@ -3112,6 +3353,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 time_range: newTimeRange,
                 match_time: formattedTime,
                 uber_type: newUberType !== null ? newUberType : g.uber_type, // Update uber_type if calculated
+                is_subsidized: newIsSubsidized ?? g.is_subsidized,
               }
             }
             return g
@@ -3215,7 +3457,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       groups,
       supabase,
       logToChangeLog,
-      isGroupSubsidized,
+      computeGroupSubsidized,
       calculateGroupTimeRange,
       calculateTimeMidpoint,
     ],
@@ -3574,10 +3816,16 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           .eq('ride_id', group.ride_id)
           .maybeSingle()
 
-        const isSubsidized = isGroupSubsidized(
-          group.airport,
-          updatedRiders.length,
-        )
+        const { subsidized: isSubsidized, assignVoucher } =
+          computeGroupSubsidized({
+            date: finalDate,
+            toAirport: group.to_airport,
+            airport: group.airport,
+            riderCount: updatedRiders.length,
+            riderSchools: updatedRiders.map((r) => r.school),
+            uberType: uberType ?? undefined,
+          })
+        const voucherValue = assignVoucher ? group.group_voucher || '' : ''
 
         let matchError = null
         if (existingMatch) {
@@ -3588,7 +3836,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               date: finalDate,
               time: formattedTime,
               source: 'manual',
-              voucher: group.group_voucher || '',
+              voucher: voucherValue,
               contingency_voucher: null,
               is_verified: false,
               is_subsidized: isSubsidized,
@@ -3607,7 +3855,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             date: finalDate,
             time: formattedTime,
             source: 'manual',
-            voucher: group.group_voucher || '',
+            voucher: voucherValue,
             contingency_voucher: null,
             is_verified: false,
             is_subsidized: isSubsidized,
@@ -3632,12 +3880,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           )
         }
 
-        // Update all existing matches in the group with the new time, uber_type, is_subsidized, and set is_verified to false
+        // Update all existing matches in the group with the new time, uber_type, is_subsidized, voucher, and set is_verified to false
         const { error: updateMatchesError } = await supabase
           .from('Matches')
           .update({
             time: formattedTime,
             uber_type: uberType,
+            voucher: voucherValue,
             is_subsidized: isSubsidized,
             is_verified: false,
           })
@@ -3703,6 +3952,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 time_range: newTimeRange, // Update time range
                 match_time: formattedTime, // Update match time
                 uber_type: uberType, // Update uber_type in local state
+                is_subsidized: isSubsidized,
               }
             }
             // If rider came from another group, update source group (match already deleted above)
@@ -3912,7 +4162,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       logToChangeLog,
       supabase,
       corralRiders,
-      isGroupSubsidized,
+      computeGroupSubsidized,
       calculateGroupTimeRange,
       calculateTimeMidpoint,
     ],
@@ -4190,13 +4440,19 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
       const rideId = rideData.ride_id
 
-      // Calculate is_subsidized based on airport and rider count
-      // All riders in a group should have the same airport
-      const groupAirport = selectedRidersForNewGroup[0]?.airport || 'LAX'
-      const calculatedIsSubsidized = isGroupSubsidized(
-        groupAirport,
-        selectedRidersForNewGroup.length,
-      )
+      // Calculate is_subsidized and voucher eligibility from subsidy logic (covered dates, school, threshold)
+      const firstRider = selectedRidersForNewGroup[0]
+      const groupAirport = firstRider?.airport || 'LAX'
+      const groupToAirport = firstRider?.to_airport ?? true
+      const { subsidized: calculatedIsSubsidized, assignVoucher } =
+        computeGroupSubsidized({
+          date: rideDate,
+          toAirport: groupToAirport,
+          airport: groupAirport,
+          riderCount: selectedRidersForNewGroup.length,
+          riderSchools: selectedRidersForNewGroup.map((r) => r.school),
+          uberType: uberType ?? undefined,
+        })
 
       // Step 2: Create Matches rows for each rider
       // Parse contingency vouchers (comma-separated list)
@@ -4216,9 +4472,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         formattedTime,
         contingencyVouchersCount: contingencyVouchers.length,
       })
-      // Normalize voucher URL: if it doesn't start with https://r.uber.com/, prepend it
+      // Normalize voucher URL: if it doesn't start with https://r.uber.com/, prepend it. Only assign when assignVoucher (covered + subsidized + not Connect).
       let normalizedNewGroupVoucher = newGroupVoucher.trim()
-      if (normalizedNewGroupVoucher && calculatedIsSubsidized) {
+      if (normalizedNewGroupVoucher && assignVoucher) {
         const uberVoucherPrefix = 'https://r.uber.com/'
         if (!normalizedNewGroupVoucher.startsWith(uberVoucherPrefix)) {
           // Remove any leading slashes from the voucher code
@@ -4234,7 +4490,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         date: rideDate,
         time: formattedTime,
         source: 'manual', // Admin-created groups
-        voucher: calculatedIsSubsidized ? normalizedNewGroupVoucher || '' : '',
+        voucher: assignVoucher ? normalizedNewGroupVoucher || '' : '',
         contingency_voucher: contingencyVouchers[index] || null, // Assign voucher by index
         is_verified: false,
         is_subsidized: calculatedIsSubsidized,
@@ -4452,22 +4708,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const filteredGroups = useMemo(
     () =>
       groups.filter((group) => {
-        const airportMatch = selectedAirports.includes(group.airport)
+        // Empty selectedAirports = show all airports
+        const airportMatch =
+          selectedAirports.length === 0 ||
+          selectedAirports.includes(group.airport)
         if (!airportMatch) return false
 
-        // Default: Only show groups after last algorithm run date
-        if (lastAlgorithmRunDate && !dateRangeStart && !dateRangeEnd) {
-          const groupDate = new Date(group.date)
-          const runDate = new Date(lastAlgorithmRunDate)
-          groupDate.setHours(0, 0, 0, 0)
-          runDate.setHours(0, 0, 0, 0)
-
-          if (groupDate < runDate) {
-            return false
-          }
-        }
-
-        // Date range filter
+        // Date range: both empty = show all; start only = from start; end only = to end; both = between
         if (dateRangeStart || dateRangeEnd) {
           const groupDate = new Date(group.date)
           groupDate.setHours(0, 0, 0, 0)
@@ -4507,11 +4754,28 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           }
         }
 
-        // Subsidy filter
+        // Subsidy filter (use persisted is_subsidized from Matches; fallback to computed for legacy)
         const riderCount = group.riders.length
-        const isSubsidized = isGroupSubsidized(group.airport, riderCount)
+        const isSubsidized =
+          group.is_subsidized ?? isGroupSubsidized(group.airport, riderCount)
         if (subsidyFilter === 'subsidized' && !isSubsidized) return false
         if (subsidyFilter === 'unsubsidized' && isSubsidized) return false
+
+        // Uber type filter
+        const effectiveUberType = group.uber_type || getUberType(riderCount)
+        const normalizedType =
+          effectiveUberType?.toLowerCase() === 'connect'
+            ? 'Connect'
+            : effectiveUberType === 'XXL*'
+              ? 'XXL'
+              : (effectiveUberType ?? 'X')
+        if (
+          selectedUberTypes.size > 0 &&
+          selectedUberTypes.size < 4 &&
+          !selectedUberTypes.has(normalizedType)
+        ) {
+          return false
+        }
 
         // Bag amount filter (only if values are provided)
         if (minBags || maxBags) {
@@ -4586,20 +4850,130 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     [
       groups,
       selectedAirports,
-      lastAlgorithmRunDate,
       dateRangeStart,
       dateRangeEnd,
       timeRangeStart,
       timeRangeEnd,
       subsidyFilter,
+      selectedUberTypes,
       minBags,
       maxBags,
       searchQuery,
       getTotalBags,
+      getUberType,
       calculateGroupTimeRange,
       isGroupSubsidized,
     ],
   )
+
+  // Debug: why is group 353 not in filteredGroups when it's in groups?
+  useEffect(() => {
+    const g353 = groups.find((g) => g.ride_id === 353)
+    const inFiltered = filteredGroups.some((g) => g.ride_id === 353)
+    if (!g353) return
+    if (inFiltered) return
+    const group = g353
+    const reasons: string[] = []
+    const airportMatch =
+      selectedAirports.length === 0 || selectedAirports.includes(group.airport)
+    if (!airportMatch)
+      reasons.push(
+        `airport: group.airport=${group.airport} selected=${JSON.stringify(selectedAirports)}`,
+      )
+    if (dateRangeStart || dateRangeEnd) {
+      const groupDate = new Date(group.date)
+      groupDate.setHours(0, 0, 0, 0)
+      if (dateRangeStart) {
+        const startDate = new Date(dateRangeStart)
+        startDate.setHours(0, 0, 0, 0)
+        if (groupDate < startDate)
+          reasons.push(
+            `date before start: groupDate=${group.date} start=${dateRangeStart}`,
+          )
+      }
+      if (dateRangeEnd) {
+        const endDate = new Date(dateRangeEnd)
+        endDate.setHours(23, 59, 59, 999)
+        if (groupDate > endDate)
+          reasons.push(
+            `date after end: groupDate=${group.date} end=${dateRangeEnd}`,
+          )
+      }
+    }
+    if (timeRangeStart && timeRangeEnd) {
+      const calculatedTimeRange = calculateGroupTimeRange(group.riders)
+      const groupTimeRange = calculatedTimeRange.split(' - ')
+      const groupStart = groupTimeRange[0]?.trim()
+      const groupEnd = groupTimeRange[1]?.trim()
+      if (groupStart && groupEnd) {
+        const timeInRange =
+          (groupStart >= timeRangeStart && groupStart <= timeRangeEnd) ||
+          (groupEnd >= timeRangeStart && groupEnd <= timeRangeEnd) ||
+          (groupStart <= timeRangeStart && groupEnd >= timeRangeEnd)
+        if (!timeInRange)
+          reasons.push(
+            `time: ${groupStart}-${groupEnd} not in ${timeRangeStart}-${timeRangeEnd}`,
+          )
+      }
+    }
+    const riderCount = group.riders.length
+    const isSubsidized =
+      group.is_subsidized ?? isGroupSubsidized(group.airport, riderCount)
+    if (subsidyFilter === 'subsidized' && !isSubsidized)
+      reasons.push('subsidy: filter=subsidized but group not subsidized')
+    if (subsidyFilter === 'unsubsidized' && isSubsidized)
+      reasons.push('subsidy: filter=unsubsidized but group is subsidized')
+    const effectiveUberType = group.uber_type || getUberType(riderCount)
+    const normalizedType =
+      effectiveUberType?.toLowerCase() === 'connect'
+        ? 'Connect'
+        : effectiveUberType === 'XXL*'
+          ? 'XXL'
+          : (effectiveUberType ?? 'X')
+    if (
+      selectedUberTypes.size > 0 &&
+      selectedUberTypes.size < 4 &&
+      !selectedUberTypes.has(normalizedType)
+    ) {
+      reasons.push(
+        `uberType: normalized=${normalizedType} selectedSize=${selectedUberTypes.size} hasType=${selectedUberTypes.has(normalizedType)}`,
+      )
+    }
+    if (minBags || maxBags) {
+      const totalBags = getTotalBags(group.riders)
+      if (minBags && totalBags < parseInt(minBags))
+        reasons.push(`minBags: total=${totalBags} min=${minBags}`)
+      if (maxBags && totalBags > parseInt(maxBags))
+        reasons.push(`maxBags: total=${totalBags} max=${maxBags}`)
+    }
+    if (searchQuery.trim()) {
+      reasons.push(
+        `search: query="${searchQuery.trim()}" (no match for ride_id/names/flight/etc)`,
+      )
+    }
+    console.log(
+      '[GroupsManagement] Group 353 filtered out. Reasons:',
+      reasons.length ? reasons : ['(unknown)'],
+      group,
+    )
+  }, [
+    groups,
+    filteredGroups,
+    selectedAirports,
+    dateRangeStart,
+    dateRangeEnd,
+    timeRangeStart,
+    timeRangeEnd,
+    subsidyFilter,
+    selectedUberTypes,
+    minBags,
+    maxBags,
+    searchQuery,
+    calculateGroupTimeRange,
+    getUberType,
+    getTotalBags,
+    isGroupSubsidized,
+  ])
 
   // Apply sorting to filtered groups
   const sortedGroups = useMemo(
@@ -5117,8 +5491,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 className="flex items-center justify-between rounded border border-gray-200 bg-gray-50 p-2"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-gray-900">
+                  <p className="flex items-center gap-1.5 truncate text-sm font-medium text-gray-900">
                     {rider.name}
+                    {rider.original_unmatched && (
+                      <span title="Originally unmatched">
+                        <Flag className="h-3 w-3 flex-shrink-0 text-amber-500" />
+                      </span>
+                    )}
                   </p>
                   <div className="mt-1 flex items-center gap-2">
                     <span className="inline-flex items-center justify-center rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">
@@ -5879,6 +6258,41 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 </select>
               </div>
 
+              {/* Uber Type Filter */}
+              <div>
+                <label className="mb-2 block text-xs font-medium text-gray-700">
+                  Uber type
+                </label>
+                <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+                  {UBER_TYPE_OPTIONS.map((type) => {
+                    const label =
+                      type === 'Connect' ? 'Connect Shuttle' : `Uber ${type}`
+                    const checked = selectedUberTypes.has(type)
+                    return (
+                      <label
+                        key={type}
+                        className="flex cursor-pointer items-center gap-1.5"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            setSelectedUberTypes((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(type)) next.delete(type)
+                              else next.add(type)
+                              return next
+                            })
+                          }}
+                          className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                        />
+                        <span className="text-xs text-gray-700">{label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+
               {/* Bag Units */}
               <div>
                 <label className="mb-2 block text-xs font-medium text-gray-700">
@@ -6445,17 +6859,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                     <div
                       key={group.ride_id}
                       className={`overflow-hidden rounded-lg bg-white shadow-md transition-colors ${
-                        datePassed ? 'opacity-60' : ''
-                      } ${
-                        dragOverGroupId === group.ride_id &&
-                        draggedRider &&
-                        !datePassed
+                        dragOverGroupId === group.ride_id && draggedRider
                           ? 'bg-teal-50 ring-2 ring-teal-500'
                           : ''
                       }`}
                       onDragOver={(e) => {
                         e.preventDefault()
-                        if (draggedRider && !datePassed) {
+                        if (draggedRider) {
                           e.dataTransfer.dropEffect = 'move'
                           setDragOverGroupId(group.ride_id)
                         } else {
@@ -6480,7 +6890,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         e.preventDefault()
                         e.stopPropagation()
                         setDragOverGroupId(null)
-                        if (draggedRider && !datePassed) {
+                        if (draggedRider) {
                           // Check if rider already exists in this group (by flight_id)
                           const riderAlreadyInGroup = group.riders.some(
                             (r) => r.flight_id === draggedRider.flight_id,
@@ -6636,9 +7046,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                     >
                       {/* Group Header */}
                       <div
-                        className={`flex cursor-pointer items-center justify-between border-b border-gray-200 bg-gray-50 p-4 hover:bg-gray-100 ${
-                          datePassed ? 'cursor-not-allowed' : ''
-                        }`}
+                        className="flex cursor-pointer items-center justify-between border-b border-gray-200 bg-gray-50 p-4 hover:bg-gray-100"
                         onClick={() => toggleGroupExpanded(group.ride_id)}
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-4">
@@ -6752,19 +7160,24 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             {/* Subsidy Badge */}
                             <span
                               className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                isGroupSubsidized(group.airport, riderCount)
+                                (group.is_subsidized ??
+                                isGroupSubsidized(group.airport, riderCount))
                                   ? 'bg-green-100 text-green-800'
                                   : 'bg-gray-100 text-gray-800'
                               }`}
                             >
-                              {isGroupSubsidized(group.airport, riderCount)
+                              {(group.is_subsidized ??
+                              isGroupSubsidized(group.airport, riderCount))
                                 ? 'Subsidized'
                                 : 'Not Subsidized'}
                             </span>
 
                             {/* Uber Type Badge */}
                             <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
-                              Uber {group.uber_type || getUberType(riderCount)}
+                              {formatUberTypeDisplay(
+                                group.uber_type,
+                                getUberType(riderCount),
+                              )}
                             </span>
                           </div>
 
@@ -6800,18 +7213,22 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             <div className="flex flex-col gap-1">
                               <span
                                 className={`w-fit rounded-full px-2 py-0.5 text-xs font-semibold ${
-                                  isGroupSubsidized(group.airport, riderCount)
+                                  (group.is_subsidized ??
+                                  isGroupSubsidized(group.airport, riderCount))
                                     ? 'bg-green-100 text-green-800'
                                     : 'bg-gray-100 text-gray-800'
                                 }`}
                               >
-                                {isGroupSubsidized(group.airport, riderCount)
+                                {(group.is_subsidized ??
+                                isGroupSubsidized(group.airport, riderCount))
                                   ? 'Subsidized'
                                   : 'Not Subsidized'}
                               </span>
                               <span className="w-fit rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">
-                                Uber{' '}
-                                {group.uber_type || getUberType(riderCount)}
+                                {formatUberTypeDisplay(
+                                  group.uber_type,
+                                  getUberType(riderCount),
+                                )}
                               </span>
                             </div>
                           </div>
@@ -6820,26 +7237,15 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
-                              if (!datePassed) {
-                                setEditTimeModal({ group })
-                                setEditTimeValue(
-                                  group.match_time
-                                    ? group.match_time.substring(0, 5)
-                                    : '',
-                                )
-                              }
+                              setEditTimeModal({ group })
+                              setEditTimeValue(
+                                group.match_time
+                                  ? group.match_time.substring(0, 5)
+                                  : '',
+                              )
                             }}
-                            disabled={datePassed}
-                            className={`rounded p-1.5 ${
-                              datePassed
-                                ? 'cursor-not-allowed text-gray-400'
-                                : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
-                            }`}
-                            title={
-                              datePassed
-                                ? 'Cannot edit past groups'
-                                : 'Edit group time'
-                            }
+                            className="rounded p-1.5 text-gray-600 hover:bg-gray-200 hover:text-gray-900"
+                            title="Edit group time"
                           >
                             <Clock className="h-5 w-5" />
                           </button>
@@ -6868,14 +7274,19 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         <div className="mb-1 flex items-center justify-between">
                           <span className="text-xs text-gray-600">
                             Bag Units: {totalBagUnits}/
-                            {getMaxBagUnits(riderCount)}
+                            {group.uber_type?.toLowerCase() === 'connect'
+                              ? 'unlimited'
+                              : getMaxBagUnits(riderCount)}
                           </span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
                           <div
-                            className={`h-full ${getCapacityBarColor(totalBagUnits)} transition-all`}
+                            className={`h-full ${getCapacityBarColor(totalBagUnits, group.uber_type)} transition-all`}
                             style={{
-                              width: `${Math.min((totalBagUnits / getMaxBagUnits(riderCount)) * 100, 100)}%`,
+                              width:
+                                group.uber_type?.toLowerCase() === 'connect'
+                                  ? '25%'
+                                  : `${Math.min((totalBagUnits / getMaxBagUnits(riderCount)) * 100, 100)}%`,
                             }}
                           ></div>
                         </div>
@@ -6892,7 +7303,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           onDragOver={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
-                            if (draggedRider && !datePassed) {
+                            if (draggedRider) {
                               e.dataTransfer.dropEffect = 'move'
                               setDragOverGroupId(group.ride_id)
                             } else {
@@ -6917,7 +7328,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             e.preventDefault()
                             e.stopPropagation()
                             setDragOverGroupId(null)
-                            if (draggedRider && !datePassed) {
+                            if (draggedRider) {
                               // Check if rider already exists in this group (by flight_id)
                               const riderAlreadyInGroup = group.riders.some(
                                 (r) => r.flight_id === draggedRider.flight_id,
@@ -7084,9 +7495,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         >
                           <button
                             onClick={() => handleAddFromCorral(group)}
-                            disabled={corralRiders.length === 0 || datePassed}
+                            disabled={corralRiders.length === 0}
                             className={`mb-3 text-sm ${
-                              corralRiders.length === 0 || datePassed
+                              corralRiders.length === 0
                                 ? 'cursor-not-allowed text-gray-400'
                                 : 'text-teal-600 underline hover:text-teal-800'
                             }`}
@@ -7127,21 +7538,28 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                   const isInCorral = corralRiders.some(
                                     (r) => r.flight_id === rider.flight_id,
                                   )
+                                  const riderDatePassed = isDatePassed(
+                                    rider.date,
+                                  )
                                   return (
                                     <div
                                       key={`${rider.user_id}-${rider.flight_id}`}
-                                      className={`flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3 transition-all ${
-                                        datePassed
-                                          ? 'cursor-not-allowed opacity-50'
-                                          : isBeingDragged
-                                            ? 'bg-gray-100 opacity-30'
-                                            : isInCorral
-                                              ? 'cursor-not-allowed bg-gray-100 opacity-40'
-                                              : 'hover:bg-gray-50'
+                                      className={`flex items-center justify-between rounded-lg border p-3 transition-all ${
+                                        riderDatePassed
+                                          ? 'border border-red-300 bg-gray-200 hover:bg-gray-300'
+                                          : 'border-gray-200 bg-white'
+                                      } ${
+                                        isBeingDragged
+                                          ? 'bg-gray-100 opacity-30'
+                                          : isInCorral
+                                            ? 'cursor-not-allowed bg-gray-100 opacity-40'
+                                            : !riderDatePassed
+                                              ? 'hover:bg-gray-50'
+                                              : ''
                                       }`}
-                                      draggable={!datePassed && !isInCorral}
+                                      draggable={!isInCorral}
                                       onDragStart={() => {
-                                        if (!datePassed && !isInCorral) {
+                                        if (!isInCorral) {
                                           setDraggedRider(rider)
                                         }
                                       }}
@@ -7158,8 +7576,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                       <div className="flex items-center gap-4">
                                         <div className="flex-1">
                                           <div className="flex items-center gap-3">
-                                            <p className="font-medium text-gray-900">
+                                            <p className="flex items-center gap-1.5 font-medium text-gray-900">
                                               {rider.name}
+                                              {rider.original_unmatched && (
+                                                <span title="Originally unmatched">
+                                                  <Flag className="h-3.5 w-3.5 flex-shrink-0 text-amber-500" />
+                                                </span>
+                                              )}
                                             </p>
                                             <div className="flex items-center gap-2">
                                               <div className="group relative flex items-center gap-1">
@@ -7225,24 +7648,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                       <div className="flex gap-1">
                                         <button
                                           onClick={() => {
-                                            if (!datePassed) {
-                                              handleAddToCorral(
-                                                rider,
-                                                group.ride_id,
-                                              )
-                                            }
+                                            handleAddToCorral(
+                                              rider,
+                                              group.ride_id,
+                                            )
                                           }}
-                                          disabled={datePassed}
-                                          className={`rounded p-1 ${
-                                            datePassed
-                                              ? 'cursor-not-allowed text-gray-400'
-                                              : 'text-teal-500 hover:bg-teal-50'
-                                          }`}
-                                          title={
-                                            datePassed
-                                              ? 'Cannot modify past groups'
-                                              : 'Move to corral'
-                                          }
+                                          className="rounded p-1 text-teal-500 hover:bg-teal-50"
+                                          title="Move to corral"
                                         >
                                           <svg
                                             className="h-5 w-5"
@@ -7260,24 +7672,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                         </button>
                                         <button
                                           onClick={() => {
-                                            if (!datePassed) {
-                                              handleRemoveFromGroupToUnmatched(
-                                                rider,
-                                                group.ride_id,
-                                              )
-                                            }
+                                            handleRemoveFromGroupToUnmatched(
+                                              rider,
+                                              group.ride_id,
+                                            )
                                           }}
-                                          disabled={datePassed}
-                                          className={`rounded p-1 ${
-                                            datePassed
-                                              ? 'cursor-not-allowed text-gray-400'
-                                              : 'text-red-500 hover:bg-red-50'
-                                          }`}
-                                          title={
-                                            datePassed
-                                              ? 'Cannot modify past groups'
-                                              : 'Remove from group and make unmatched'
-                                          }
+                                          className="rounded p-1 text-red-500 hover:bg-red-50"
+                                          title="Remove from group and make unmatched"
                                         >
                                           <svg
                                             className="h-5 w-5"
@@ -7328,33 +7729,33 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   return (
                     <div
                       key={`${rider.user_id}-${rider.flight_id}`}
-                      className={`relative rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-all duration-300 ${
-                        riderDatePassed ? 'opacity-50' : ''
+                      className={`relative rounded-lg border p-4 shadow-sm transition-all duration-300 ${
+                        riderDatePassed
+                          ? 'border border-red-300 bg-gray-200 hover:bg-gray-300'
+                          : 'border-gray-200 bg-white'
                       } ${
                         isSelectedForNewGroup || isRecentlyAdded
                           ? 'border-gray-300 bg-gray-100 opacity-60'
-                          : ''
+                          : !riderDatePassed
+                            ? 'hover:bg-gray-50'
+                            : ''
                       } ${isRecentlyAdded ? 'animate-pulse' : ''}`}
-                      draggable={!riderDatePassed}
-                      onDragStart={() => {
-                        if (!riderDatePassed) {
-                          setDraggedRider(rider)
-                        }
-                      }}
+                      draggable
+                      onDragStart={() => setDraggedRider(rider)}
                       onDragEnd={() => {
                         setDraggedRider(null)
                         setDragOverGroupId(null)
                       }}
                     >
                       <div className="flex items-start gap-2">
-                        <p className="flex-1 font-medium text-gray-900">
+                        <p className="flex flex-1 items-center gap-1.5 font-medium text-gray-900">
                           {rider.name}
+                          {rider.original_unmatched && (
+                            <span title="Originally unmatched">
+                              <Flag className="h-3.5 w-3.5 flex-shrink-0 text-amber-500" />
+                            </span>
+                          )}
                         </p>
-                        {riderDatePassed && (
-                          <span className="inline-flex flex-shrink-0 items-center justify-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
-                            PAST DATE
-                          </span>
-                        )}
                       </div>
                       <p className="text-sm text-gray-600">{rider.phone}</p>
                       {rider.airline_iata && rider.flight_no && (
@@ -7414,34 +7815,38 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (!riderDatePassed) {
-                              handleAddToCorral(rider)
-                            }
+                            handleAddToCorral(rider)
                           }}
-                          disabled={riderDatePassed}
-                          className={`text-xs underline ${
-                            riderDatePassed
-                              ? 'cursor-not-allowed text-gray-400'
-                              : 'text-teal-600 hover:text-teal-800'
-                          }`}
+                          className="text-xs text-teal-600 underline hover:text-teal-800"
                         >
                           Add to corral
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (!riderDatePassed) {
-                              addRiderToNewGroup(rider)
-                            }
+                            addRiderToNewGroup(rider)
                           }}
-                          disabled={riderDatePassed}
-                          className={`text-xs underline ${
-                            riderDatePassed
-                              ? 'cursor-not-allowed text-gray-400'
-                              : 'text-purple-600 hover:text-purple-800'
-                          }`}
+                          className="text-xs text-purple-600 underline hover:text-purple-800"
                         >
                           Add to new group
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setEditRiderModal({ rider })
+                            setEditRiderForm({
+                              flight_no: rider.flight_no || '',
+                              airline_iata: rider.airline_iata || '',
+                              airport: rider.airport || '',
+                              to_airport: rider.to_airport ?? true,
+                              date: rider.date || '',
+                              time_range: rider.time_range || '',
+                            })
+                          }}
+                          className="rounded p-1 text-gray-600 hover:bg-gray-200 hover:text-gray-900"
+                          title="Edit rider details"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </div>
@@ -7643,8 +8048,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="min-w-0 flex-1">
-                                    <p className="text-sm font-medium text-gray-900">
+                                    <p className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
                                       {rider.name}
+                                      {rider.original_unmatched && (
+                                        <span title="Originally unmatched">
+                                          <Flag className="h-3 w-3 flex-shrink-0 text-amber-500" />
+                                        </span>
+                                      )}
                                     </p>
                                     <p className="text-xs text-gray-600">
                                       {rider.phone}
@@ -8794,6 +9204,140 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
                 >
                   Okay
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Rider Details Modal */}
+        {editRiderModal && editRiderForm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+              <h3 className="mb-4 text-lg font-semibold text-gray-900">
+                Edit Rider Details
+              </h3>
+              <p className="mb-4 text-sm text-gray-600">
+                {editRiderModal.rider.name} (flight_id:{' '}
+                {editRiderModal.rider.flight_id})
+              </p>
+              <div className="mb-4 space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                    Airline (IATA)
+                  </label>
+                  <input
+                    type="text"
+                    value={editRiderForm.airline_iata}
+                    onChange={(e) =>
+                      setEditRiderForm((f) =>
+                        f ? { ...f, airline_iata: e.target.value } : f,
+                      )
+                    }
+                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                    Flight No
+                  </label>
+                  <input
+                    type="text"
+                    value={editRiderForm.flight_no}
+                    onChange={(e) =>
+                      setEditRiderForm((f) =>
+                        f ? { ...f, flight_no: e.target.value } : f,
+                      )
+                    }
+                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                    Airport
+                  </label>
+                  <input
+                    type="text"
+                    value={editRiderForm.airport}
+                    onChange={(e) =>
+                      setEditRiderForm((f) =>
+                        f ? { ...f, airport: e.target.value } : f,
+                      )
+                    }
+                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                    Direction
+                  </label>
+                  <select
+                    value={editRiderForm.to_airport ? 'to' : 'from'}
+                    onChange={(e) =>
+                      setEditRiderForm((f) =>
+                        f ? { ...f, to_airport: e.target.value === 'to' } : f,
+                      )
+                    }
+                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  >
+                    <option value="to">To airport</option>
+                    <option value="from">From airport</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editRiderForm.date}
+                    onChange={(e) =>
+                      setEditRiderForm((f) =>
+                        f ? { ...f, date: e.target.value } : f,
+                      )
+                    }
+                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-700">
+                    Time range (e.g. 08:00 - 10:00)
+                  </label>
+                  <input
+                    type="text"
+                    value={editRiderForm.time_range}
+                    onChange={(e) =>
+                      setEditRiderForm((f) =>
+                        f ? { ...f, time_range: e.target.value } : f,
+                      )
+                    }
+                    placeholder="08:00 - 10:00"
+                    className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setEditRiderModal(null)
+                    setEditRiderForm(null)
+                  }}
+                  disabled={isUpdatingRider}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    await handleUpdateRider(
+                      editRiderModal.rider.flight_id,
+                      editRiderForm,
+                    )
+                  }}
+                  disabled={isUpdatingRider}
+                  className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:opacity-50"
+                >
+                  {isUpdatingRider ? 'Updating...' : 'Save'}
                 </button>
               </div>
             </div>
