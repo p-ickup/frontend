@@ -12,6 +12,7 @@ import {
   Download,
   Flag,
   Info,
+  Lock,
   Luggage,
   Mail,
   Pencil,
@@ -19,6 +20,8 @@ import {
   Plane,
   PlaneLanding,
   PlaneTakeoff,
+  Settings,
+  Unlock,
   UserPlus,
   X,
 } from 'lucide-react'
@@ -62,6 +65,10 @@ interface Group {
   uber_type?: string | null // Uber type from Matches table
   /** From Matches table; use for display/filter so UI matches DB */
   is_subsidized?: boolean | null
+  /** When true, is_subsidized is manual and must not be overwritten when adding/moving riders */
+  subsidized_override?: boolean
+  /** When true, uber_type is manual and must not be overwritten when adding/moving riders */
+  uber_type_override?: boolean
 }
 
 interface ChangeLogEntry {
@@ -718,6 +725,16 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   } | null>(null)
   const [editVoucherValue, setEditVoucherValue] = useState<string>('')
   const [isUpdatingVoucher, setIsUpdatingVoucher] = useState(false)
+  const [editGroupOverridesModal, setEditGroupOverridesModal] = useState<{
+    group: Group
+  } | null>(null)
+  const [overrideSubsidized, setOverrideSubsidized] = useState<
+    'auto' | 'yes' | 'no'
+  >('auto')
+  const [overrideUberType, setOverrideUberType] = useState<
+    'auto' | 'X' | 'XL' | 'XXL' | 'Connect'
+  >('auto')
+  const [isUpdatingOverrides, setIsUpdatingOverrides] = useState(false)
   const [timeConflictModal, setTimeConflictModal] = useState<{
     rider: Rider
     group: Group
@@ -1818,7 +1835,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         const { data: matchesPage, error: matchesError } = await supabase
           .from('Matches')
           .select(
-            'ride_id, flight_id, user_id, voucher, time, uber_type, is_subsidized',
+            'ride_id, flight_id, user_id, voucher, time, uber_type, is_subsidized, subsidized_override, uber_type_override',
           )
           .range(matchesFrom, matchesFrom + matchesPageSize - 1)
 
@@ -1999,6 +2016,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           )
           // Still ensure the group exists so ride_id appears in the list (e.g. group 353)
           if (!groupsMap.has(match.ride_id)) {
+            const m = match as {
+              is_subsidized?: boolean | null
+              subsidized_override?: boolean
+              uber_type_override?: boolean
+            }
             groupsMap.set(match.ride_id, {
               ride_id: match.ride_id,
               airport: '—',
@@ -2009,9 +2031,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               riders: [],
               group_voucher: match.voucher || undefined,
               uber_type: match.uber_type || undefined,
-              is_subsidized:
-                (match as { is_subsidized?: boolean | null }).is_subsidized ??
-                undefined,
+              is_subsidized: m.is_subsidized ?? undefined,
+              subsidized_override: m.subsidized_override,
+              uber_type_override: m.uber_type_override,
             })
           }
           const group = groupsMap.get(match.ride_id)!
@@ -2037,6 +2059,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         matchedFlightIds.add(match.flight_id)
 
         if (!groupsMap.has(match.ride_id)) {
+          const m = match as {
+            is_subsidized?: boolean | null
+            subsidized_override?: boolean
+            uber_type_override?: boolean
+          }
           groupsMap.set(match.ride_id, {
             ride_id: match.ride_id,
             airport: flight.airport,
@@ -2047,9 +2074,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             riders: [],
             group_voucher: match.voucher || undefined,
             uber_type: match.uber_type || undefined,
-            is_subsidized:
-              (match as { is_subsidized?: boolean | null }).is_subsidized ??
-              undefined,
+            is_subsidized: m.is_subsidized ?? undefined,
+            subsidized_override: m.subsidized_override,
+            uber_type_override: m.uber_type_override,
           })
         }
 
@@ -2734,14 +2761,16 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     [timeToMinutes, minutesToTime, roundToNearest5Minutes],
   )
 
-  // Calculate overlapping time range for a group from all riders
+  // Calculate overlapping time range for the admin dashboard time card:
+  // - Range start (earliest time for the range) = latest of all riders' earliest times
+  // - Range end (latest time for the range) = earliest of all riders' latest times
   const calculateGroupTimeRange = useCallback(
     (riders: Rider[]): string => {
       if (riders.length === 0) return ''
       if (riders.length === 1) return riders[0].time_range
 
-      let latestStart = ''
-      let earliestEnd = ''
+      let latestStart = '' // latest of riders' earliest times → range start
+      let earliestEnd = '' // earliest of riders' latest times → range end
 
       for (const rider of riders) {
         const [startTime, endTime] = rider.time_range
@@ -2997,9 +3026,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           let newUberType: string | null = null
           let newIsSubsidized: boolean | null = null
           if (updatedRiders.length > 0) {
-            // Calculate new bag units and uber_type
+            // Calculate new bag units and uber_type (preserve Connect if ride is Connect)
             const bagUnits = calculateBagUnits(updatedRiders)
-            const uberType = determineUberType(updatedRiders.length, bagUnits)
+            const isConnect = group.uber_type?.toLowerCase() === 'connect'
+            const uberType = isConnect
+              ? 'Connect'
+              : determineUberType(updatedRiders.length, bagUnits)
             const { subsidized: isSubsidized } = computeGroupSubsidized({
               date: group.date,
               toAirport: group.to_airport,
@@ -3009,13 +3041,21 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               uberType: uberType ?? undefined,
             })
 
-            if (uberType) {
-              // Update all matches in the group with new uber_type, is_subsidized, and set is_verified to false
+            // Respect manual overrides: use group's value when override is set
+            const effectiveUberType = group.uber_type_override
+              ? (group.uber_type ?? uberType)
+              : uberType
+            const effectiveIsSubsidized = group.subsidized_override
+              ? (group.is_subsidized ?? isSubsidized)
+              : isSubsidized
+
+            if (effectiveUberType) {
+              // Update all matches in the group with uber_type, is_subsidized, and set is_verified to false
               const { error: updateError } = await supabase
                 .from('Matches')
                 .update({
-                  uber_type: uberType,
-                  is_subsidized: isSubsidized,
+                  uber_type: effectiveUberType,
+                  is_subsidized: effectiveIsSubsidized,
                   is_verified: false,
                 })
                 .eq('ride_id', fromGroupId)
@@ -3026,8 +3066,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   updateError,
                 )
               } else {
-                newUberType = uberType
-                newIsSubsidized = isSubsidized
+                newUberType = effectiveUberType
+                newIsSubsidized = effectiveIsSubsidized
               }
             }
           }
@@ -3492,9 +3532,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
           // Only update if there are remaining riders (groups need at least 1 rider)
           if (updatedRiders.length > 0) {
-            // Calculate new bag units and uber_type
+            // Calculate new bag units and uber_type (preserve Connect if ride is Connect)
             const bagUnits = calculateBagUnits(updatedRiders)
-            const uberType = determineUberType(updatedRiders.length, bagUnits)
+            const isConnect = group.uber_type?.toLowerCase() === 'connect'
+            const uberType = isConnect
+              ? 'Connect'
+              : determineUberType(updatedRiders.length, bagUnits)
             const { subsidized: isSubsidized } = computeGroupSubsidized({
               date: group.date,
               toAirport: group.to_airport,
@@ -3504,16 +3547,24 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               uberType: uberType ?? undefined,
             })
 
+            // Respect manual overrides: use group's value when override is set
+            const effectiveUberType = group.uber_type_override
+              ? (group.uber_type ?? uberType)
+              : uberType
+            const effectiveIsSubsidized = group.subsidized_override
+              ? (group.is_subsidized ?? isSubsidized)
+              : isSubsidized
+
             // Don't recalculate time - keep existing group time
             // Only update uber_type, is_subsidized, and is_verified
-            if (uberType) {
+            if (effectiveUberType) {
               // Update all matches in the group with uber_type, is_subsidized, and set is_verified to false
               // Do NOT update time - time should be changed manually only
               const { error: updateError } = await supabase
                 .from('Matches')
                 .update({
-                  uber_type: uberType,
-                  is_subsidized: isSubsidized,
+                  uber_type: effectiveUberType,
+                  is_subsidized: effectiveIsSubsidized,
                   is_verified: false,
                 })
                 .eq('ride_id', groupId)
@@ -3524,8 +3575,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   updateError,
                 )
               } else {
-                newUberType = uberType
-                newIsSubsidized = isSubsidized
+                newUberType = effectiveUberType
+                newIsSubsidized = effectiveIsSubsidized
               }
             }
           }
@@ -3928,10 +3979,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           : 'unmatched'
 
       try {
-        // Calculate bag units and uber_type for the updated group
+        // Calculate bag units and uber_type for the updated group (preserve Connect if ride is Connect)
         const updatedRiders = [...group.riders, rider]
         const bagUnits = calculateBagUnits(updatedRiders)
-        const uberType = determineUberType(updatedRiders.length, bagUnits) // Always returns a string (defaults to 'XXL*' for invalid)
+        const isConnect = group.uber_type?.toLowerCase() === 'connect'
+        const uberType = isConnect
+          ? 'Connect'
+          : determineUberType(updatedRiders.length, bagUnits) // Always returns a string (defaults to 'XXL*' for invalid)
 
         console.log('[handleSelectFromCorral] Calculated values', {
           bagUnits,
@@ -4050,6 +4104,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           })
         const voucherValue = assignVoucher ? group.group_voucher || '' : ''
 
+        // Respect manual overrides for the group when setting new/updated match
+        const effectiveUberType = group.uber_type_override
+          ? (group.uber_type ?? uberType)
+          : uberType
+        const effectiveIsSubsidized = group.subsidized_override
+          ? (group.is_subsidized ?? isSubsidized)
+          : isSubsidized
+
         let matchError = null
         if (existingMatch) {
           // Match already exists in destination group - update it instead of inserting
@@ -4062,8 +4124,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               voucher: voucherValue,
               contingency_voucher: null,
               is_verified: false,
-              is_subsidized: isSubsidized,
-              uber_type: uberType,
+              is_subsidized: effectiveIsSubsidized,
+              uber_type: effectiveUberType,
             })
             .eq('ride_id', group.ride_id)
             .eq('user_id', rider.user_id)
@@ -4081,8 +4143,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             voucher: voucherValue,
             contingency_voucher: null,
             is_verified: false,
-            is_subsidized: isSubsidized,
-            uber_type: uberType,
+            is_subsidized: effectiveIsSubsidized,
+            uber_type: effectiveUberType,
           })
           matchError = insertError
         }
@@ -4103,15 +4165,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           )
         }
 
-        // Update all existing matches in the group with uber_type, is_subsidized, and set is_verified to false
-        // Only update time if there's an overlap, otherwise keep existing time
+        // Update all existing matches in the group with uber_type, is_subsidized, and set is_verified to false.
+        // Do NOT update time for the whole group — only the newly added rider's match has their time set (in insert/update above).
+        // Use effective values so manual overrides are preserved
         const updateData: any = {
-          uber_type: uberType,
-          is_subsidized: isSubsidized,
+          uber_type: effectiveUberType,
+          is_subsidized: effectiveIsSubsidized,
           is_verified: false,
-        }
-        if (shouldUpdateGroupTime) {
-          updateData.time = formattedTime
         }
         const { error: updateMatchesError } = await supabase
           .from('Matches')
@@ -4176,25 +4236,26 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 ...g,
                 riders: [...g.riders, rider],
                 time_range: newTimeRange, // Update time range (for display)
-                match_time: shouldUpdateGroupTime
-                  ? formattedTime
-                  : g.match_time, // Only update if overlap exists
-                uber_type: uberType, // Update uber_type in local state
-                is_subsidized: isSubsidized,
+                match_time: g.match_time, // Keep existing group time — only the added rider's match was updated
+                uber_type: effectiveUberType, // Update uber_type in local state (respects override)
+                is_subsidized: effectiveIsSubsidized,
               }
             }
             // If rider came from another group, update source group (match already deleted above)
             if (sourceGroupId && g.ride_id === sourceGroupId) {
-              // Calculate new uber_type for source group after removing rider
+              // Calculate new uber_type for source group after removing rider (preserve Connect and manual override)
               const remainingRiders = g.riders.filter(
                 (r) => r.flight_id !== rider.flight_id,
               )
               if (remainingRiders.length > 0) {
                 const bagUnits = calculateBagUnits(remainingRiders)
-                const newUberType = determineUberType(
-                  remainingRiders.length,
-                  bagUnits,
-                )
+                const sourceIsConnect = g.uber_type?.toLowerCase() === 'connect'
+                const computedUberType = sourceIsConnect
+                  ? 'Connect'
+                  : determineUberType(remainingRiders.length, bagUnits)
+                const sourceEffectiveUberType = g.uber_type_override
+                  ? (g.uber_type ?? computedUberType)
+                  : computedUberType
                 // Recalculate time range for display only, but keep existing match_time
                 const newSourceTimeRange =
                   calculateGroupTimeRange(remainingRiders)
@@ -4204,7 +4265,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 supabase
                   .from('Matches')
                   .update({
-                    uber_type: newUberType || g.uber_type,
+                    uber_type: sourceEffectiveUberType || g.uber_type,
                     is_verified: false,
                   })
                   .eq('ride_id', sourceGroupId)
@@ -4222,7 +4283,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   riders: remainingRiders,
                   time_range: newSourceTimeRange, // Update time range for display only
                   match_time: g.match_time, // Keep existing time - don't change
-                  uber_type: newUberType || g.uber_type,
+                  uber_type: sourceEffectiveUberType || g.uber_type,
                 }
               }
             }
@@ -4594,6 +4655,88 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     // Invalid combination - default to XXL*
     return 'XXL*'
   }
+
+  const handleSaveGroupOverrides = useCallback(
+    async (
+      group: Group,
+      subsidized: 'auto' | 'yes' | 'no',
+      uberType: 'auto' | 'X' | 'XL' | 'XXL' | 'Connect',
+    ) => {
+      setIsUpdatingOverrides(true)
+      try {
+        const subsidizedOverride = subsidized !== 'auto'
+        const uberTypeOverride = uberType !== 'auto'
+
+        let isSubsidized: boolean
+        let finalUberType: string
+        if (subsidizedOverride) {
+          isSubsidized = subsidized === 'yes'
+        } else {
+          const { subsidized: computed } = computeGroupSubsidized({
+            date: group.date,
+            toAirport: group.to_airport,
+            airport: group.airport,
+            riderCount: group.riders.length,
+            riderSchools: group.riders.map((r) => r.school),
+            uberType: uberTypeOverride
+              ? (uberType as string)
+              : (group.uber_type ?? undefined),
+          })
+          isSubsidized = computed
+        }
+        if (uberTypeOverride) {
+          finalUberType = uberType as string
+        } else {
+          const bagUnits = calculateBagUnits(group.riders)
+          finalUberType =
+            group.uber_type?.toLowerCase() === 'connect'
+              ? 'Connect'
+              : determineUberType(group.riders.length, bagUnits)
+        }
+
+        const { error } = await supabase
+          .from('Matches')
+          .update({
+            is_subsidized: isSubsidized,
+            uber_type: finalUberType,
+            subsidized_override: subsidizedOverride,
+            uber_type_override: uberTypeOverride,
+            is_verified: false,
+          })
+          .eq('ride_id', group.ride_id)
+
+        if (error) {
+          console.error('Error updating group overrides:', error)
+          setErrorMessage('Failed to update group overrides')
+          setTimeout(() => setErrorMessage(null), 3000)
+          return
+        }
+
+        setGroups((prev) =>
+          prev.map((g) =>
+            g.ride_id === group.ride_id
+              ? {
+                  ...g,
+                  is_subsidized: isSubsidized,
+                  uber_type: finalUberType,
+                  subsidized_override: subsidizedOverride,
+                  uber_type_override: uberTypeOverride,
+                }
+              : g,
+          ),
+        )
+        setEditGroupOverridesModal(null)
+        setErrorMessage(null)
+      } catch (e) {
+        console.error(e)
+        setErrorMessage('Failed to update group overrides')
+        setTimeout(() => setErrorMessage(null), 3000)
+      } finally {
+        setIsUpdatingOverrides(false)
+      }
+    },
+    [supabase, computeGroupSubsidized, calculateBagUnits, determineUberType],
+  )
 
   // Create new group in database
   const createNewGroup = async () => {
@@ -6958,15 +7101,24 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               onClick={async () => {
                 try {
                   setErrorMessage(null)
-                  // Fetch matched data - need to join Matches, Flights, and Users
+                  // Use filter date range; if not set, default to last 90 days
+                  const endDefault = new Date()
+                  const startDefault = new Date()
+                  startDefault.setDate(startDefault.getDate() - 90)
+                  const rangeStart =
+                    dateRangeStart || startDefault.toISOString().split('T')[0]
+                  const rangeEnd =
+                    dateRangeEnd || endDefault.toISOString().split('T')[0]
+
+                  // Fetch matched data for the current filter period
                   const { data: matchesData, error: matchesError } =
                     await supabase
                       .from('Matches')
                       .select(
                         'ride_id, date, time, voucher, is_subsidized, flight_id, user_id',
                       )
-                      .gte('date', '2026-01-07')
-                      .lte('date', '2026-01-25')
+                      .gte('date', rangeStart)
+                      .lte('date', rangeEnd)
                       .order('date', { ascending: true })
                       .order('time', { ascending: true })
                       .order('ride_id', { ascending: true })
@@ -7094,7 +7246,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   const url = window.URL.createObjectURL(blob)
                   const a = document.createElement('a')
                   a.href = url
-                  a.download = `matched-${new Date().toISOString().split('T')[0]}.csv`
+                  a.download = `matched-${rangeStart}-to-${rangeEnd}.csv`
                   a.click()
                   window.URL.revokeObjectURL(url)
                 } catch (error: any) {
@@ -7679,6 +7831,49 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             title="Edit group time"
                           >
                             <Clock className="h-5 w-5" />
+                          </button>
+
+                          {/* Lock/Unlock subsidized & uber type (locked = manual; unlocked = auto on add/move) */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditGroupOverridesModal({ group })
+                              setOverrideSubsidized(
+                                group.subsidized_override
+                                  ? group.is_subsidized
+                                    ? 'yes'
+                                    : 'no'
+                                  : 'auto',
+                              )
+                              setOverrideUberType(
+                                group.uber_type_override && group.uber_type
+                                  ? (group.uber_type as
+                                      | 'X'
+                                      | 'XL'
+                                      | 'XXL'
+                                      | 'Connect')
+                                  : 'auto',
+                              )
+                            }}
+                            className={`rounded p-1.5 transition-colors ${
+                              group.subsidized_override ||
+                              group.uber_type_override
+                                ? 'text-amber-600 hover:bg-amber-50 hover:text-amber-800'
+                                : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
+                            }`}
+                            title={
+                              group.subsidized_override ||
+                              group.uber_type_override
+                                ? 'Locked: manual values (click to unlock or change)'
+                                : 'Unlocked: auto-updates on add/move (click to lock)'
+                            }
+                          >
+                            {group.subsidized_override ||
+                            group.uber_type_override ? (
+                              <Lock className="h-5 w-5" />
+                            ) : (
+                              <Unlock className="h-5 w-5" />
+                            )}
                           </button>
 
                           {/* Expand/Collapse Icon */}
@@ -10009,6 +10204,106 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:opacity-50"
                 >
                   {isUpdatingVoucher ? 'Updating...' : 'Update Voucher'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Lock/Unlock subsidized & uber type (locked = manual; unlocked = auto-updates on add/move) */}
+        {editGroupOverridesModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+              <h3 className="mb-4 text-lg font-semibold text-gray-900">
+                Subsidized & Uber type
+              </h3>
+              <p className="mb-4 text-sm text-gray-600">
+                Group #{editGroupOverridesModal.group.ride_id} •{' '}
+                {editGroupOverridesModal.group.riders.length} rider
+                {editGroupOverridesModal.group.riders.length !== 1 ? 's' : ''}.
+                <strong> Locked</strong> = manual value, won&apos;t change when
+                you add or move riders. <strong>Unlocked</strong> = updates
+                automatically.
+              </p>
+              <div className="mb-4 space-y-4">
+                <div className="flex items-center gap-2">
+                  {overrideSubsidized !== 'auto' ? (
+                    <Lock className="h-4 w-4 flex-shrink-0 text-amber-600" />
+                  ) : (
+                    <Unlock className="h-4 w-4 flex-shrink-0 text-gray-400" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Subsidized
+                    </label>
+                    <select
+                      value={overrideSubsidized}
+                      onChange={(e) =>
+                        setOverrideSubsidized(
+                          e.target.value as 'auto' | 'yes' | 'no',
+                        )
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    >
+                      <option value="auto">Unlocked (auto on add/move)</option>
+                      <option value="yes">Locked: Yes</option>
+                      <option value="no">Locked: No</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {overrideUberType !== 'auto' ? (
+                    <Lock className="h-4 w-4 flex-shrink-0 text-amber-600" />
+                  ) : (
+                    <Unlock className="h-4 w-4 flex-shrink-0 text-gray-400" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Uber type
+                    </label>
+                    <select
+                      value={overrideUberType}
+                      onChange={(e) =>
+                        setOverrideUberType(
+                          e.target.value as
+                            | 'auto'
+                            | 'X'
+                            | 'XL'
+                            | 'XXL'
+                            | 'Connect',
+                        )
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                    >
+                      <option value="auto">Unlocked (auto on add/move)</option>
+                      <option value="X">Locked: Uber X</option>
+                      <option value="XL">Locked: Uber XL</option>
+                      <option value="XXL">Locked: Uber XXL</option>
+                      <option value="Connect">Locked: Connect Shuttle</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setEditGroupOverridesModal(null)}
+                  disabled={isUpdatingOverrides}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    await handleSaveGroupOverrides(
+                      editGroupOverridesModal.group,
+                      overrideSubsidized,
+                      overrideUberType,
+                    )
+                  }}
+                  disabled={isUpdatingOverrides}
+                  className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:opacity-50"
+                >
+                  {isUpdatingOverrides ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </div>
