@@ -224,65 +224,151 @@ export default function Results() {
     }
   }
 
-  // ===== COMMENTED OUT: MATCH DELETION FUNCTIONALITY =====
-  // This function handles the backend logic for deleting matches
-  // To re-enable: Uncomment this function AND uncomment the button code in MatchCard.tsx
-
-  // const deleteMatch = async (rideId: number) => {
-  //   if (!user) {
-  //     console.error('No authenticated user found')
-  //     return
-  //   }
-
-  //   try {
-  //     // First, get all matches for this ride
-  //     const { data: allRideMatches, error: fetchError } = await supabase
-  //       .from('Matches')
-  //       .select('*')
-  //       .eq('ride_id', rideId)
-
-  //     if (fetchError) {
-  //       console.error('Error fetching ride matches:', fetchError)
-  //       throw fetchError
-  //     }
-
-  //     // If there are only 2 people in the ride group, delete all matches
-  //     if (allRideMatches && allRideMatches.length <= 2) {
-  //       // Delete all matches for this ride_id
-  //       const { error: deleteAllError } = await supabase
-  //         .from('Matches')
-  //         .delete()
-  //         .eq('ride_id', rideId)
-
-  //       if (deleteAllError) {
-  //         console.error('Error deleting all matches:', deleteAllError)
-  //         throw deleteAllError
-  //       }
-  //     } else {
-  //       // Delete only the user's match
-  //       const { error: deleteUserError } = await supabase
-  //         .from('Matches')
-  //         .delete()
-  //         .eq('ride_id', rideId)
-  //         .eq('user_id', user.id)
-
-  //       if (deleteUserError) {
-  //         console.error('Error deleting user match:', deleteUserError)
-  //         throw deleteUserError
-  //       }
-  //     }
-
-  //     // Refresh matches after deleting
-  //     await fetchMatches()
-  //   } catch (error) {
-  //     console.error('Error in delete operation:', error)
-  //     throw error
-  //   }
-  // }
-
-  // Placeholder function while deletion is disabled
   const deleteMatch = async (rideId: number) => {
-    console.log('Match deletion is currently disabled')
+    if (!user) {
+      console.error('No authenticated user found')
+      return
+    }
+
+    try {
+      // 1. Fetch user's match and flight for this ride
+      const { data: userMatch, error: fetchMatchError } = await supabase
+        .from('Matches')
+        .select(
+          `
+          id,
+          flight_id,
+          date,
+          time,
+          is_subsidized,
+          Flights (
+            airport,
+            to_airport,
+            date,
+            earliest_time
+          )
+        `,
+        )
+        .eq('ride_id', rideId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (fetchMatchError) {
+        console.error('Error fetching user match:', fetchMatchError)
+        throw fetchMatchError
+      }
+      if (!userMatch) {
+        throw new Error('Match not found')
+      }
+
+      const flight = Array.isArray(userMatch.Flights)
+        ? userMatch.Flights[0]
+        : userMatch.Flights
+      const airport = (flight as { airport: string })?.airport || 'LAX'
+      const toAirport = (flight as { to_airport: boolean })?.to_airport ?? true
+      const flightDate = (flight as { date: string })?.date
+      const matchDate = userMatch.date || flightDate || ''
+      const matchTime =
+        userMatch.time ||
+        (flight as { earliest_time?: string })?.earliest_time ||
+        '12:00:00'
+
+      // 2. Compute fee-related fields
+      // Everyone who cancels has a match, so they're past the matching deadline by definition.
+      const cancelledAfterDeadline = true
+
+      const [year, month, day] = matchDate.split('-').map(Number)
+      const [hours, minutes] = matchTime.split(':').map(Number)
+      const matchDateTime = new Date(year, month - 1, day, hours, minutes)
+      const oneHourBeforeMatch = new Date(
+        matchDateTime.getTime() - 60 * 60 * 1000,
+      )
+      const cancelledBefore1hr = new Date() <= oneHourBeforeMatch
+
+      // 3. Insert into match_cancellations (audit for fee billing)
+      const { error: insertError } = await supabase
+        .from('match_cancellations')
+        .insert({
+          ride_id: rideId,
+          user_id: user.id,
+          flight_id: userMatch.flight_id,
+          match_date: matchDate,
+          match_time: matchTime.length === 5 ? `${matchTime}:00` : matchTime,
+          airport,
+          to_airport: toAirport,
+          is_subsidized: userMatch.is_subsidized ?? null,
+          cancelled_after_deadline: cancelledAfterDeadline,
+          cancelled_before_1hr: cancelledBefore1hr,
+          cancellation_type: 'student_initiated',
+        })
+
+      if (insertError) {
+        console.error('Error logging cancellation:', insertError)
+        // Don't throw - proceed with deletion; audit is best-effort
+      }
+
+      // 4. Get all matches for this ride (need flight_id to update Flights when deleting all)
+      const { data: allRideMatches, error: fetchAllError } = await supabase
+        .from('Matches')
+        .select('user_id, flight_id')
+        .eq('ride_id', rideId)
+
+      if (fetchAllError) {
+        console.error('Error fetching ride matches:', fetchAllError)
+        throw fetchAllError
+      }
+
+      // 5. Delete matches
+      if (allRideMatches && allRideMatches.length <= 2) {
+        const { error: deleteAllError } = await supabase
+          .from('Matches')
+          .delete()
+          .eq('ride_id', rideId)
+
+        if (deleteAllError) {
+          console.error('Error deleting all matches:', deleteAllError)
+          throw deleteAllError
+        }
+      } else {
+        const { error: deleteUserError } = await supabase
+          .from('Matches')
+          .delete()
+          .eq('ride_id', rideId)
+          .eq('user_id', user.id)
+
+        if (deleteUserError) {
+          console.error('Error deleting user match:', deleteUserError)
+          throw deleteUserError
+        }
+      }
+
+      // 6. Set Flights.matched = false for all affected users
+      // When we deleted all matches (<=2), every user in the ride is now unmatched.
+      // When we deleted only one match (>2), only the cancelling user is unmatched.
+      const flightIdsToUpdate =
+        allRideMatches && allRideMatches.length <= 2
+          ? allRideMatches.map((m) => m.flight_id)
+          : [userMatch.flight_id]
+
+      for (const fid of flightIdsToUpdate) {
+        const { error: updateFlightError } = await supabase
+          .from('Flights')
+          .update({ matched: false })
+          .eq('flight_id', fid)
+
+        if (updateFlightError) {
+          console.error(
+            `Error updating flight ${fid} matched status:`,
+            updateFlightError,
+          )
+        }
+      }
+
+      await fetchMatches()
+    } catch (error) {
+      console.error('Error in delete operation:', error)
+      throw error
+    }
   }
 
   if (!isAuthenticated) {
