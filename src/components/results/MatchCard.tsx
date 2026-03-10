@@ -133,6 +133,13 @@ const MatchCard = ({
   //   }
   // }
 
+  // Use voucher existence (not is_subsidized). Connect rides never have vouchers, so exclude them.
+  const hasVoucher =
+    Boolean(firstMatch.voucher?.trim()) &&
+    firstMatch.uber_type?.toLowerCase() !== 'connect'
+
+  const isConnect = firstMatch.uber_type?.toLowerCase() === 'connect'
+
   const handleReminderClick = () => {
     if (!firstMatch.date || !firstMatch.time) return
 
@@ -180,10 +187,31 @@ const MatchCard = ({
             </p>
             <p className="mt-1 text-xl font-semibold text-gray-800">
               You are matched with{' '}
-              {matches.length === 1
-                ? firstMatch.Users.firstname
-                : `${matches.length} people`}
+              {isConnect
+                ? `${matches.length} ${matches.length === 1 ? 'person' : 'people'}`
+                : matches.length === 1
+                  ? firstMatch.Users.firstname
+                  : `${matches.length} people`}
             </p>
+            {isConnect && (
+              <p className="mt-1.5 inline-flex w-fit items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-800">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                  />
+                </svg>
+                Subsidized Connect shuttle — no Uber needed
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -209,13 +237,15 @@ const MatchCard = ({
                 />
               </svg>
               <span className="font-medium text-gray-800">
-                {firstMatch.Flights.airport}
+                {firstMatch.Flights.to_airport
+                  ? `School → ${firstMatch.Flights.airport}`
+                  : `${firstMatch.Flights.airport} → School`}
               </span>
               <span className="text-sm text-gray-500">
                 {getAirportAddress(firstMatch.Flights.airport)}
               </span>
             </p>
-            {firstMatch.voucher && isGroupReady ? (
+            {hasVoucher && isGroupReady ? (
               <p className="flex items-center gap-1.5">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -247,7 +277,7 @@ const MatchCard = ({
                   )}
                 </span>
               </p>
-            ) : firstMatch.voucher && rideId && upcoming ? (
+            ) : hasVoucher && !isGroupReady && rideId && upcoming ? (
               <Link
                 href={`/aspc-ready?ride_id=${rideId}`}
                 className="flex flex-col gap-2 rounded-lg border-2 border-teal-300 bg-teal-50 p-3 transition hover:border-teal-400 hover:bg-teal-100 sm:flex-row sm:items-center sm:gap-3"
@@ -293,7 +323,7 @@ const MatchCard = ({
             ) : null}
           </div>
 
-          {upcoming && rideId && (
+          {upcoming && rideId && !firstMatch.Flights?.to_airport && (
             <Link
               href={`/aspc-delay/${rideId}`}
               className="mt-3 flex items-center gap-2 self-start rounded-lg border-2 border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 transition hover:border-amber-400 hover:bg-amber-100"
@@ -339,38 +369,42 @@ const MatchCard = ({
           )}
         </div>
 
-        {/* Right side with contact info and profile pictures */}
+        {/* Right side: only show contact info and profile pictures for non-Connect rides */}
         <div className="flex flex-col items-center gap-3 lg:items-end">
-          <p className="text-sm font-medium text-indigo-600">
-            Other Riders Contact Information
-          </p>
-          <div className="flex flex-wrap justify-center gap-3 lg:justify-end">
-            {matches.map((match) => (
-              <div
-                key={match.Users.user_id}
-                className="relative flex flex-col items-center gap-1 rounded-xl p-1 transition-all duration-300 hover:scale-105 hover:cursor-pointer hover:shadow-md hover:shadow-gray-600"
-              >
-                <p className="text-center text-sm font-medium text-gray-700">
-                  {match.Users.firstname}
-                </p>
-                <div className="relative overflow-hidden rounded-full">
-                  <Image
-                    src={getProfileUrl(match.Users.photo_url)}
-                    alt={`${match.Users.firstname}'s profile`}
-                    width={60}
-                    height={60}
-                    className="rounded-full"
-                  />
-                </div>
-                <p className="text-center text-xs text-gray-500">
-                  {match.Users.email || 'No email provided'}
-                </p>
-                <p className="text-center text-xs text-gray-500">
-                  {match.Users.phonenumber || 'No phone provided'}
-                </p>
+          {!isConnect && (
+            <>
+              <p className="text-sm font-medium text-indigo-600">
+                Other Riders Contact Information
+              </p>
+              <div className="flex flex-wrap justify-center gap-3 lg:justify-end">
+                {matches.map((match) => (
+                  <div
+                    key={match.Users.user_id}
+                    className="relative flex flex-col items-center gap-1 rounded-xl p-1 transition-all duration-300 hover:scale-105 hover:cursor-pointer hover:shadow-md hover:shadow-gray-600"
+                  >
+                    <p className="text-center text-sm font-medium text-gray-700">
+                      {match.Users.firstname}
+                    </p>
+                    <div className="relative overflow-hidden rounded-full">
+                      <Image
+                        src={getProfileUrl(match.Users.photo_url)}
+                        alt={`${match.Users.firstname}'s profile`}
+                        width={60}
+                        height={60}
+                        className="rounded-full"
+                      />
+                    </div>
+                    <p className="text-center text-xs text-gray-500">
+                      {match.Users.email || 'No email provided'}
+                    </p>
+                    <p className="text-center text-xs text-gray-500">
+                      {match.Users.phonenumber || 'No phone provided'}
+                    </p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
 
           {upcoming && (
             // ===== CANCEL MATCH BUTTON - CURRENTLY DISABLED =====
