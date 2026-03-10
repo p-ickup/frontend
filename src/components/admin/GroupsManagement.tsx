@@ -1875,7 +1875,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       if (!matchesData || matchesData.length === 0) {
         setGroups([])
         let unmatchedRiders = flightsDataToUse
-          .filter((f: any) => f.matched === false)
+          .filter((f: any) => f.matched !== true)
           .map((flight: any) => {
             const userData = Array.isArray(flight.Users)
               ? flight.Users[0]
@@ -2173,9 +2173,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         .filter((f: any) => {
           // A flight is unmatched if:
           // 1. It's not in any match (not in matchedFlightIds)
-          // 2. AND matched is explicitly false (not null, not true)
+          // 2. AND matched is not true (false or null — include null so we don't miss flights that were never set)
           const isNotInMatches = !matchedFlightIds.has(f.flight_id)
-          const isNotMatched = f.matched === false
+          const isNotMatched = f.matched !== true
           return isNotInMatches && isNotMatched
         })
         .map((flight: any) => {
@@ -2975,17 +2975,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   return
                 }
 
-                // Update Flights table to mark all flights in the group as unmatched
-                if (allFlightIds.length > 0) {
-                  const { error: flightsError } = await supabase
-                    .from('Flights')
-                    .update({ matched: false })
-                    .in('flight_id', allFlightIds)
-
-                  if (flightsError) {
-                    console.error('Error updating flights:', flightsError)
-                  }
-                }
+                // Do NOT set Flights.matched = false when moving to corral; only set unmatched when user explicitly clicks "Remove from group" (to unmatched).
 
                 // Log to ChangeLog
                 // Note: target_group_id expects UUID, but ride_id is a number
@@ -3033,15 +3023,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             return
           }
 
-          // Update Flights table to mark as unmatched
-          const { error: flightsError } = await supabase
-            .from('Flights')
-            .update({ matched: false })
-            .eq('flight_id', rider.flight_id)
-
-          if (flightsError) {
-            console.error('Error updating flight:', flightsError)
-          }
+          // Do NOT set Flights.matched = false when moving to corral; only set unmatched when user explicitly clicks "Remove from group" (to unmatched).
 
           // Only update if there are remaining riders (groups need at least 1 rider)
           let newUberType: string | null = null
@@ -4110,6 +4092,17 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           console.log(
             `[handleSelectFromCorral] Deleted ${deletedMatches.length} existing match(es) for rider ${rider.name} (flight_id: ${rider.flight_id})`,
           )
+          // Mark flight as unmatched when removing from previous group (so if insert below fails, DB stays consistent)
+          const { error: flightsUnmatchError } = await supabase
+            .from('Flights')
+            .update({ matched: false })
+            .eq('flight_id', rider.flight_id)
+          if (flightsUnmatchError) {
+            console.error(
+              'Error updating flight to unmatched:',
+              flightsUnmatchError,
+            )
+          }
         }
 
         // Check if a match already exists for this rider in the destination group
