@@ -20,7 +20,6 @@ import {
   Plane,
   PlaneLanding,
   PlaneTakeoff,
-  Settings,
   Unlock,
   UserPlus,
   X,
@@ -5298,17 +5297,28 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         if (searchQuery.trim()) {
           const trimmedQuery = searchQuery.trim()
           const isRideIdSearch = trimmedQuery.startsWith('#')
-          const query = isRideIdSearch
-            ? trimmedQuery.slice(1).toLowerCase().trim()
-            : trimmedQuery.toLowerCase().trim()
+          const restAfterHash = trimmedQuery.slice(1).trim()
 
-          // If searching with # prefix, only search by ride_id
+          // If searching with # prefix, search by ride_id (single or multiple)
           if (isRideIdSearch) {
-            const rideIdMatch = group.ride_id.toString().includes(query)
+            let rideIdMatch: boolean
+            if (restAfterHash.startsWith('[') && restAfterHash.endsWith(']')) {
+              const idsStr = restAfterHash.slice(1, -1)
+              const rideIds = idsStr
+                .split(',')
+                .map((s) => parseInt(s.trim(), 10))
+                .filter((n) => !Number.isNaN(n))
+              rideIdMatch =
+                rideIds.length > 0 && rideIds.includes(group.ride_id)
+            } else {
+              const query = restAfterHash.toLowerCase()
+              rideIdMatch = group.ride_id.toString().includes(query)
+            }
             if (!rideIdMatch) {
               return false
             }
           } else {
+            const query = trimmedQuery.toLowerCase().trim()
             // Search in group ride_id
             const rideIdMatch = group.ride_id.toString().includes(query)
 
@@ -6440,10 +6450,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       <p className="mb-1 font-semibold">Search Tips:</p>
                       <p className="mb-1">
                         • Use{' '}
+                        <span className="font-mono font-semibold">#512</span> or{' '}
                         <span className="font-mono font-semibold">
-                          #[RideID Num]
+                          #[512, 503]
                         </span>{' '}
-                        to search by ride ID
+                        to search by ride ID (single or multiple)
                       </p>
                       <p>
                         • Otherwise searches across names, flights, vouchers,
@@ -6629,10 +6640,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       <p className="mb-1 font-semibold">Search Tips:</p>
                       <p className="mb-1">
                         • Use{' '}
+                        <span className="font-mono font-semibold">#512</span> or{' '}
                         <span className="font-mono font-semibold">
-                          #[RideID Num]
+                          #[512, 503]
                         </span>{' '}
-                        to search by ride ID
+                        to search by ride ID (single or multiple)
                       </p>
                       <p>
                         • Otherwise searches across names, flights, vouchers,
