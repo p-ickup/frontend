@@ -102,6 +102,24 @@ export type Database = {
           created_at: string
         }
       }
+      match_cancellations: {
+        Row: {
+          id: number
+          ride_id: number
+          user_id: string
+          flight_id: number
+          cancelled_at: string
+          match_date: string
+          match_time: string
+          airport: string
+          to_airport: boolean
+          is_subsidized: boolean | null
+          cancelled_after_deadline: boolean
+          cancelled_before_1hr: boolean
+          cancellation_type: string | null
+          reason: string | null
+        }
+      }
     }
   }
 }
