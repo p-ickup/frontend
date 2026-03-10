@@ -623,6 +623,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'matched' | 'unmatched'>('matched')
   const [selectedAirports, setSelectedAirports] = useState<string[]>([])
+  const [filterDirectionTo, setFilterDirectionTo] = useState<boolean>(true)
+  const [filterDirectionFrom, setFilterDirectionFrom] = useState<boolean>(true)
   const [availableAirports, setAvailableAirports] = useState<string[]>([])
   const [dateRangeStart, setDateRangeStart] = useState<string>('')
   const [dateRangeEnd, setDateRangeEnd] = useState<string>('')
@@ -802,6 +804,18 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const [confirmingIndividuals, setConfirmingIndividuals] = useState<
     Set<string>
   >(new Set())
+
+  // Normalize a date value from API (ISO or YYYY-MM-DD) to YYYY-MM-DD only. Avoids timezone
+  // shift when values like "2025-03-21T00:00:00.000Z" are parsed as UTC and displayed in PST.
+  const normalizeDateToYYYYMMDD = useCallback(
+    (value: string | null | undefined): string => {
+      if (value == null || value === '') return ''
+      const trimmed = String(value).trim()
+      const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/)
+      return match ? match[1] : trimmed
+    },
+    [],
+  )
 
   // Load unconfirmed changes from ChangeLog
   const loadUnconfirmedChanges = useCallback(async () => {
@@ -1547,7 +1561,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                     time_range: '',
                     airport: '',
                     to_airport: false,
-                    date: flight.date || changeInfo.date,
+                    date: normalizeDateToYYYYMMDD(
+                      flight.date || changeInfo.date,
+                    ),
                   },
                   becameUnmatchedAt: changeInfo.becameUnmatchedAt,
                   emailSent: false, // Should not reach here if confirmed, but set to false for safety
@@ -1585,7 +1601,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     } catch (error) {
       console.error('Error loading unconfirmed changes:', error)
     }
-  }, [supabase, groups])
+  }, [supabase, groups, normalizeDateToYYYYMMDD])
 
   useEffect(() => {
     const loadData = async () => {
@@ -1622,15 +1638,16 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups.length])
 
-  // Set initial collapsed state based on screen size
+  // Set initial collapsed state based on screen size: on mobile start with both collapsed; on desktop start expanded
   useEffect(() => {
     const isMobile = window.innerWidth < 768 // md breakpoint
-    if (!isMobile) {
-      // Expand on desktop
+    if (isMobile) {
+      setFiltersCollapsed(true)
+      setCorralCollapsed(true)
+    } else {
       setFiltersCollapsed(false)
       setCorralCollapsed(false)
     }
-    // On mobile, keep them collapsed (already true by default)
   }, [])
 
   // Handle changelog resizing with fine control
@@ -1835,7 +1852,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         const { data: matchesPage, error: matchesError } = await supabase
           .from('Matches')
           .select(
-            'ride_id, flight_id, user_id, voucher, time, uber_type, is_subsidized, subsidized_override, uber_type_override',
+            'ride_id, flight_id, user_id, voucher, time, date, uber_type, is_subsidized, subsidized_override, uber_type_override',
           )
           .range(matchesFrom, matchesFrom + matchesPageSize - 1)
 
@@ -1875,7 +1892,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               time_range: `${flight.earliest_time} - ${flight.latest_time}`,
               airport: flight.airport,
               to_airport: flight.to_airport,
-              date: flight.date,
+              date: normalizeDateToYYYYMMDD(flight.date),
               reason: 'unmatched',
               flight_no: flight.flight_no || '',
               airline_iata: flight.airline_iata || '',
@@ -2063,11 +2080,15 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             is_subsidized?: boolean | null
             subsidized_override?: boolean
             uber_type_override?: boolean
+            date?: string | null
           }
+          const groupDate =
+            normalizeDateToYYYYMMDD(m.date) ||
+            normalizeDateToYYYYMMDD(flight.date)
           groupsMap.set(match.ride_id, {
             ride_id: match.ride_id,
             airport: flight.airport,
-            date: flight.date,
+            date: groupDate,
             time_range: `${flight.earliest_time} - ${flight.latest_time}`,
             match_time: match.time || undefined,
             to_airport: flight.to_airport,
@@ -2095,7 +2116,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           time_range: `${flight.earliest_time} - ${flight.latest_time}`,
           airport: flight.airport,
           to_airport: flight.to_airport,
-          date: flight.date,
+          date: normalizeDateToYYYYMMDD(flight.date),
           flight_no: flight.flight_no || '',
           airline_iata: flight.airline_iata || '',
           school: userData?.school || undefined,
@@ -2173,7 +2194,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             time_range: `${flight.earliest_time} - ${flight.latest_time}`,
             airport: flight.airport,
             to_airport: flight.to_airport,
-            date: flight.date,
+            date: normalizeDateToYYYYMMDD(flight.date),
             reason: 'unmatched',
             flight_no: flight.flight_no || '',
             airline_iata: flight.airline_iata || '',
@@ -2189,7 +2210,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     }
     // calculateGroupTimeRange is defined later in the component and is stable (useCallback)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, authUser, user])
+  }, [supabase, authUser, user, normalizeDateToYYYYMMDD])
 
   const fetchChangeLog = useCallback(async () => {
     try {
@@ -3045,9 +3066,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             const effectiveUberType = group.uber_type_override
               ? (group.uber_type ?? uberType)
               : uberType
+            const hasVoucher = Boolean(group.group_voucher?.trim())
+            const isConnectType =
+              (effectiveUberType ?? group.uber_type)?.toLowerCase() ===
+              'connect'
             const effectiveIsSubsidized = group.subsidized_override
               ? (group.is_subsidized ?? isSubsidized)
-              : isSubsidized
+              : isSubsidized || hasVoucher || isConnectType
 
             if (effectiveUberType) {
               // Update all matches in the group with uber_type, is_subsidized, and set is_verified to false
@@ -3551,9 +3576,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             const effectiveUberType = group.uber_type_override
               ? (group.uber_type ?? uberType)
               : uberType
+            const hasVoucher = Boolean(group.group_voucher?.trim())
+            const isConnectType =
+              (effectiveUberType ?? group.uber_type)?.toLowerCase() ===
+              'connect'
             const effectiveIsSubsidized = group.subsidized_override
               ? (group.is_subsidized ?? isSubsidized)
-              : isSubsidized
+              : isSubsidized || hasVoucher || isConnectType
 
             // Don't recalculate time - keep existing group time
             // Only update uber_type, is_subsidized, and is_verified
@@ -4108,9 +4137,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         const effectiveUberType = group.uber_type_override
           ? (group.uber_type ?? uberType)
           : uberType
+        const hasVoucher = Boolean(group.group_voucher?.trim())
+        const isConnectType =
+          (effectiveUberType ?? group.uber_type)?.toLowerCase() === 'connect'
         const effectiveIsSubsidized = group.subsidized_override
           ? (group.is_subsidized ?? isSubsidized)
-          : isSubsidized
+          : isSubsidized || hasVoucher || isConnectType
 
         let matchError = null
         if (existingMatch) {
@@ -4243,7 +4275,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             }
             // If rider came from another group, update source group (match already deleted above)
             if (sourceGroupId && g.ride_id === sourceGroupId) {
-              // Calculate new uber_type for source group after removing rider (preserve Connect and manual override)
+              // Calculate new uber_type and is_subsidized for source group after removing rider
               const remainingRiders = g.riders.filter(
                 (r) => r.flight_id !== rider.flight_id,
               )
@@ -4256,16 +4288,34 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 const sourceEffectiveUberType = g.uber_type_override
                   ? (g.uber_type ?? computedUberType)
                   : computedUberType
+                const { subsidized: sourceComputedSubsidized } =
+                  computeGroupSubsidized({
+                    date: g.date,
+                    toAirport: g.to_airport,
+                    airport: g.airport,
+                    riderCount: remainingRiders.length,
+                    riderSchools: remainingRiders.map((r) => r.school),
+                    uberType: sourceEffectiveUberType ?? undefined,
+                  })
+                const sourceHasVoucher = Boolean(g.group_voucher?.trim())
+                const sourceIsConnectType =
+                  (sourceEffectiveUberType ?? g.uber_type)?.toLowerCase() ===
+                  'connect'
+                const sourceEffectiveIsSubsidized = g.subsidized_override
+                  ? (g.is_subsidized ?? sourceComputedSubsidized)
+                  : sourceComputedSubsidized ||
+                    sourceHasVoucher ||
+                    sourceIsConnectType
                 // Recalculate time range for display only, but keep existing match_time
                 const newSourceTimeRange =
                   calculateGroupTimeRange(remainingRiders)
 
-                // Update all matches in source group with uber_type, but NOT time
-                // Time should be changed manually only
+                // Update all matches in source group with uber_type, is_subsidized, but NOT time
                 supabase
                   .from('Matches')
                   .update({
                     uber_type: sourceEffectiveUberType || g.uber_type,
+                    is_subsidized: sourceEffectiveIsSubsidized,
                     is_verified: false,
                   })
                   .eq('ride_id', sourceGroupId)
@@ -4284,6 +4334,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   time_range: newSourceTimeRange, // Update time range for display only
                   match_time: g.match_time, // Keep existing time - don't change
                   uber_type: sourceEffectiveUberType || g.uber_type,
+                  is_subsidized: sourceEffectiveIsSubsidized,
                 }
               }
             }
@@ -4682,7 +4733,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               ? (uberType as string)
               : (group.uber_type ?? undefined),
           })
-          isSubsidized = computed
+          const hasVoucher = Boolean(group.group_voucher?.trim())
+          const isConnectType = group.uber_type?.toLowerCase() === 'connect'
+          isSubsidized = computed || hasVoucher || isConnectType
         }
         if (uberTypeOverride) {
           finalUberType = uberType as string
@@ -4930,6 +4983,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           normalizedNewGroupVoucher = `${uberVoucherPrefix}${voucherCode}`
         }
       }
+      const hasVoucher = Boolean(normalizedNewGroupVoucher)
+      const isConnectType = uberType?.toLowerCase() === 'connect'
+      const effectiveNewGroupSubsidized =
+        calculatedIsSubsidized || hasVoucher || isConnectType
 
       const matchesToInsert = selectedRidersForNewGroup.map((rider, index) => ({
         ride_id: rideId,
@@ -4941,7 +4998,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         voucher: assignVoucher ? normalizedNewGroupVoucher || '' : '',
         contingency_voucher: contingencyVouchers[index] || null, // Assign voucher by index
         is_verified: false,
-        is_subsidized: calculatedIsSubsidized,
+        is_subsidized: effectiveNewGroupSubsidized,
         uber_type: uberType,
       }))
 
@@ -5162,29 +5219,23 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           selectedAirports.includes(group.airport)
         if (!airportMatch) return false
 
+        // Direction: To airport / From airport checkboxes (both checked = show all)
+        const directionMatch =
+          (filterDirectionTo && group.to_airport) ||
+          (filterDirectionFrom && !group.to_airport)
+        if (!directionMatch) return false
+
         // Date range: both empty = show all; start only = from start; end only = to end; both = between
+        // Date range filter: compare as YYYY-MM-DD strings to avoid timezone shift (e.g. 2025-03-21 UTC showing as 3/20 in PST)
         if (dateRangeStart || dateRangeEnd) {
-          const groupDate = new Date(group.date)
-          groupDate.setHours(0, 0, 0, 0)
-
-          if (dateRangeStart) {
-            const startDate = new Date(dateRangeStart)
-            startDate.setHours(0, 0, 0, 0)
-            if (groupDate < startDate) {
-              return false
-            }
-          }
-
-          if (dateRangeEnd) {
-            const endDate = new Date(dateRangeEnd)
-            endDate.setHours(23, 59, 59, 999)
-            if (groupDate > endDate) {
-              return false
-            }
-          }
+          const groupDateStr = normalizeDateToYYYYMMDD(group.date) || group.date
+          if (dateRangeStart && groupDateStr < dateRangeStart) return false
+          if (dateRangeEnd && groupDateStr > dateRangeEnd) return false
         }
 
         // Time range filter (optional)
+        // Left box = start of window, right box = end of window. When start > end, window spans midnight (e.g. 8pm–6am).
+        // Compare as minutes-since-midnight so "9:00" (9am) is not treated as >= "20:00" (8pm) by string comparison.
         if (timeRangeStart && timeRangeEnd) {
           const calculatedTimeRange = calculateGroupTimeRange(group.riders)
           const groupTimeRange = calculatedTimeRange.split(' - ')
@@ -5192,11 +5243,29 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           const groupEnd = groupTimeRange[1]?.trim()
 
           if (groupStart && groupEnd) {
-            // Compare time ranges (simplified - assumes same date)
-            const timeInRange =
-              (groupStart >= timeRangeStart && groupStart <= timeRangeEnd) ||
-              (groupEnd >= timeRangeStart && groupEnd <= timeRangeEnd) ||
-              (groupStart <= timeRangeStart && groupEnd >= timeRangeEnd)
+            const filterStartM = timeToMinutes(timeRangeStart)
+            const filterEndM = timeToMinutes(timeRangeEnd)
+            const groupStartM = timeToMinutes(
+              groupStart.includes(':')
+                ? groupStart.split(':').slice(0, 2).join(':')
+                : groupStart,
+            )
+            const groupEndM = timeToMinutes(
+              groupEnd.includes(':')
+                ? groupEnd.split(':').slice(0, 2).join(':')
+                : groupEnd,
+            )
+            const isOvernight = filterStartM > filterEndM
+            const timeInRange = isOvernight
+              ? // Overnight: window [filterStart..24:00) ∪ [00:00..filterEnd]. Include if group start or end falls in that window.
+                groupStartM >= filterStartM ||
+                groupStartM <= filterEndM ||
+                groupEndM >= filterStartM ||
+                groupEndM <= filterEndM
+              : // Same-day: group overlaps [filterStart, filterEnd]
+                (groupStartM >= filterStartM && groupStartM <= filterEndM) ||
+                (groupEndM >= filterStartM && groupEndM <= filterEndM) ||
+                (groupStartM <= filterStartM && groupEndM >= filterEndM)
 
             if (!timeInRange) return false
           }
@@ -5298,6 +5367,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     [
       groups,
       selectedAirports,
+      filterDirectionTo,
+      filterDirectionFrom,
       dateRangeStart,
       dateRangeEnd,
       timeRangeStart,
@@ -5311,6 +5382,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       getUberType,
       calculateGroupTimeRange,
       isGroupSubsidized,
+      timeToMinutes,
+      normalizeDateToYYYYMMDD,
     ],
   )
 
@@ -5328,25 +5401,23 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       reasons.push(
         `airport: group.airport=${group.airport} selected=${JSON.stringify(selectedAirports)}`,
       )
+    const directionMatch =
+      (filterDirectionTo && group.to_airport) ||
+      (filterDirectionFrom && !group.to_airport)
+    if (!directionMatch)
+      reasons.push(
+        `direction: to_airport=${group.to_airport} filterTo=${filterDirectionTo} filterFrom=${filterDirectionFrom}`,
+      )
     if (dateRangeStart || dateRangeEnd) {
-      const groupDate = new Date(group.date)
-      groupDate.setHours(0, 0, 0, 0)
-      if (dateRangeStart) {
-        const startDate = new Date(dateRangeStart)
-        startDate.setHours(0, 0, 0, 0)
-        if (groupDate < startDate)
-          reasons.push(
-            `date before start: groupDate=${group.date} start=${dateRangeStart}`,
-          )
-      }
-      if (dateRangeEnd) {
-        const endDate = new Date(dateRangeEnd)
-        endDate.setHours(23, 59, 59, 999)
-        if (groupDate > endDate)
-          reasons.push(
-            `date after end: groupDate=${group.date} end=${dateRangeEnd}`,
-          )
-      }
+      const groupDateStr = normalizeDateToYYYYMMDD(group.date) || group.date
+      if (dateRangeStart && groupDateStr < dateRangeStart)
+        reasons.push(
+          `date before start: groupDate=${groupDateStr} start=${dateRangeStart}`,
+        )
+      if (dateRangeEnd && groupDateStr > dateRangeEnd)
+        reasons.push(
+          `date after end: groupDate=${groupDateStr} end=${dateRangeEnd}`,
+        )
     }
     if (timeRangeStart && timeRangeEnd) {
       const calculatedTimeRange = calculateGroupTimeRange(group.riders)
@@ -5354,13 +5425,30 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       const groupStart = groupTimeRange[0]?.trim()
       const groupEnd = groupTimeRange[1]?.trim()
       if (groupStart && groupEnd) {
-        const timeInRange =
-          (groupStart >= timeRangeStart && groupStart <= timeRangeEnd) ||
-          (groupEnd >= timeRangeStart && groupEnd <= timeRangeEnd) ||
-          (groupStart <= timeRangeStart && groupEnd >= timeRangeEnd)
+        const filterStartM = timeToMinutes(timeRangeStart)
+        const filterEndM = timeToMinutes(timeRangeEnd)
+        const groupStartM = timeToMinutes(
+          groupStart.includes(':')
+            ? groupStart.split(':').slice(0, 2).join(':')
+            : groupStart,
+        )
+        const groupEndM = timeToMinutes(
+          groupEnd.includes(':')
+            ? groupEnd.split(':').slice(0, 2).join(':')
+            : groupEnd,
+        )
+        const isOvernight = filterStartM > filterEndM
+        const timeInRange = isOvernight
+          ? groupStartM >= filterStartM ||
+            groupStartM <= filterEndM ||
+            groupEndM >= filterStartM ||
+            groupEndM <= filterEndM
+          : (groupStartM >= filterStartM && groupStartM <= filterEndM) ||
+            (groupEndM >= filterStartM && groupEndM <= filterEndM) ||
+            (groupStartM <= filterStartM && groupEndM >= filterEndM)
         if (!timeInRange)
           reasons.push(
-            `time: ${groupStart}-${groupEnd} not in ${timeRangeStart}-${timeRangeEnd}`,
+            `time: ${groupStart}-${groupEnd} not in ${timeRangeStart}-${timeRangeEnd}${isOvernight ? ' (overnight)' : ''}`,
           )
       }
     }
@@ -5408,6 +5496,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     groups,
     filteredGroups,
     selectedAirports,
+    filterDirectionTo,
+    filterDirectionFrom,
     dateRangeStart,
     dateRangeEnd,
     timeRangeStart,
@@ -5421,6 +5511,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     getUberType,
     getTotalBags,
     isGroupSubsidized,
+    timeToMinutes,
+    normalizeDateToYYYYMMDD,
   ])
 
   // Apply sorting to filtered groups
@@ -6603,7 +6695,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar - Filters and Create Group */}
         <div
-          className={`${filtersCollapsed ? 'w-0 overflow-hidden md:w-12' : 'w-full md:w-64'} flex flex-col border-r border-gray-200 bg-white transition-all duration-300`}
+          className={`${filtersCollapsed ? 'w-0 overflow-hidden md:w-12' : 'w-full md:w-72'} flex flex-col border-r border-gray-200 bg-white transition-all duration-300`}
         >
           {/* Header with Arrow */}
           <div className="flex items-center justify-between border-b border-gray-200 p-4">
@@ -6627,7 +6719,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 </div>
                 <h2 className="text-lg font-semibold text-gray-900">
                   {activeLeftTab === 'filters'
-                    ? 'Group Filters and Options'
+                    ? 'Group Filters'
                     : 'Create New Group'}
                 </h2>
               </div>
@@ -6677,6 +6769,26 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                     </label>
                   ))}
                 </div>
+                <div className="mt-2 flex flex-wrap gap-4">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={filterDirectionTo}
+                      onChange={(e) => setFilterDirectionTo(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                    />
+                    <span className="text-xs text-gray-700">To airport</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={filterDirectionFrom}
+                      onChange={(e) => setFilterDirectionFrom(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                    />
+                    <span className="text-xs text-gray-700">From airport</span>
+                  </label>
+                </div>
               </div>
 
               {/* Date Range */}
@@ -6684,8 +6796,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 <label className="mb-2 block text-xs font-medium text-gray-700">
                   Date Range
                 </label>
-                <div className="space-y-2">
-                  <div className="relative">
+                <div className="flex flex-col gap-2 md:flex-row md:gap-2">
+                  <div className="relative md:min-w-0 md:flex-1">
                     <input
                       type="date"
                       value={dateRangeStart}
@@ -6711,7 +6823,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       <Calendar className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  <div className="relative">
+                  <div className="relative md:min-w-0 md:flex-1">
                     <input
                       type="date"
                       value={dateRangeEnd}
@@ -7074,332 +7186,351 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         <div
           className={`flex-1 overflow-y-auto bg-gray-100 p-6 ${!filtersCollapsed || !corralCollapsed ? 'hidden md:block' : ''}`}
         >
-          {/* Tabs */}
-          <div className="mb-4 flex items-center gap-2">
-            <button
-              onClick={() => setActiveTab('matched')}
-              className={`rounded-lg px-6 py-2 font-medium transition-all ${
-                activeTab === 'matched'
-                  ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white'
-                  : 'border border-gray-300 bg-white text-gray-700'
-              }`}
-            >
-              Matched Groups
-            </button>
-            <button
-              onClick={() => setActiveTab('unmatched')}
-              className={`rounded-lg px-6 py-2 font-medium transition-all ${
-                activeTab === 'unmatched'
-                  ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white'
-                  : 'border border-gray-300 bg-white text-gray-700'
-              }`}
-            >
-              Unmatched ({sortedUnmatchedRiders.length})
-            </button>
-            {/* Download CSV Buttons */}
-            <button
-              onClick={async () => {
-                try {
-                  setErrorMessage(null)
-                  // Use filter date range; if not set, default to last 90 days
-                  const endDefault = new Date()
-                  const startDefault = new Date()
-                  startDefault.setDate(startDefault.getDate() - 90)
-                  const rangeStart =
-                    dateRangeStart || startDefault.toISOString().split('T')[0]
-                  const rangeEnd =
-                    dateRangeEnd || endDefault.toISOString().split('T')[0]
+          {/* Tabs + actions: on mobile = row1 (Matched, Unmatched, Add Rider), row2 (CSV buttons); on desktop = single row unchanged */}
+          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:gap-2">
+            {/* Mobile: first row = tabs + Add Rider */}
+            <div className="flex flex-1 items-center gap-2 md:flex-initial md:flex-none">
+              <button
+                onClick={() => setActiveTab('matched')}
+                className={`rounded-lg px-6 py-2 font-medium transition-all ${
+                  activeTab === 'matched'
+                    ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white'
+                    : 'border border-gray-300 bg-white text-gray-700'
+                }`}
+              >
+                Matched Groups
+              </button>
+              <button
+                onClick={() => setActiveTab('unmatched')}
+                className={`rounded-lg px-6 py-2 font-medium transition-all ${
+                  activeTab === 'unmatched'
+                    ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white'
+                    : 'border border-gray-300 bg-white text-gray-700'
+                }`}
+              >
+                Unmatched ({sortedUnmatchedRiders.length})
+              </button>
+              <button
+                onClick={() => setIsAddRiderOpen(true)}
+                className="ml-auto flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-700 md:hidden"
+                title="Add New Rider"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span>Add Rider</span>
+              </button>
+            </div>
+            {/* Mobile: second row = CSV buttons. Desktop: same row as tabs */}
+            <div className="flex flex-wrap items-center gap-2 md:flex-initial md:flex-none">
+              <button
+                onClick={async () => {
+                  try {
+                    setErrorMessage(null)
+                    // Use filter date range; if not set, default to last 90 days
+                    const endDefault = new Date()
+                    const startDefault = new Date()
+                    startDefault.setDate(startDefault.getDate() - 90)
+                    const rangeStart =
+                      dateRangeStart || startDefault.toISOString().split('T')[0]
+                    const rangeEnd =
+                      dateRangeEnd || endDefault.toISOString().split('T')[0]
 
-                  // Fetch matched data for the current filter period
-                  const { data: matchesData, error: matchesError } =
-                    await supabase
-                      .from('Matches')
-                      .select(
-                        'ride_id, date, time, voucher, is_subsidized, flight_id, user_id',
-                      )
-                      .gte('date', rangeStart)
-                      .lte('date', rangeEnd)
-                      .order('date', { ascending: true })
-                      .order('time', { ascending: true })
-                      .order('ride_id', { ascending: true })
+                    // Fetch matched data for the current filter period
+                    const { data: matchesData, error: matchesError } =
+                      await supabase
+                        .from('Matches')
+                        .select(
+                          'ride_id, date, time, voucher, is_subsidized, flight_id, user_id',
+                        )
+                        .gte('date', rangeStart)
+                        .lte('date', rangeEnd)
+                        .order('date', { ascending: true })
+                        .order('time', { ascending: true })
+                        .order('ride_id', { ascending: true })
 
-                  if (matchesError) throw matchesError
-                  if (!matchesData || matchesData.length === 0) {
-                    setErrorMessage('No matched data found')
-                    setTimeout(() => setErrorMessage(null), 3000)
-                    return
-                  }
-
-                  // Get unique flight_ids and user_ids
-                  const flightIds = Array.from(
-                    new Set(matchesData.map((m: any) => m.flight_id)),
-                  )
-                  const userIds = Array.from(
-                    new Set(matchesData.map((m: any) => m.user_id)),
-                  )
-
-                  // Fetch flights
-                  const { data: flightsData, error: flightsError } =
-                    await supabase
-                      .from('Flights')
-                      .select(
-                        'flight_id, earliest_time, latest_time, airport, to_airport, airline_iata, flight_no, bag_no_personal, bag_no, bag_no_large',
-                      )
-                      .in('flight_id', flightIds)
-
-                  if (flightsError) throw flightsError
-
-                  // Fetch users
-                  const { data: usersData, error: usersError } = await supabase
-                    .from('Users')
-                    .select(
-                      'user_id, firstname, lastname, email, phonenumber, school',
-                    )
-                    .in('user_id', userIds)
-
-                  if (usersError) throw usersError
-
-                  // Create maps for quick lookup
-                  const flightsMap = new Map(
-                    flightsData?.map((f: any) => [f.flight_id, f]) || [],
-                  )
-                  const usersMap = new Map(
-                    usersData?.map((u: any) => [u.user_id, u]) || [],
-                  )
-
-                  // Transform data to match SQL query output
-                  const csvData = matchesData.map((m: any) => {
-                    const flight = flightsMap.get(m.flight_id)
-                    const user = usersMap.get(m.user_id)
-                    return {
-                      ride_id: m.ride_id,
-                      date: m.date,
-                      time: m.time || '',
-                      earliest_time: flight?.earliest_time || '',
-                      latest_time: flight?.latest_time || '',
-                      name: `${user?.firstname || ''} ${user?.lastname || ''}`.trim(),
-                      email: user?.email || '',
-                      phonenumber: user?.phonenumber || '',
-                      school: user?.school || '',
-                      airport: flight?.airport || '',
-                      flight:
-                        `${flight?.airline_iata || ''} ${flight?.flight_no || ''}`.trim(),
-                      personal_bag: flight?.bag_no_personal || 0,
-                      carry_on: flight?.bag_no || 0,
-                      checked_bag: flight?.bag_no_large || 0,
-                      voucher: m.voucher || '',
-                      is_subsidized: m.is_subsidized || false,
-                      to_airport: flight?.to_airport || false,
+                    if (matchesError) throw matchesError
+                    if (!matchesData || matchesData.length === 0) {
+                      setErrorMessage('No matched data found')
+                      setTimeout(() => setErrorMessage(null), 3000)
+                      return
                     }
-                  })
 
-                  // Create CSV
-                  const headers = [
-                    'ride_id',
-                    'date',
-                    'time',
-                    'earliest_time',
-                    'latest_time',
-                    'name',
-                    'email',
-                    'phonenumber',
-                    'school',
-                    'airport',
-                    'flight',
-                    'personal_bag',
-                    'carry_on',
-                    'checked_bag',
-                    'voucher',
-                    'is_subsidized',
-                    'to_airport',
-                  ]
-                  const csv = [
-                    headers,
-                    ...csvData.map((row: any) => [
-                      row.ride_id,
-                      row.date,
-                      row.time,
-                      row.earliest_time,
-                      row.latest_time,
-                      row.name,
-                      row.email,
-                      row.phonenumber,
-                      row.school,
-                      row.airport,
-                      row.flight,
-                      row.personal_bag,
-                      row.carry_on,
-                      row.checked_bag,
-                      row.voucher,
-                      row.is_subsidized,
-                      row.to_airport,
-                    ]),
-                  ]
-                    .map((row) =>
-                      row
-                        .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
-                        .join(','),
+                    // Get unique flight_ids and user_ids
+                    const flightIds = Array.from(
+                      new Set(matchesData.map((m: any) => m.flight_id)),
                     )
-                    .join('\n')
+                    const userIds = Array.from(
+                      new Set(matchesData.map((m: any) => m.user_id)),
+                    )
 
-                  const blob = new Blob([csv], { type: 'text/csv' })
-                  const url = window.URL.createObjectURL(blob)
-                  const a = document.createElement('a')
-                  a.href = url
-                  a.download = `matched-${rangeStart}-to-${rangeEnd}.csv`
-                  a.click()
-                  window.URL.revokeObjectURL(url)
-                } catch (error: any) {
-                  console.error('Error downloading matched CSV:', error)
-                  setErrorMessage(
-                    'Failed to download matched CSV: ' +
-                      (error.message || 'Unknown error'),
-                  )
-                  setTimeout(() => setErrorMessage(null), 5000)
-                }
-              }}
-              className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 transition-all hover:bg-gray-50"
-              title="Download Matched CSV"
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span>Matches CSV</span>
-            </button>
-            <button
-              onClick={async () => {
-                try {
-                  setErrorMessage(null)
-                  // Fetch unmatched flights
-                  const { data: flightsData, error: flightsError } =
-                    await supabase
-                      .from('Flights')
-                      .select(
-                        'flight_id, date, earliest_time, latest_time, airport, to_airport, airline_iata, flight_no, bag_no_personal, bag_no, bag_no_large, user_id',
+                    // Fetch flights
+                    const { data: flightsData, error: flightsError } =
+                      await supabase
+                        .from('Flights')
+                        .select(
+                          'flight_id, earliest_time, latest_time, airport, to_airport, airline_iata, flight_no, bag_no_personal, bag_no, bag_no_large',
+                        )
+                        .in('flight_id', flightIds)
+
+                    if (flightsError) throw flightsError
+
+                    // Fetch users
+                    const { data: usersData, error: usersError } =
+                      await supabase
+                        .from('Users')
+                        .select(
+                          'user_id, firstname, lastname, email, phonenumber, school',
+                        )
+                        .in('user_id', userIds)
+
+                    if (usersError) throw usersError
+
+                    // Create maps for quick lookup
+                    const flightsMap = new Map(
+                      flightsData?.map((f: any) => [f.flight_id, f]) || [],
+                    )
+                    const usersMap = new Map(
+                      usersData?.map((u: any) => [u.user_id, u]) || [],
+                    )
+
+                    // Transform data to match SQL query output
+                    const csvData = matchesData.map((m: any) => {
+                      const flight = flightsMap.get(m.flight_id)
+                      const user = usersMap.get(m.user_id)
+                      return {
+                        ride_id: m.ride_id,
+                        date: m.date,
+                        time: m.time || '',
+                        earliest_time: flight?.earliest_time || '',
+                        latest_time: flight?.latest_time || '',
+                        name: `${user?.firstname || ''} ${user?.lastname || ''}`.trim(),
+                        email: user?.email || '',
+                        phonenumber: user?.phonenumber || '',
+                        school: user?.school || '',
+                        airport: flight?.airport || '',
+                        flight:
+                          `${flight?.airline_iata || ''} ${flight?.flight_no || ''}`.trim(),
+                        personal_bag: flight?.bag_no_personal || 0,
+                        carry_on: flight?.bag_no || 0,
+                        checked_bag: flight?.bag_no_large || 0,
+                        voucher: m.voucher || '',
+                        is_subsidized: m.is_subsidized || false,
+                        to_airport: flight?.to_airport || false,
+                      }
+                    })
+
+                    // Create CSV
+                    const headers = [
+                      'ride_id',
+                      'date',
+                      'time',
+                      'earliest_time',
+                      'latest_time',
+                      'name',
+                      'email',
+                      'phonenumber',
+                      'school',
+                      'airport',
+                      'flight',
+                      'personal_bag',
+                      'carry_on',
+                      'checked_bag',
+                      'voucher',
+                      'is_subsidized',
+                      'to_airport',
+                    ]
+                    const csv = [
+                      headers,
+                      ...csvData.map((row: any) => [
+                        row.ride_id,
+                        row.date,
+                        row.time,
+                        row.earliest_time,
+                        row.latest_time,
+                        row.name,
+                        row.email,
+                        row.phonenumber,
+                        row.school,
+                        row.airport,
+                        row.flight,
+                        row.personal_bag,
+                        row.carry_on,
+                        row.checked_bag,
+                        row.voucher,
+                        row.is_subsidized,
+                        row.to_airport,
+                      ]),
+                    ]
+                      .map((row) =>
+                        row
+                          .map(
+                            (cell) => `"${String(cell).replace(/"/g, '""')}"`,
+                          )
+                          .join(','),
                       )
-                      .eq('matched', false)
-                      .gte('date', '2026-01-10')
-                      .lte('date', '2026-01-24')
-                      .order('date', { ascending: true })
-                      .order('earliest_time', { ascending: true })
-                      .order('flight_id', { ascending: true })
+                      .join('\n')
 
-                  if (flightsError) throw flightsError
-                  if (!flightsData || flightsData.length === 0) {
-                    setErrorMessage('No unmatched data found')
-                    setTimeout(() => setErrorMessage(null), 3000)
-                    return
-                  }
-
-                  // Get unique user_ids
-                  const userIds = Array.from(
-                    new Set(
-                      flightsData.map((f: any) => f.user_id).filter(Boolean),
-                    ),
-                  )
-
-                  // Fetch users
-                  const { data: usersData, error: usersError } = await supabase
-                    .from('Users')
-                    .select('user_id, school, firstname, lastname, email')
-                    .in('user_id', userIds)
-
-                  if (usersError) throw usersError
-
-                  // Create map for quick lookup
-                  const usersMap = new Map(
-                    usersData?.map((u: any) => [u.user_id, u]) || [],
-                  )
-
-                  // Transform data to match SQL query output
-                  const csvData = flightsData.map((f: any) => {
-                    const user = usersMap.get(f.user_id)
-                    return {
-                      flight_id: f.flight_id,
-                      date: f.date,
-                      earliest_time: f.earliest_time || '',
-                      latest_time: f.latest_time || '',
-                      school: user?.school || '',
-                      name: `${user?.firstname || ''} ${user?.lastname || ''}`.trim(),
-                      email: user?.email || '',
-                      user_id: f.user_id || '',
-                      flight:
-                        `${f.airline_iata || ''} ${f.flight_no || ''}`.trim(),
-                      personal_bag: f.bag_no_personal || 0,
-                      carry_on: f.bag_no || 0,
-                      checked_bag: f.bag_no_large || 0,
-                      airport: f.airport || '',
-                      to_airport: f.to_airport || false,
-                    }
-                  })
-
-                  // Create CSV
-                  const headers = [
-                    'flight_id',
-                    'date',
-                    'earliest_time',
-                    'latest_time',
-                    'school',
-                    'name',
-                    'email',
-                    'user_id',
-                    'flight',
-                    'personal_bag',
-                    'carry_on',
-                    'checked_bag',
-                    'airport',
-                    'to_airport',
-                  ]
-                  const csv = [
-                    headers,
-                    ...csvData.map((row: any) => [
-                      row.flight_id,
-                      row.date,
-                      row.earliest_time,
-                      row.latest_time,
-                      row.school,
-                      row.name,
-                      row.email,
-                      row.user_id,
-                      row.flight,
-                      row.personal_bag,
-                      row.carry_on,
-                      row.checked_bag,
-                      row.airport,
-                      row.to_airport,
-                    ]),
-                  ]
-                    .map((row) =>
-                      row
-                        .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
-                        .join(','),
+                    const blob = new Blob([csv], { type: 'text/csv' })
+                    const url = window.URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `matched-${rangeStart}-to-${rangeEnd}.csv`
+                    a.click()
+                    window.URL.revokeObjectURL(url)
+                  } catch (error: any) {
+                    console.error('Error downloading matched CSV:', error)
+                    setErrorMessage(
+                      'Failed to download matched CSV: ' +
+                        (error.message || 'Unknown error'),
                     )
-                    .join('\n')
+                    setTimeout(() => setErrorMessage(null), 5000)
+                  }
+                }}
+                className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 transition-all hover:bg-gray-50"
+                title="Download Matched CSV"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Matches CSV</span>
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    setErrorMessage(null)
+                    // Fetch unmatched flights
+                    const { data: flightsData, error: flightsError } =
+                      await supabase
+                        .from('Flights')
+                        .select(
+                          'flight_id, date, earliest_time, latest_time, airport, to_airport, airline_iata, flight_no, bag_no_personal, bag_no, bag_no_large, user_id',
+                        )
+                        .eq('matched', false)
+                        .gte('date', '2026-01-10')
+                        .lte('date', '2026-01-24')
+                        .order('date', { ascending: true })
+                        .order('earliest_time', { ascending: true })
+                        .order('flight_id', { ascending: true })
 
-                  const blob = new Blob([csv], { type: 'text/csv' })
-                  const url = window.URL.createObjectURL(blob)
-                  const a = document.createElement('a')
-                  a.href = url
-                  a.download = `unmatched-${new Date().toISOString().split('T')[0]}.csv`
-                  a.click()
-                  window.URL.revokeObjectURL(url)
-                } catch (error: any) {
-                  console.error('Error downloading unmatched CSV:', error)
-                  setErrorMessage(
-                    'Failed to download unmatched CSV: ' +
-                      (error.message || 'Unknown error'),
-                  )
-                  setTimeout(() => setErrorMessage(null), 5000)
-                }
-              }}
-              className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 transition-all hover:bg-gray-50"
-              title="Download Unmatched CSV"
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span>Unmatched CSV</span>
-            </button>
-            {/* Add Rider Button */}
+                    if (flightsError) throw flightsError
+                    if (!flightsData || flightsData.length === 0) {
+                      setErrorMessage('No unmatched data found')
+                      setTimeout(() => setErrorMessage(null), 3000)
+                      return
+                    }
+
+                    // Get unique user_ids
+                    const userIds = Array.from(
+                      new Set(
+                        flightsData.map((f: any) => f.user_id).filter(Boolean),
+                      ),
+                    )
+
+                    // Fetch users
+                    const { data: usersData, error: usersError } =
+                      await supabase
+                        .from('Users')
+                        .select('user_id, school, firstname, lastname, email')
+                        .in('user_id', userIds)
+
+                    if (usersError) throw usersError
+
+                    // Create map for quick lookup
+                    const usersMap = new Map(
+                      usersData?.map((u: any) => [u.user_id, u]) || [],
+                    )
+
+                    // Transform data to match SQL query output
+                    const csvData = flightsData.map((f: any) => {
+                      const user = usersMap.get(f.user_id)
+                      return {
+                        flight_id: f.flight_id,
+                        date: f.date,
+                        earliest_time: f.earliest_time || '',
+                        latest_time: f.latest_time || '',
+                        school: user?.school || '',
+                        name: `${user?.firstname || ''} ${user?.lastname || ''}`.trim(),
+                        email: user?.email || '',
+                        user_id: f.user_id || '',
+                        flight:
+                          `${f.airline_iata || ''} ${f.flight_no || ''}`.trim(),
+                        personal_bag: f.bag_no_personal || 0,
+                        carry_on: f.bag_no || 0,
+                        checked_bag: f.bag_no_large || 0,
+                        airport: f.airport || '',
+                        to_airport: f.to_airport || false,
+                      }
+                    })
+
+                    // Create CSV
+                    const headers = [
+                      'flight_id',
+                      'date',
+                      'earliest_time',
+                      'latest_time',
+                      'school',
+                      'name',
+                      'email',
+                      'user_id',
+                      'flight',
+                      'personal_bag',
+                      'carry_on',
+                      'checked_bag',
+                      'airport',
+                      'to_airport',
+                    ]
+                    const csv = [
+                      headers,
+                      ...csvData.map((row: any) => [
+                        row.flight_id,
+                        row.date,
+                        row.earliest_time,
+                        row.latest_time,
+                        row.school,
+                        row.name,
+                        row.email,
+                        row.user_id,
+                        row.flight,
+                        row.personal_bag,
+                        row.carry_on,
+                        row.checked_bag,
+                        row.airport,
+                        row.to_airport,
+                      ]),
+                    ]
+                      .map((row) =>
+                        row
+                          .map(
+                            (cell) => `"${String(cell).replace(/"/g, '""')}"`,
+                          )
+                          .join(','),
+                      )
+                      .join('\n')
+
+                    const blob = new Blob([csv], { type: 'text/csv' })
+                    const url = window.URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `unmatched-${new Date().toISOString().split('T')[0]}.csv`
+                    a.click()
+                    window.URL.revokeObjectURL(url)
+                  } catch (error: any) {
+                    console.error('Error downloading unmatched CSV:', error)
+                    setErrorMessage(
+                      'Failed to download unmatched CSV: ' +
+                        (error.message || 'Unknown error'),
+                    )
+                    setTimeout(() => setErrorMessage(null), 5000)
+                  }
+                }}
+                className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 transition-all hover:bg-gray-50"
+                title="Download Unmatched CSV"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Unmatched CSV</span>
+              </button>
+            </div>
+            {/* Desktop: Add Rider at end of row */}
             <button
               onClick={() => setIsAddRiderOpen(true)}
-              className="ml-auto flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-700"
+              className="hidden items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-700 md:ml-auto md:flex"
               title="Add New Rider"
             >
               <UserPlus className="h-4 w-4" />
