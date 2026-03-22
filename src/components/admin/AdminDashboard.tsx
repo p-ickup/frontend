@@ -1,6 +1,11 @@
 'use client'
 
 import { useAuth } from '@/hooks/useAuth'
+import {
+  buildNoShowLookup,
+  parseNoShowKey,
+  type NoShowRiderInfo,
+} from '@/utils/adminMatchNoShows'
 import { createBrowserClient } from '@/utils/supabase'
 import { User } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
@@ -133,6 +138,30 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       firstname?: string
       lastname?: string
       email?: string
+    }>
+  >([])
+
+  // Match no-shows: missing reports, pickup / delay follow-up
+  const [noShowsDateStart, setNoShowsDateStart] = useState<string>(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - 1)
+    return d.toISOString().split('T')[0]
+  })
+  const [noShowsDateEnd, setNoShowsDateEnd] = useState<string>(
+    () => new Date().toISOString().split('T')[0],
+  )
+  const [noShowsLoading, setNoShowsLoading] = useState(false)
+  const [noShowRows, setNoShowRows] = useState<
+    Array<{
+      rideId: number
+      missingUserId: string
+      name: string
+      /** Match date for this ride (`Matches.date` on the group / ride). */
+      matchDate: string | null
+      reporterCount: number
+      /** Distinct riders on this ride in the loaded match rows (group size for ratio). */
+      rideRosterSize: number
+      info: NoShowRiderInfo
     }>
   >([])
 
@@ -794,6 +823,129 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     }
   }
 
+  const fetchMatchNoShows = async () => {
+    if (!noShowsDateStart || !noShowsDateEnd) return
+    setNoShowsLoading(true)
+    try {
+      type MRow = {
+        ride_id: number
+        user_id: string
+        reported_missing_user_ids: string[] | null
+        date: string | null
+        ready_for_pickup_at: string | null
+      }
+      let all: MRow[] = []
+      let from = 0
+      const pageSize = 1000
+      for (;;) {
+        const { data, error } = await supabase
+          .from('Matches')
+          .select(
+            'ride_id, user_id, reported_missing_user_ids, date, ready_for_pickup_at',
+          )
+          .gte('date', noShowsDateStart)
+          .lte('date', noShowsDateEnd)
+          .range(from, from + pageSize - 1)
+        if (error) throw error
+        if (!data?.length) break
+        all = [...all, ...(data as MRow[])]
+        if (data.length < pageSize) break
+        from += pageSize
+      }
+
+      const rideRosterSizeByRideId = new Map<number, number>()
+      {
+        const usersPerRide = new Map<number, Set<string>>()
+        for (const m of all) {
+          let set = usersPerRide.get(m.ride_id)
+          if (!set) {
+            set = new Set()
+            usersPerRide.set(m.ride_id, set)
+          }
+          set.add(m.user_id)
+        }
+        for (const [rideId, set] of Array.from(usersPerRide.entries())) {
+          rideRosterSizeByRideId.set(rideId, set.size)
+        }
+      }
+
+      const matchDateForRide = (rideId: number): string | null => {
+        const onRide = all.filter((m) => m.ride_id === rideId)
+        for (const m of onRide) {
+          if (m.date) return m.date
+        }
+        return null
+      }
+
+      const lookup = await buildNoShowLookup(supabase, all)
+      const parsed = Array.from(lookup.entries())
+        .map(([key, info]) => {
+          const p = parseNoShowKey(key)
+          if (!p) return null
+          return { rideId: p.rideId, missingUserId: p.missingId, info }
+        })
+        .filter(
+          (
+            r,
+          ): r is {
+            rideId: number
+            missingUserId: string
+            info: NoShowRiderInfo
+          } => r != null,
+        )
+
+      const rideDateById = new Map<number, string | null>()
+      for (const r of parsed) {
+        if (!rideDateById.has(r.rideId)) {
+          rideDateById.set(r.rideId, matchDateForRide(r.rideId))
+        }
+      }
+
+      parsed.sort((a, b) => {
+        const da = rideDateById.get(a.rideId) ?? ''
+        const db = rideDateById.get(b.rideId) ?? ''
+        if (da !== db) {
+          if (!da) return 1
+          if (!db) return -1
+          return db.localeCompare(da)
+        }
+        return (
+          a.rideId - b.rideId || a.missingUserId.localeCompare(b.missingUserId)
+        )
+      })
+
+      const uids = Array.from(new Set(parsed.map((r) => r.missingUserId)))
+      const names: Record<string, string> = {}
+      if (uids.length > 0) {
+        const { data: users } = await supabase
+          .from('Users')
+          .select('user_id, firstname, lastname')
+          .in('user_id', uids)
+        for (const u of users || []) {
+          names[u.user_id] =
+            `${u.firstname ?? ''} ${u.lastname ?? ''}`.trim() || u.user_id
+        }
+      }
+
+      setNoShowRows(
+        parsed.map((r) => ({
+          rideId: r.rideId,
+          missingUserId: r.missingUserId,
+          name: names[r.missingUserId] ?? r.missingUserId,
+          matchDate: rideDateById.get(r.rideId) ?? null,
+          reporterCount: r.info.reporterCount,
+          rideRosterSize: rideRosterSizeByRideId.get(r.rideId) ?? 0,
+          info: r.info,
+        })),
+      )
+    } catch (err) {
+      console.error('Error fetching match no-shows:', err)
+      setNoShowRows([])
+    } finally {
+      setNoShowsLoading(false)
+    }
+  }
+
   if (loading && !dryRunResults.length) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -960,6 +1112,141 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           >
             View & Manage Groups
           </button>
+        </div>
+
+        {/* Match no-shows — warm orange–yellow banner (Cancellations keeps red–orange) */}
+        <div className="mb-8 rounded-lg bg-white shadow-md">
+          <div className="border-b border-orange-300/90 bg-gradient-to-r from-yellow-200 via-amber-200 to-orange-300 px-6 py-4">
+            <h2 className="text-orange-950 text-xl font-bold">
+              Match No-Shows
+            </h2>
+            <p className="text-orange-950/90 mt-1 text-sm">
+              View Riders reported as missing and whether they submitted their
+              pickup or delay form.
+            </p>
+          </div>
+          <div className="p-6">
+            <div className="mb-4 flex flex-wrap items-end gap-4">
+              <div className="min-w-[160px]">
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Match date from
+                </label>
+                <input
+                  type="date"
+                  value={noShowsDateStart}
+                  onChange={(e) => setNoShowsDateStart(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
+                />
+              </div>
+              <div className="min-w-[160px]">
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Match date to (today)
+                </label>
+                <input
+                  type="date"
+                  value={noShowsDateEnd}
+                  max={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setNoShowsDateEnd(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => void fetchMatchNoShows()}
+                disabled={noShowsLoading}
+                className="rounded-lg bg-orange-500 px-4 py-2 font-medium text-white hover:bg-orange-600 disabled:opacity-50"
+              >
+                {noShowsLoading ? 'Loading…' : 'Load no-shows'}
+              </button>
+            </div>
+
+            {noShowRows.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Rider (reported missing)
+                      </th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Group #
+                      </th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Ride match date
+                      </th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Reported by
+                      </th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Reporters / group
+                      </th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Submitted ready-for-pickup later
+                      </th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Delay / new flight (ChangeLog)
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {noShowRows.map((row) => (
+                      <tr key={`${row.rideId}-${row.missingUserId}`}>
+                        <td className="px-4 py-2 font-medium text-gray-900">
+                          {row.name}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2 text-gray-700">
+                          {row.rideId}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2 text-gray-700">
+                          {row.matchDate ? row.matchDate : '—'}
+                        </td>
+                        <td className="max-w-[12rem] px-4 py-2 text-gray-700">
+                          {row.info.reporterNames.join(', ') || '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-2 font-medium tabular-nums text-gray-700">
+                          {row.rideRosterSize > 0
+                            ? `${row.reporterCount}/${row.rideRosterSize}`
+                            : row.reporterCount}
+                        </td>
+                        <td className="px-4 py-2 text-gray-700">
+                          {row.info.missingRiderSubmittedReady ? (
+                            <span className="rounded bg-green-100 px-2 py-0.5 text-green-800">
+                              Yes
+                            </span>
+                          ) : (
+                            <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
+                              Not yet
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-gray-700">
+                          {row.info.submittedDelayForRide
+                            ? row.info.hadNewFlightOnDelay
+                              ? 'Delay + new flight in log'
+                              : 'Delay form in log'
+                            : 'No delay in log'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-3 text-xs text-gray-600">
+                  <strong>Ride match date</strong> = this group’s match date
+                  from <code className="rounded bg-gray-100 px-1">Matches</code>
+                  .<strong> Reporters / group</strong> = reporters ÷ riders on
+                  the ride. Delay ={' '}
+                  <code className="rounded bg-gray-100 px-1">ASPC_DELAY</code>.
+                </p>
+              </div>
+            )}
+
+            {noShowRows.length === 0 && !noShowsLoading && (
+              <p className="py-4 text-center text-gray-500">
+                Choose match dates above, then click &quot;Load no-shows&quot;
+                to view records
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Match Cancellations (Fee Billing) */}
