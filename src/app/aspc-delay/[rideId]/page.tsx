@@ -14,6 +14,7 @@ import ReasonForDelayStep from '@/components/aspc-delay/ReasonForDelayStep'
 import DelayInfoStep from '@/components/aspc-delay/DelayInfoStep'
 import {
   useFindNewMatch,
+  getContingencyVoucherDeclineReasons,
   type FindNewMatchResult,
 } from '@/hooks/useFindNewMatch'
 import type {
@@ -285,10 +286,50 @@ export default function AspcDelayPage() {
   }
 
   if (findResult?.success) {
+    if (findResult.keptOriginalGroupBecauseEarlierEta) {
+      return (
+        <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]" />
+          <div className="relative flex min-h-screen w-full items-center justify-center p-4">
+            <div className="w-full max-w-2xl">
+              <div className="rounded-2xl bg-white/80 p-4 shadow-xl backdrop-blur-sm sm:p-6 md:rounded-3xl md:p-8">
+                <h2 className="mb-3 text-lg font-semibold text-gray-900 sm:text-xl">
+                  This isn&apos;t a delay for your match
+                </h2>
+                <p className="mb-3 text-gray-800">
+                  The pickup time you entered is <strong>earlier</strong> than
+                  your original group&apos;s time. You can still make that ride,
+                  so you&apos;ve been{' '}
+                  <strong>kept on your original group</strong>—nothing was
+                  changed.
+                </p>
+                <p className="mb-6 text-sm text-gray-600">
+                  Wait for your original pickup time on Results. If your plans
+                  change again and you&apos;ll be <em>later</em> than the group,
+                  you can report a delay then.
+                </p>
+                <div className="border-t border-gray-200 pt-4">
+                  <RedirectButton
+                    label="Back to Results"
+                    route="/results"
+                    className="rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-base font-semibold text-gray-700 hover:bg-gray-50"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     const groups = findResult.availableGroups ?? []
     const hasGroups = groups.length > 0
     const showVoucher =
-      !hasGroups && findResult.wasSubsidized && findResult.contingencyVoucher
+      !hasGroups &&
+      findResult.contingencyVoucherApplied === true &&
+      Boolean(findResult.contingencyVoucher)
+    const uniqueNoVoucherReasons =
+      getContingencyVoucherDeclineReasons(findResult)
 
     return (
       <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
@@ -307,6 +348,30 @@ export default function AspcDelayPage() {
                 <>
                   <p className="mb-4 text-gray-800">
                     You&apos;ve been removed from your group. You can look for
+                    other riders on the unmatched page.
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    <Link
+                      href="/unmatched"
+                      className="font-medium text-teal-600 underline hover:text-teal-700"
+                    >
+                      Go to unmatched page
+                    </Link>
+                  </p>
+                </>
+              ) : findResult.movedToUnmatched ? (
+                <>
+                  <p className="mb-3 text-gray-800">
+                    We couldn&apos;t find another group for your new pickup
+                    time. No contingency voucher was applied for these reasons:
+                  </p>
+                  <ul className="mb-4 list-disc space-y-2 pl-5 text-sm text-gray-700">
+                    {uniqueNoVoucherReasons.map((reason, i) => (
+                      <li key={i}>{reason}</li>
+                    ))}
+                  </ul>
+                  <p className="mb-4 text-gray-800">
+                    You&apos;ve been removed from your match so you can look for
                     other riders on the unmatched page.
                   </p>
                   <p className="text-sm text-gray-600">
@@ -427,11 +492,16 @@ export default function AspcDelayPage() {
                     </>
                   ) : (
                     <>
-                      <p className="mb-4 text-gray-800">
-                        Unfortunately, your flight did not qualify for a
-                        contingency voucher and we were unable to find a match
-                        for you.
+                      <p className="mb-3 text-gray-800">
+                        We couldn&apos;t find another group for your new pickup
+                        time. A contingency voucher was not applied for these
+                        reasons:
                       </p>
+                      <ul className="mb-4 list-disc space-y-2 pl-5 text-sm text-gray-700">
+                        {uniqueNoVoucherReasons.map((reason, i) => (
+                          <li key={i}>{reason}</li>
+                        ))}
+                      </ul>
                       <p className="text-sm text-gray-600">
                         Please keep an eye out on the{' '}
                         <Link

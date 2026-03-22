@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { MatchWithDetails } from '@/app/results/page'
+import { useAuth } from '@/hooks/useAuth'
 import { useState } from 'react'
 import { createBrowserClient } from '@/utils/supabase'
 import { formatTime12Hour } from '@/utils/formatTime'
@@ -91,7 +92,29 @@ const MatchCard = ({
   rideId,
   isGroupReady,
 }: MatchCardProps) => {
-  const firstMatch = matches[0]
+  const { user } = useAuth()
+  /** Prefer the logged-in user's row for date/voucher; fallback for edge cases */
+  const primaryMatch = matches.find((m) => m.user_id === user?.id) ?? matches[0]
+  /** Alias for fields shared with merged main-branch UI (Connect / voucher checks) */
+  const firstMatch = primaryMatch
+  const otherRiders = user ? matches.filter((m) => m.user_id !== user.id) : []
+  const isSolo = otherRiders.length === 0
+  const voucherStr = (primaryMatch.voucher ?? '').trim()
+  const contingencyStr = (primaryMatch.contingency_voucher ?? '').trim()
+  const hasUberVoucher = voucherStr.length > 0
+  const hasContingencyVoucher = contingencyStr.length > 0
+  /**
+   * Contingency is meant for post-delay solo rides (your own group). Do not show
+   * or require pickup for it while other riders are on the same ride.
+   */
+  const contingencyAppliesHere = isSolo && hasContingencyVoucher
+  /** Reveal contingency URL on Results only after ASPC “confirm ready” (group ready). */
+  const showContingencyBlock =
+    contingencyAppliesHere && contingencyStr !== voucherStr && isGroupReady
+  const hasAnyVoucher = hasUberVoucher || contingencyAppliesHere
+  /** Uber always; contingency only when solo */
+  const needsPickupConfirmation =
+    hasAnyVoucher && rideId && upcoming && !isGroupReady
   const supabase = createBrowserClient()
   const [isDeleting, setIsDeleting] = useState(false)
   const [urlCache, setUrlCache] = useState<Record<string, string>>({})
@@ -129,7 +152,7 @@ const MatchCard = ({
     if (!onDelete || isDeleting) return
     try {
       setIsDeleting(true)
-      await onDelete(firstMatch.ride_id)
+      await onDelete(primaryMatch.ride_id)
       setShowCancelModal(false)
     } catch (error) {
       console.error('Error deleting match:', error)
@@ -146,13 +169,13 @@ const MatchCard = ({
   const isConnect = firstMatch.uber_type?.toLowerCase() === 'connect'
 
   const handleReminderClick = () => {
-    if (!firstMatch.date || !firstMatch.time) return
+    if (!primaryMatch.date || !primaryMatch.time) return
 
     // Parse date manually to avoid timezone issues
-    const [year, month, day] = firstMatch.date.split('-').map(Number)
+    const [year, month, day] = primaryMatch.date.split('-').map(Number)
     const matchDate = new Date(year, month - 1, day)
-    const matchTime = firstMatch.time
-    const flightData = firstMatch.Flights
+    const matchTime = primaryMatch.time
+    const flightData = primaryMatch.Flights
 
     const title = `PICKUP Group: ${flightData?.to_airport ? 'School → ' + flightData.airport : flightData.airport + ' → School'}`
 
@@ -179,24 +202,27 @@ const MatchCard = ({
                   d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                 />
               </svg>
-              {firstMatch.date
+              {primaryMatch.date
                 ? (() => {
-                    const [year, month, day] = firstMatch.date
+                    const [year, month, day] = primaryMatch.date
                       .split('-')
                       .map(Number)
                     return new Date(year, month - 1, day).toLocaleDateString()
                   })()
                 : 'No date'}
               ,{' '}
-              {firstMatch.time ? formatTime12Hour(firstMatch.time) : 'No time'}
+              {primaryMatch.time
+                ? formatTime12Hour(primaryMatch.time)
+                : 'No time'}
             </p>
             <p className="mt-1 text-xl font-semibold text-gray-800">
-              You are matched with{' '}
               {isConnect
-                ? `${matches.length} ${matches.length === 1 ? 'person' : 'people'}`
-                : matches.length === 1
-                  ? firstMatch.Users.firstname
-                  : `${matches.length} people`}
+                ? `You are matched with ${matches.length} ${matches.length === 1 ? 'person' : 'people'}`
+                : otherRiders.length === 0
+                  ? "You're the only rider in this group right now."
+                  : otherRiders.length === 1
+                    ? `You are matched with ${otherRiders[0].Users.firstname}`
+                    : `You are matched with ${otherRiders.length} people`}
             </p>
             {isConnect && (
               <p className="mt-1.5 inline-flex w-fit items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-800">
@@ -242,19 +268,19 @@ const MatchCard = ({
                 />
               </svg>
               <span className="font-medium text-gray-800">
-                {firstMatch.Flights.to_airport
-                  ? `School → ${firstMatch.Flights.airport}`
-                  : `${firstMatch.Flights.airport} → School`}
+                {primaryMatch.Flights.to_airport
+                  ? `School → ${primaryMatch.Flights.airport}`
+                  : `${primaryMatch.Flights.airport} → School`}
               </span>
               <span className="text-sm text-gray-500">
-                {getAirportAddress(firstMatch.Flights.airport)}
+                {getAirportAddress(primaryMatch.Flights.airport)}
               </span>
             </p>
             {hasVoucher && isGroupReady ? (
-              <p className="flex items-center gap-1.5">
+              <p className="flex flex-wrap items-center gap-1.5">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 text-gray-500"
+                  className="h-4 w-4 shrink-0 text-gray-500"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -267,22 +293,22 @@ const MatchCard = ({
                   />
                 </svg>
                 <span className="font-medium text-gray-800">
-                  Voucher:{' '}
-                  {firstMatch.voucher?.startsWith('https') ? (
+                  Uber voucher:{' '}
+                  {voucherStr.startsWith('https') ? (
                     <a
-                      href={firstMatch.voucher}
+                      href={voucherStr}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-indigo-600 underline hover:text-indigo-800"
+                      className="break-all text-indigo-600 underline hover:text-indigo-800"
                     >
-                      {firstMatch.voucher}
+                      {voucherStr}
                     </a>
                   ) : (
-                    firstMatch.voucher
+                    voucherStr
                   )}
                 </span>
               </p>
-            ) : hasVoucher && !isGroupReady && rideId && upcoming ? (
+            ) : needsPickupConfirmation ? (
               <Link
                 href={`/aspc-ready?ride_id=${rideId}`}
                 className="flex flex-col gap-2 rounded-lg border-2 border-teal-300 bg-teal-50 p-3 transition hover:border-teal-400 hover:bg-teal-100 sm:flex-row sm:items-center sm:gap-3"
@@ -303,11 +329,18 @@ const MatchCard = ({
                 </svg>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-teal-800">
-                    Confirm your group is ready to unlock your voucher
+                    {isSolo
+                      ? hasUberVoucher
+                        ? 'Confirm you are ready for pickup to unlock your voucher'
+                        : 'Confirm you are ready for pickup to use your contingency voucher'
+                      : hasUberVoucher
+                        ? 'Confirm your group is ready to unlock your voucher'
+                        : 'Confirm your group is ready before using contingency vouchers'}
                   </p>
                   <p className="text-sm text-teal-600">
-                    Everyone in your group must confirm they&apos;re at the
-                    pickup location
+                    {isSolo
+                      ? 'Confirm you are at the pickup location. After everyone is accounted for, your voucher details stay available on this page.'
+                      : 'Everyone in your group must confirm they are at the pickup location'}
                   </p>
                 </div>
                 <svg
@@ -326,9 +359,54 @@ const MatchCard = ({
                 </svg>
               </Link>
             ) : null}
+            {showContingencyBlock ? (
+              <p className="flex flex-wrap items-center gap-1.5">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 shrink-0 text-amber-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+                <span className="font-medium text-gray-800">
+                  Contingency voucher:{' '}
+                  {contingencyStr.startsWith('https') ? (
+                    <a
+                      href={contingencyStr}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-amber-950 break-all text-amber-800 underline"
+                    >
+                      {contingencyStr}
+                    </a>
+                  ) : (
+                    contingencyStr
+                  )}
+                </span>
+              </p>
+            ) : null}
           </div>
 
-          {upcoming && rideId && !firstMatch.Flights?.to_airport && (
+          {!hasAnyVoucher ? (
+            <p className="text-sm font-semibold text-gray-600">
+              You do not have a voucher available for your group.
+            </p>
+          ) : isSolo ? (
+            <p className="text-sm font-semibold text-teal-700">
+              {isGroupReady
+                ? 'You have a voucher!'
+                : 'You have a voucher! Please confirm you are ready to unlock it!'}
+            </p>
+          ) : null}
+
+          {upcoming && rideId && !primaryMatch.Flights?.to_airport && (
             <Link
               href={`/aspc-delay/${rideId}`}
               className="mt-3 flex items-center gap-2 self-start rounded-lg border-2 border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 transition hover:border-amber-400 hover:bg-amber-100"
@@ -374,103 +452,105 @@ const MatchCard = ({
           )}
         </div>
 
-        {/* Right side: only show contact info and profile pictures for non-Connect rides */}
-        <div className="flex flex-col items-center gap-3 lg:items-end">
-          {!isConnect && (
-            <>
-              <p className="text-sm font-medium text-indigo-600">
-                Other Riders Contact Information
-              </p>
-              <div className="flex flex-wrap justify-center gap-3 lg:justify-end">
-                {matches.map((match) => (
-                  <div
-                    key={match.Users.user_id}
-                    className="relative flex flex-col items-center gap-1 rounded-xl p-1 transition-all duration-300 hover:scale-105 hover:cursor-pointer hover:shadow-md hover:shadow-gray-600"
-                  >
-                    <p className="text-center text-sm font-medium text-gray-700">
-                      {match.Users.firstname}
-                    </p>
-                    <div className="relative overflow-hidden rounded-full">
-                      <Image
-                        src={getProfileUrl(match.Users.photo_url)}
-                        alt={`${match.Users.firstname}'s profile`}
-                        width={60}
-                        height={60}
-                        className="rounded-full"
-                      />
-                    </div>
-                    <p className="text-center text-xs text-gray-500">
-                      {match.Users.email || 'No email provided'}
-                    </p>
-                    <p className="text-center text-xs text-gray-500">
-                      {match.Users.phonenumber || 'No phone provided'}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {upcoming && (
-            <>
-              <button
-                onClick={handleCancelClick}
-                disabled={isDeleting}
-                className={`mt-3 flex items-center gap-1 rounded-lg border border-red-200 bg-white px-4 py-1.5 text-sm font-medium transition-colors ${
-                  isDeleting
-                    ? 'cursor-not-allowed text-gray-500 opacity-60'
-                    : 'text-red-500 hover:bg-red-50 active:bg-red-100'
-                }`}
-              >
-                {isDeleting ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="none"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Processing...
-                  </span>
-                ) : (
-                  <>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
+        {(otherRiders.length > 0 || upcoming) && (
+          <div className="flex flex-col items-center gap-3 lg:items-end">
+            {!isConnect && otherRiders.length > 0 && (
+              <>
+                <p className="text-sm font-medium text-indigo-600">
+                  Other Riders Contact Information
+                </p>
+                <div className="flex flex-wrap justify-center gap-3 lg:justify-end">
+                  {otherRiders.map((match) => (
+                    <div
+                      key={match.Users.user_id}
+                      className="relative flex flex-col items-center gap-1 rounded-xl p-1 transition-all duration-300 hover:scale-105 hover:cursor-pointer hover:shadow-md hover:shadow-gray-600"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                    Cancel Match
-                  </>
-                )}
-              </button>
-              <ConfirmCancelMatch
-                isOpen={showCancelModal}
-                onClose={() => setShowCancelModal(false)}
-                onConfirm={handleConfirmCancel}
-                isDeleting={isDeleting}
-              />
-            </>
-          )}
-        </div>
+                      <p className="text-center text-sm font-medium text-gray-700">
+                        {match.Users.firstname}
+                      </p>
+                      <div className="relative overflow-hidden rounded-full">
+                        <Image
+                          src={getProfileUrl(match.Users.photo_url)}
+                          alt={`${match.Users.firstname}'s profile`}
+                          width={60}
+                          height={60}
+                          className="rounded-full"
+                        />
+                      </div>
+                      <p className="text-center text-xs text-gray-500">
+                        {match.Users.email || 'No email provided'}
+                      </p>
+                      <p className="text-center text-xs text-gray-500">
+                        {match.Users.phonenumber || 'No phone provided'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {upcoming && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleCancelClick}
+                  disabled={isDeleting}
+                  className={`mt-3 flex items-center gap-1 rounded-lg border border-red-200 bg-white px-4 py-1.5 text-sm font-medium transition-colors ${
+                    isDeleting
+                      ? 'cursor-not-allowed text-gray-500 opacity-60'
+                      : 'text-red-500 hover:bg-red-50 active:bg-red-100'
+                  }`}
+                >
+                  {isDeleting ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                          fill="none"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                      Processing...
+                    </span>
+                  ) : (
+                    <>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                      Cancel Match
+                    </>
+                  )}
+                </button>
+                <ConfirmCancelMatch
+                  isOpen={showCancelModal}
+                  onClose={() => setShowCancelModal(false)}
+                  onConfirm={handleConfirmCancel}
+                  isDeleting={isDeleting}
+                />
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -21,6 +21,7 @@ type MatchRow = {
   group_ready_at: string | null
   uber_type: string | null
   voucher: string | null
+  contingency_voucher: string | null
   Flights: {
     airport: string
     to_airport: boolean
@@ -91,6 +92,7 @@ function AspcReadyContent() {
           group_ready_at,
           uber_type,
           voucher,
+          contingency_voucher,
           Flights (airport, to_airport, date),
           Users (user_id, firstname)
         `,
@@ -206,6 +208,19 @@ function AspcReadyContent() {
   const otherMembers = matches.filter((m) => m.user_id !== user?.id)
   const rideVoucher =
     matches.find((m) => m.voucher)?.voucher ?? firstMatch?.voucher ?? null
+  const rideContingencyRaw =
+    matches.find((m) => (m.contingency_voucher ?? '').trim())
+      ?.contingency_voucher ??
+    firstMatch?.contingency_voucher ??
+    null
+  const rideContingency =
+    rideContingencyRaw && rideContingencyRaw.trim() !== ''
+      ? rideContingencyRaw.trim()
+      : null
+  const contingencyDiffersFromUber =
+    rideContingency &&
+    rideVoucher &&
+    rideContingency.trim() !== (rideVoucher ?? '').trim()
   const pickupLocation = firstMatch?.Flights
     ? getPickupLocation(
         firstMatch.Flights.airport,
@@ -506,7 +521,7 @@ function AspcReadyContent() {
                   Everyone accounted for! You may return to the Results.
                   {rideVoucher && (
                     <span className="mt-2 block font-medium">
-                      Voucher:{' '}
+                      Uber voucher:{' '}
                       {rideVoucher.startsWith('https') ? (
                         <a
                           href={rideVoucher}
@@ -521,6 +536,25 @@ function AspcReadyContent() {
                       )}
                     </span>
                   )}
+                  {rideContingency &&
+                    totalCount === 1 &&
+                    (!rideVoucher || contingencyDiffersFromUber) && (
+                      <span className="mt-2 block font-medium">
+                        Contingency voucher:{' '}
+                        {rideContingency.startsWith('https') ? (
+                          <a
+                            href={rideContingency}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-green-800 underline hover:text-green-900"
+                          >
+                            {rideContingency}
+                          </a>
+                        ) : (
+                          rideContingency
+                        )}
+                      </span>
+                    )}
                   Your voucher will also appear on the results page.
                 </p>
               ) : (

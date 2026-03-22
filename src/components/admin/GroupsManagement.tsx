@@ -86,6 +86,7 @@ interface ChangeLogEntry {
     | 'UPDATE_RIDER_DETAILS'
     | 'EMAIL_CONFIRMED'
     | 'ADD_FLIGHT'
+    | 'ASPC_DELAY'
   algorithm_run_id?: string | null
   target_group_id?: string | null
   target_user_id?: string | null
@@ -116,6 +117,8 @@ const getChangeDescription = (action: string): string => {
       return 'Group deleted'
     case 'ADD_FLIGHT':
       return 'Added flight'
+    case 'ASPC_DELAY':
+      return 'ASPC delay (rider)'
     default:
       return 'Modified'
   }
@@ -731,6 +734,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     useState(false)
   const [changeLogHeight, setChangeLogHeight] = useState(256) // Default height in pixels
   const [changeLogFilterName, setChangeLogFilterName] = useState<string>('')
+  /** Filter changelog by the rider/person affected (metadata names), not the admin actor */
+  const [changeLogFilterSubjectName, setChangeLogFilterSubjectName] =
+    useState<string>('')
   const [changeLogFilterActions, setChangeLogFilterActions] = useState<
     Set<string>
   >(new Set())
@@ -5828,7 +5834,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const formatChangeLogEntry = useCallback(
     (entry: ChangeLogEntry): FormattedChangeLogEntry => {
       const actorName = entry.actor_name || 'Unknown'
-      const role = entry.actor_role || 'Admin'
+      // Rider-submitted delays: never label as Admin even if Users.role is Admin (legacy rows too)
+      const role =
+        entry.action === 'ASPC_DELAY' ? 'Rider' : entry.actor_role || 'Admin'
 
       // Format date and time
       const date = new Date(entry.created_at)
@@ -6092,6 +6100,45 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             }
           }
           break
+        case 'ASPC_DELAY': {
+          const m = entry.metadata || {}
+          const reason = (m.reason_for_delay as string) || 'delay reported'
+          const oldF = m.old_flight_date as string | undefined
+          const newD = (m.new_eta_date as string) || ''
+          const newT =
+            (m.new_eta_time_earliest as string) &&
+            (m.new_eta_time_latest as string)
+              ? `${m.new_eta_time_earliest}–${m.new_eta_time_latest}`
+              : (m.new_eta_time as string) || ''
+          let outcome: string
+          if (m.outcome === 'kept_original_group_eta_earlier') {
+            outcome =
+              'kept on original group (new pickup time is before original group — not treated as a delay)'
+          } else if (m.outcome === 'delay_no_group_unmatched') {
+            outcome =
+              'removed from group — unmatched (no alternate group, no contingency voucher)'
+          } else if (m.outcome === 'solo_ride_created') {
+            if (m.skipped_contingency_new_eta_before_original === true) {
+              outcome = `moved to new solo group #${m.new_ride_id ?? '?'} (contingency not applied — new ETA before original group)`
+            } else if (m.contingency_voucher_assigned === true) {
+              outcome = `moved to new solo group #${m.new_ride_id ?? '?'} (contingency voucher applied)`
+            } else if (m.contingency_voucher_assigned === false) {
+              outcome = 'unmatched'
+            } else {
+              // Legacy rows before contingency_voucher_assigned was logged
+              outcome = `moved to new solo group #${m.new_ride_id ?? '?'}`
+            }
+          } else {
+            outcome = 'searched for alternate groups to join'
+          }
+          // Name is shown in the header (Rider + actor_name); avoid repeating it here
+          if (m.new_flight_no) {
+            actionText = `reported delay (${reason}): new flight ${m.new_flight_airport ?? ''} ${m.new_flight_no} on ${m.new_flight_date}; ${outcome}`
+          } else {
+            actionText = `reported delay (${reason}): flight date ${oldF ?? '—'} → new ETA ${newD} ${newT}; ${outcome}`
+          }
+          break
+        }
         case 'ADD_FLIGHT':
           // New flight added (typically unmatched)
           const addFlightIdentifier =
@@ -6128,12 +6175,40 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const filteredChangeLog = useMemo(
     () =>
       changeLog.filter((entry) => {
-        // Filter by name
+        // Filter by actor name
         if (changeLogFilterName.trim()) {
           const nameMatch = entry.actor_name
             ?.toLowerCase()
             .includes(changeLogFilterName.toLowerCase().trim())
           if (!nameMatch) return false
+        }
+
+        // Filter by affected person / rider (from metadata or resolved target_user_id)
+        if (changeLogFilterSubjectName.trim()) {
+          const q = changeLogFilterSubjectName.toLowerCase().trim()
+          const m = entry.metadata || {}
+          const nameParts: string[] = []
+          if (typeof m.rider_name === 'string' && m.rider_name.trim()) {
+            nameParts.push(m.rider_name)
+          }
+          if (Array.isArray(m.rider_names)) {
+            for (const n of m.rider_names) {
+              if (typeof n === 'string' && n.trim()) nameParts.push(n)
+            }
+          }
+          if (entry.target_user_id) {
+            const allRiders = [
+              ...unmatchedRiders,
+              ...corralRiders,
+              ...groups.flatMap((g) => g.riders),
+            ]
+            const found = allRiders.find(
+              (r) => r.user_id === entry.target_user_id,
+            )
+            if (found?.name) nameParts.push(found.name)
+          }
+          const haystack = nameParts.join(' ').toLowerCase()
+          if (!haystack.includes(q)) return false
         }
 
         // Filter by action (multiple selections)
@@ -6163,9 +6238,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     [
       changeLog,
       changeLogFilterName,
+      changeLogFilterSubjectName,
       changeLogFilterActions,
       changeLogFilterDateFrom,
       changeLogFilterDateTo,
+      unmatchedRiders,
+      corralRiders,
+      groups,
     ],
   )
 
@@ -9857,6 +9936,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       <button
                         onClick={() => {
                           setChangeLogFilterName('')
+                          setChangeLogFilterSubjectName('')
                           setChangeLogFilterActions(new Set())
                           setChangeLogFilterDateFrom('')
                           setChangeLogFilterDateTo('')
@@ -9867,11 +9947,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       </button>
                     </div>
 
-                    {/* Name and Date Filters - Inline */}
-                    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                    {/* Actor / subject / date filters */}
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
                       <div>
                         <label className="mb-1 block text-xs font-medium text-gray-700">
-                          Name
+                          Actor (who made change)
                         </label>
                         <input
                           type="text"
@@ -9879,7 +9959,21 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           onChange={(e) =>
                             setChangeLogFilterName(e.target.value)
                           }
-                          placeholder="Actor name..."
+                          placeholder="Admin name..."
+                          className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-700">
+                          Affected person
+                        </label>
+                        <input
+                          type="text"
+                          value={changeLogFilterSubjectName}
+                          onChange={(e) =>
+                            setChangeLogFilterSubjectName(e.target.value)
+                          }
+                          placeholder="Rider / edited person..."
                           className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                         />
                       </div>
@@ -9962,6 +10056,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             label: 'Update Rider Details',
                           },
                           { value: 'ADD_FLIGHT', label: 'Add Flight' },
+                          {
+                            value: 'ASPC_DELAY',
+                            label: 'ASPC delay (rider)',
+                          },
                         ].map((action) => (
                           <label
                             key={action.value}
