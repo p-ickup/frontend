@@ -25,6 +25,11 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  buildNoShowLookup,
+  noShowTooltip,
+  type NoShowRiderInfo,
+} from '@/utils/adminMatchNoShows'
 import AddRider from './AddRider'
 
 interface AdminDashboardProps {
@@ -49,6 +54,8 @@ interface Rider {
   originType?: 'unmatched' | 'group' // Track if rider came from unmatched or group
   school?: string // User's school for admin scope filtering
   original_unmatched?: boolean // True if user was originally unmatched (from Flights.original_unmatched, never change)
+  /** Reported missing on ASPC Ready; cross-referenced with delay ChangeLog */
+  no_show?: NoShowRiderInfo
 }
 
 interface Group {
@@ -1928,7 +1935,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         const { data: matchesPage, error: matchesError } = await supabase
           .from('Matches')
           .select(
-            'ride_id, flight_id, user_id, voucher, time, date, uber_type, is_subsidized, subsidized_override, uber_type_override',
+            'ride_id, flight_id, user_id, voucher, time, date, uber_type, is_subsidized, subsidized_override, uber_type_override, reported_missing_user_ids, ready_for_pickup_status, ready_for_pickup_at',
           )
           .range(matchesFrom, matchesFrom + matchesPageSize - 1)
 
@@ -1947,6 +1954,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       }
 
       const matchesData = allMatchesData
+
+      const noShowLookup = await buildNoShowLookup(supabase, matchesData)
 
       if (!matchesData || matchesData.length === 0) {
         setGroups([])
@@ -2145,6 +2154,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             airline_iata: '',
             school: undefined,
             original_unmatched: false,
+            no_show: noShowLookup.get(
+              `${match.ride_id}:${String((match as { user_id?: string }).user_id ?? '')}`,
+            ),
           })
           return
         }
@@ -2197,6 +2209,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           airline_iata: flight.airline_iata || '',
           school: userData?.school || undefined,
           original_unmatched: flight.original_unmatched ?? false,
+          no_show: noShowLookup.get(
+            `${match.ride_id}:${String(flight.user_id)}`,
+          ),
         })
       })
 
@@ -7930,6 +7945,30 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                   Past Date
                                 </span>
                               )}
+                              {(() => {
+                                const flagged = group.riders.filter(
+                                  (r) => r.no_show,
+                                )
+                                if (flagged.length === 0) return null
+                                const reporterIds = new Set<string>()
+                                for (const r of flagged) {
+                                  for (const id of r.no_show?.reporterUserIds ??
+                                    []) {
+                                    reporterIds.add(id)
+                                  }
+                                }
+                                const byN = reporterIds.size
+                                const n = flagged.length
+                                return (
+                                  <span
+                                    className="bg-rose-50 text-rose-950 ring-rose-200 max-w-[20rem] rounded-full px-2.5 py-0.5 text-xs font-medium ring-1"
+                                    title={`${n} rider(s) in this group were reported missing on ASPC Ready. ${byN} distinct rider(s) filed those reports. Red/orange flags on names = delay log status.`}
+                                  >
+                                    {n} rider{n === 1 ? '' : 's'} reported
+                                    missing (By {byN})
+                                  </span>
+                                )
+                              })()}
                             </div>
                             {/* Desktop: single line */}
                             <p className="hidden text-sm text-gray-600 md:block">
@@ -8497,6 +8536,23 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                               {rider.original_unmatched && (
                                                 <span title="Originally unmatched">
                                                   <Flag className="h-3.5 w-3.5 flex-shrink-0 text-amber-500" />
+                                                </span>
+                                              )}
+                                              {rider.no_show && (
+                                                <span
+                                                  title={noShowTooltip(
+                                                    rider.no_show,
+                                                  )}
+                                                  className="inline-flex items-center"
+                                                >
+                                                  <Flag
+                                                    className={`h-3.5 w-3.5 flex-shrink-0 ${
+                                                      rider.no_show.flag ===
+                                                      'orange'
+                                                        ? 'text-orange-500'
+                                                        : 'text-red-600'
+                                                    }`}
+                                                  />
                                                 </span>
                                               )}
                                             </p>
