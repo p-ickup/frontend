@@ -153,6 +153,7 @@ const consolidateChangeDescriptions = (descriptions: string[]): string[] => {
 const ChangedGroupCard = ({
   changedGroup,
   onConfirmEmail,
+  onEmailGroup,
   supabase,
   isConfirming = false,
 }: {
@@ -164,6 +165,7 @@ const ChangedGroupCard = ({
     changeDescriptions?: string[]
   }
   onConfirmEmail: () => Promise<void>
+  onEmailGroup?: (rideId: number) => Promise<void>
   supabase: any
   isConfirming?: boolean
 }) => {
@@ -174,6 +176,8 @@ const ChangedGroupCard = ({
   const [loadingEmails, setLoadingEmails] = useState(false)
   const [loadingPhones, setLoadingPhones] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
 
   const fetchMemberEmails = async () => {
     if (memberEmails.length > 0) {
@@ -336,20 +340,87 @@ const ChangedGroupCard = ({
             </button>
           </div>
           {!changedGroup.emailsSent && (
-            <button
-              onClick={onConfirmEmail}
-              disabled={isConfirming}
-              className={`rounded px-2 py-1 text-xs font-medium transition-all ${
-                isConfirming
-                  ? 'cursor-not-allowed bg-gray-400 text-gray-200'
-                  : 'bg-green-600 text-white hover:bg-green-700'
-              }`}
-            >
-              {isConfirming ? 'Confirming...' : 'Confirm'}
-            </button>
+            <div className="flex flex-col gap-1">
+              {onEmailGroup && (
+                <button
+                  onClick={() => setShowEmailModal(true)}
+                  disabled={isConfirming}
+                  className={`rounded px-2 py-1 text-xs font-medium transition-all ${
+                    isConfirming
+                      ? 'cursor-not-allowed bg-gray-400 text-gray-200'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  {isConfirming ? 'Sending...' : 'Email group'}
+                </button>
+              )}
+              <button
+                onClick={onConfirmEmail}
+                disabled={isConfirming}
+                className={`rounded px-2 py-1 text-xs font-medium transition-all ${
+                  isConfirming
+                    ? 'cursor-not-allowed bg-gray-400 text-gray-200'
+                    : 'bg-green-600 text-white hover:bg-green-700'
+                }`}
+              >
+                {isConfirming ? 'Confirming...' : 'Confirm'}
+              </button>
+            </div>
           )}
         </div>
       </div>
+
+      {/* Email group confirmation modal */}
+      {showEmailModal && onEmailGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-w-sm rounded-lg bg-white p-4 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Send match emails
+            </h3>
+            <p className="mt-2 text-sm text-gray-600">
+              Send match notification emails to all{' '}
+              {changedGroup.group.riders.length} rider
+              {changedGroup.group.riders.length !== 1 ? 's' : ''} in Group #
+              {changedGroup.group.ride_id}?
+            </p>
+            {emailError && (
+              <p className="mt-2 text-sm text-red-600">{emailError}</p>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowEmailModal(false)
+                  setEmailError(null)
+                }}
+                disabled={isConfirming}
+                className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setEmailError(null)
+                  try {
+                    await onEmailGroup(changedGroup.group.ride_id)
+                    setShowEmailModal(false)
+                  } catch (err) {
+                    setEmailError(
+                      err instanceof Error
+                        ? err.message
+                        : 'Failed to send emails',
+                    )
+                  }
+                }}
+                disabled={isConfirming}
+                className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isConfirming ? 'Sending...' : 'Send'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showContactInfo && (
         <div className="mt-3 w-full rounded-b-lg bg-white p-3">
           <div className="mb-2 flex items-center justify-between">
@@ -4478,6 +4549,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           rider.user_id,
         )
 
+        // Refresh Changed Groups so the group appears immediately without page refresh
+        await loadUnconfirmedChanges()
+
         // Clear selection mode
         setCorralSelectionMode(null)
         setErrorMessage(null)
@@ -4491,6 +4565,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     [
       validateTimeCompatibility,
       logToChangeLog,
+      loadUnconfirmedChanges,
       supabase,
       corralRiders,
       computeGroupSubsidized,
@@ -9089,203 +9164,286 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                         <div className="space-y-2">
                           {changedGroups
                             .filter((cg) => !cg.emailsSent)
-                            .map((changedGroup) => (
-                              <ChangedGroupCard
-                                key={changedGroup.group.ride_id}
-                                changedGroup={changedGroup}
-                                isConfirming={confirmingGroups.has(
-                                  changedGroup.group.ride_id,
-                                )}
-                                onConfirmEmail={async () => {
-                                  // Set confirming state immediately
-                                  setConfirmingGroups((prev) =>
-                                    new Set(prev).add(
-                                      changedGroup.group.ride_id,
+                            .map((changedGroup) => {
+                              const runConfirmFlow = async () => {
+                                setConfirmingGroups((prev) =>
+                                  new Set(prev).add(changedGroup.group.ride_id),
+                                )
+                                try {
+                                  console.log(
+                                    '[onConfirmEmail] Starting confirmation for group:',
+                                    {
+                                      groupId: changedGroup.group.ride_id,
+                                      changeLogId: changedGroup.changeLogId,
+                                      changeType: changedGroup.changeType,
+                                    },
+                                  )
+
+                                  // Find ALL unconfirmed ChangeLog entries related to this group
+                                  // This includes entries where the group is the source (from_group) or destination (to_group/ride_id)
+                                  const {
+                                    data: relatedEntries,
+                                    error: findError,
+                                  } = await supabase
+                                    .from('ChangeLog')
+                                    .select('id, action, metadata')
+                                    .eq('confirmed', false)
+                                    .in('action', [
+                                      'UPDATE_GROUP_TIME',
+                                      'ADD_TO_GROUP',
+                                      'REMOVE_FROM_GROUP',
+                                      'CREATE_GROUP',
+                                      'DELETE_GROUP',
+                                    ])
+                                    .or(
+                                      `metadata->>ride_id.eq.${changedGroup.group.ride_id},metadata->>to_group.eq.${changedGroup.group.ride_id},metadata->>from_group.eq.${changedGroup.group.ride_id}`,
+                                    )
+
+                                  if (findError) {
+                                    console.error(
+                                      '[onConfirmEmail] Error finding related ChangeLog entries:',
+                                      findError,
+                                    )
+                                  } else {
+                                    console.log(
+                                      '[onConfirmEmail] Found related ChangeLog entries:',
+                                      relatedEntries?.length || 0,
+                                      relatedEntries,
+                                    )
+                                  }
+
+                                  // Update ALL related ChangeLog entries to confirmed = true
+                                  if (
+                                    relatedEntries &&
+                                    relatedEntries.length > 0
+                                  ) {
+                                    const entryIds = relatedEntries.map(
+                                      (e) => e.id,
+                                    )
+                                    console.log(
+                                      '[onConfirmEmail] Updating ChangeLog entries to confirmed:',
+                                      entryIds,
+                                    )
+
+                                    const { error: updateError } =
+                                      await supabase
+                                        .from('ChangeLog')
+                                        .update({ confirmed: true })
+                                        .in('id', entryIds)
+
+                                    if (updateError) {
+                                      console.error(
+                                        '[onConfirmEmail] Error confirming changes:',
+                                        updateError,
+                                      )
+                                      setErrorMessage(
+                                        'Failed to confirm change',
+                                      )
+                                      setTimeout(
+                                        () => setErrorMessage(null),
+                                        3000,
+                                      )
+                                      return
+                                    }
+                                    console.log(
+                                      '[onConfirmEmail] Successfully updated',
+                                      entryIds.length,
+                                      'ChangeLog entries to confirmed',
+                                    )
+                                  } else if (changedGroup.changeLogId) {
+                                    // Fallback to single entry if no related entries found
+                                    console.log(
+                                      '[onConfirmEmail] No related entries found, updating single entry:',
+                                      changedGroup.changeLogId,
+                                    )
+                                    const { error } = await supabase
+                                      .from('ChangeLog')
+                                      .update({ confirmed: true })
+                                      .eq('id', changedGroup.changeLogId)
+
+                                    if (error) {
+                                      console.error(
+                                        '[onConfirmEmail] Error confirming change:',
+                                        error,
+                                      )
+                                      setErrorMessage(
+                                        'Failed to confirm change',
+                                      )
+                                      setTimeout(
+                                        () => setErrorMessage(null),
+                                        3000,
+                                      )
+                                      return
+                                    }
+                                  }
+
+                                  // Log email confirmation to ChangeLog
+                                  // Note: EMAIL_CONFIRMED is not in the database constraint, so we use UPDATE_GROUP_TIME
+                                  // with email_confirmed: true in metadata to track this
+                                  console.log(
+                                    '[onConfirmEmail] Creating email confirmation entry for group:',
+                                    changedGroup.group.ride_id,
+                                  )
+                                  try {
+                                    const emailConfirmedResult =
+                                      await logToChangeLog(
+                                        'UPDATE_GROUP_TIME', // Use allowed action type
+                                        {
+                                          email_confirmed: true, // Flag to indicate this is an email confirmation
+                                          ride_id: changedGroup.group.ride_id, // Store as number in metadata
+                                          change_type: changedGroup.changeType,
+                                          rider_count:
+                                            changedGroup.group.riders.length,
+                                          rider_names:
+                                            changedGroup.group.riders.map(
+                                              (r) => r.name,
+                                            ),
+                                          rider_user_ids:
+                                            changedGroup.group.riders.map(
+                                              (r) => r.user_id,
+                                            ),
+                                        },
+                                        undefined, // Don't set target_group_id if it's UUID type and we have a number
+                                        undefined, // targetUserId
+                                        true, // confirmed = true for email confirmations
+                                      )
+                                    console.log(
+                                      '[onConfirmEmail] Email confirmation entry creation result:',
+                                      emailConfirmedResult,
+                                    )
+                                  } catch (emailError) {
+                                    console.error(
+                                      '[onConfirmEmail] Error creating email confirmation entry:',
+                                      emailError,
+                                    )
+                                    // Don't fail the whole operation if logging fails
+                                  }
+
+                                  // Update local state
+                                  setChangedGroups((prev) =>
+                                    prev.map((cg) =>
+                                      cg.group.ride_id ===
+                                      changedGroup.group.ride_id
+                                        ? { ...cg, emailsSent: true }
+                                        : cg,
                                     ),
                                   )
 
-                                  try {
-                                    console.log(
-                                      '[onConfirmEmail] Starting confirmation for group:',
-                                      {
-                                        groupId: changedGroup.group.ride_id,
-                                        changeLogId: changedGroup.changeLogId,
-                                        changeType: changedGroup.changeType,
-                                      },
+                                  // Refresh ChangeLog to show the new EMAIL_CONFIRMED entry
+                                  await fetchChangeLog()
+
+                                  // Reload unconfirmed changes after a delay to ensure DB commit
+                                  // The loadUnconfirmedChanges will now check for EMAIL_CONFIRMED entries
+                                  // and preserve the emailsSent state
+                                  setTimeout(() => {
+                                    loadUnconfirmedChanges()
+                                  }, 500)
+                                } catch (confirmErr) {
+                                  // Swallow errors so they don't propagate to onEmailGroup (which would
+                                  // incorrectly show "Failed to send emails" when emails were sent).
+                                  // Log for debugging and show a safe, non-alarming message.
+                                  const err =
+                                    confirmErr instanceof Error
+                                      ? confirmErr
+                                      : new Error(String(confirmErr))
+                                  console.error(
+                                    '[runConfirmFlow] Confirmation error:',
+                                    err,
+                                  )
+                                  setErrorMessage(
+                                    'Confirmation sync failed. Refresh the page to see the latest state.',
+                                  )
+                                  setTimeout(() => setErrorMessage(null), 5000)
+                                  // Do not re-throw: caller (e.g. onEmailGroup) should not treat
+                                  // this as a failure when emails were already sent successfully.
+                                } finally {
+                                  setConfirmingGroups((prev) => {
+                                    const newSet = new Set(prev)
+                                    newSet.delete(changedGroup.group.ride_id)
+                                    return newSet
+                                  })
+                                }
+                              }
+
+                              const onEmailGroup = async () => {
+                                setConfirmingGroups((prev) =>
+                                  new Set(prev).add(changedGroup.group.ride_id),
+                                )
+                                try {
+                                  const supabaseUrl =
+                                    process.env.NEXT_PUBLIC_SUPABASE_URL
+                                  const supabaseAnonKey =
+                                    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+                                  if (!supabaseUrl || !supabaseAnonKey) {
+                                    throw new Error(
+                                      'Missing Supabase configuration',
                                     )
-
-                                    // Find ALL unconfirmed ChangeLog entries related to this group
-                                    // This includes entries where the group is the source (from_group) or destination (to_group/ride_id)
-                                    const {
-                                      data: relatedEntries,
-                                      error: findError,
-                                    } = await supabase
-                                      .from('ChangeLog')
-                                      .select('id, action, metadata')
-                                      .eq('confirmed', false)
-                                      .in('action', [
-                                        'UPDATE_GROUP_TIME',
-                                        'ADD_TO_GROUP',
-                                        'REMOVE_FROM_GROUP',
-                                        'CREATE_GROUP',
-                                        'DELETE_GROUP',
-                                      ])
-                                      .or(
-                                        `metadata->>ride_id.eq.${changedGroup.group.ride_id},metadata->>to_group.eq.${changedGroup.group.ride_id},metadata->>from_group.eq.${changedGroup.group.ride_id}`,
-                                      )
-
-                                    if (findError) {
-                                      console.error(
-                                        '[onConfirmEmail] Error finding related ChangeLog entries:',
-                                        findError,
-                                      )
-                                    } else {
-                                      console.log(
-                                        '[onConfirmEmail] Found related ChangeLog entries:',
-                                        relatedEntries?.length || 0,
-                                        relatedEntries,
-                                      )
-                                    }
-
-                                    // Update ALL related ChangeLog entries to confirmed = true
-                                    if (
-                                      relatedEntries &&
-                                      relatedEntries.length > 0
-                                    ) {
-                                      const entryIds = relatedEntries.map(
-                                        (e) => e.id,
-                                      )
-                                      console.log(
-                                        '[onConfirmEmail] Updating ChangeLog entries to confirmed:',
-                                        entryIds,
-                                      )
-
-                                      const { error: updateError } =
-                                        await supabase
-                                          .from('ChangeLog')
-                                          .update({ confirmed: true })
-                                          .in('id', entryIds)
-
-                                      if (updateError) {
-                                        console.error(
-                                          '[onConfirmEmail] Error confirming changes:',
-                                          updateError,
-                                        )
-                                        setErrorMessage(
-                                          'Failed to confirm change',
-                                        )
-                                        setTimeout(
-                                          () => setErrorMessage(null),
-                                          3000,
-                                        )
-                                        return
-                                      }
-                                      console.log(
-                                        '[onConfirmEmail] Successfully updated',
-                                        entryIds.length,
-                                        'ChangeLog entries to confirmed',
-                                      )
-                                    } else if (changedGroup.changeLogId) {
-                                      // Fallback to single entry if no related entries found
-                                      console.log(
-                                        '[onConfirmEmail] No related entries found, updating single entry:',
-                                        changedGroup.changeLogId,
-                                      )
-                                      const { error } = await supabase
-                                        .from('ChangeLog')
-                                        .update({ confirmed: true })
-                                        .eq('id', changedGroup.changeLogId)
-
-                                      if (error) {
-                                        console.error(
-                                          '[onConfirmEmail] Error confirming change:',
-                                          error,
-                                        )
-                                        setErrorMessage(
-                                          'Failed to confirm change',
-                                        )
-                                        setTimeout(
-                                          () => setErrorMessage(null),
-                                          3000,
-                                        )
-                                        return
-                                      }
-                                    }
-
-                                    // Log email confirmation to ChangeLog
-                                    // Note: EMAIL_CONFIRMED is not in the database constraint, so we use UPDATE_GROUP_TIME
-                                    // with email_confirmed: true in metadata to track this
-                                    console.log(
-                                      '[onConfirmEmail] Creating email confirmation entry for group:',
-                                      changedGroup.group.ride_id,
-                                    )
-                                    try {
-                                      const emailConfirmedResult =
-                                        await logToChangeLog(
-                                          'UPDATE_GROUP_TIME', // Use allowed action type
-                                          {
-                                            email_confirmed: true, // Flag to indicate this is an email confirmation
-                                            ride_id: changedGroup.group.ride_id, // Store as number in metadata
-                                            change_type:
-                                              changedGroup.changeType,
-                                            rider_count:
-                                              changedGroup.group.riders.length,
-                                            rider_names:
-                                              changedGroup.group.riders.map(
-                                                (r) => r.name,
-                                              ),
-                                            rider_user_ids:
-                                              changedGroup.group.riders.map(
-                                                (r) => r.user_id,
-                                              ),
-                                          },
-                                          undefined, // Don't set target_group_id if it's UUID type and we have a number
-                                          undefined, // targetUserId
-                                          true, // confirmed = true for email confirmations
-                                        )
-                                      console.log(
-                                        '[onConfirmEmail] Email confirmation entry creation result:',
-                                        emailConfirmedResult,
-                                      )
-                                    } catch (emailError) {
-                                      console.error(
-                                        '[onConfirmEmail] Error creating email confirmation entry:',
-                                        emailError,
-                                      )
-                                      // Don't fail the whole operation if logging fails
-                                    }
-
-                                    // Update local state
-                                    setChangedGroups((prev) =>
-                                      prev.map((cg) =>
-                                        cg.group.ride_id ===
-                                        changedGroup.group.ride_id
-                                          ? { ...cg, emailsSent: true }
-                                          : cg,
-                                      ),
-                                    )
-
-                                    // Refresh ChangeLog to show the new EMAIL_CONFIRMED entry
-                                    await fetchChangeLog()
-
-                                    // Reload unconfirmed changes after a delay to ensure DB commit
-                                    // The loadUnconfirmedChanges will now check for EMAIL_CONFIRMED entries
-                                    // and preserve the emailsSent state
-                                    setTimeout(() => {
-                                      loadUnconfirmedChanges()
-                                    }, 500)
-                                  } finally {
-                                    // Clear confirming state
-                                    setConfirmingGroups((prev) => {
-                                      const newSet = new Set(prev)
-                                      newSet.delete(changedGroup.group.ride_id)
-                                      return newSet
-                                    })
                                   }
-                                }}
-                                supabase={supabase}
-                              />
-                            ))}
+                                  const res = await fetch(
+                                    `${supabaseUrl}/functions/v1/send-all-match-emails-batch`,
+                                    {
+                                      method: 'POST',
+                                      headers: {
+                                        Authorization: `Bearer ${supabaseAnonKey}`,
+                                        'Content-Type': 'application/json',
+                                      },
+                                      body: JSON.stringify({
+                                        ride_ids: [changedGroup.group.ride_id],
+                                      }),
+                                    },
+                                  )
+                                  const result = await res
+                                    .json()
+                                    .catch(() => ({}))
+                                  if (!res.ok) {
+                                    throw new Error(
+                                      result.error || 'Failed to send emails',
+                                    )
+                                  }
+                                  if (!result.success) {
+                                    throw new Error(
+                                      result.message || 'Failed to send emails',
+                                    )
+                                  }
+                                  if (result.failed > 0) {
+                                    const total =
+                                      result.total ??
+                                      (result.sent || 0) + result.failed
+                                    throw new Error(
+                                      `Failed to send to ${result.failed} of ${total} recipients. Try again or check email addresses.`,
+                                    )
+                                  }
+                                  await runConfirmFlow()
+                                } catch (err) {
+                                  const message =
+                                    err instanceof Error
+                                      ? err.message
+                                      : 'Failed to send emails'
+                                  setErrorMessage(message)
+                                  setTimeout(() => setErrorMessage(null), 5000)
+                                  throw err
+                                } finally {
+                                  setConfirmingGroups((prev) => {
+                                    const newSet = new Set(prev)
+                                    newSet.delete(changedGroup.group.ride_id)
+                                    return newSet
+                                  })
+                                }
+                              }
+
+                              return (
+                                <ChangedGroupCard
+                                  key={changedGroup.group.ride_id}
+                                  changedGroup={changedGroup}
+                                  isConfirming={confirmingGroups.has(
+                                    changedGroup.group.ride_id,
+                                  )}
+                                  onConfirmEmail={runConfirmFlow}
+                                  onEmailGroup={onEmailGroup}
+                                  supabase={supabase}
+                                />
+                              )
+                            })}
                         </div>
                       </div>
                     )}

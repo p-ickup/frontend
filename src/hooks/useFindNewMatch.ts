@@ -277,6 +277,8 @@ export function useFindNewMatch() {
             date,
             time,
             is_subsidized,
+            voucher,
+            uber_type,
             contingency_voucher,
             Flights (
               airport,
@@ -312,8 +314,12 @@ export function useFindNewMatch() {
         const bagNoLarge =
           (flight as { bag_no_large: number }).bag_no_large ?? 0
         const wasSubsidized =
-          (currentMatch as { is_subsidized?: boolean | null }).is_subsidized ??
-          false
+          Boolean(
+            (currentMatch as { voucher?: string | null }).voucher?.trim(),
+          ) ||
+          (
+            currentMatch as { uber_type?: string | null }
+          ).uber_type?.toLowerCase() === 'connect'
         const contingencyVoucher =
           (currentMatch as { contingency_voucher?: string | null })
             .contingency_voucher ?? null
@@ -510,7 +516,10 @@ export function useFindNewMatch() {
           if (groupTime < windowStart || groupTime > windowEnd) continue
 
           // Non-Pomona users cannot join groups covered by Pomona (ASPC subsidized)
-          if (!isPomonaUser && g.is_subsidized === true) continue
+          const groupHasVoucherOrConnect =
+            Boolean(g.voucher?.trim()) ||
+            g.uber_type?.toLowerCase() === 'connect'
+          if (!isPomonaUser && groupHasVoucherOrConnect) continue
 
           const canFit = canAccommodateRider(
             riderCount,
@@ -716,8 +725,10 @@ export function useFindNewMatch() {
         }
 
         const groupSubsidized =
-          (matchRow as { is_subsidized?: boolean | null }).is_subsidized ===
-          true
+          Boolean((matchRow as { voucher?: string | null }).voucher?.trim()) ||
+          (
+            matchRow as { uber_type?: string | null }
+          ).uber_type?.toLowerCase() === 'connect'
         const userSchool =
           (userRes.data as { school?: string } | null)?.school ?? ''
         if (groupSubsidized && userSchool !== 'Pomona') {
@@ -749,7 +760,7 @@ export function useFindNewMatch() {
             time: timeFormatted,
             uber_type: r.uber_type ?? 'X',
             voucher: groupVoucher,
-            is_subsidized: r.is_subsidized ?? false,
+            is_subsidized: groupSubsidized,
           })
           .eq('ride_id', params.currentRideId)
           .eq('user_id', params.userId)

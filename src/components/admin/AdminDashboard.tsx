@@ -103,6 +103,39 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     total: number
   } | null>(null)
 
+  // Match cancellations (for fee billing)
+  const [cancellationsDateStart, setCancellationsDateStart] = useState<string>(
+    () => {
+      const d = new Date()
+      d.setMonth(d.getMonth() - 1)
+      return d.toISOString().split('T')[0]
+    },
+  )
+  const [cancellationsDateEnd, setCancellationsDateEnd] = useState<string>(
+    () => new Date().toISOString().split('T')[0],
+  )
+  const [cancellationsLoading, setCancellationsLoading] = useState(false)
+  const [cancellations, setCancellations] = useState<
+    Array<{
+      id: number
+      ride_id: number
+      user_id: string
+      flight_id: number
+      cancelled_at: string
+      match_date: string
+      match_time: string
+      airport: string
+      to_airport: boolean
+      is_subsidized: boolean | null
+      cancelled_after_deadline: boolean
+      cancelled_before_1hr: boolean
+      cancellation_type: string | null
+      firstname?: string
+      lastname?: string
+      email?: string
+    }>
+  >([])
+
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
@@ -709,6 +742,58 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     router.push('/admin/groups')
   }
 
+  const fetchCancellations = async () => {
+    if (!cancellationsDateStart || !cancellationsDateEnd) return
+    setCancellationsLoading(true)
+    try {
+      const { data: rows, error } = await supabase
+        .from('match_cancellations')
+        .select('*')
+        .gte('cancelled_at', `${cancellationsDateStart}T00:00:00`)
+        .lte('cancelled_at', `${cancellationsDateEnd}T23:59:59`)
+        .order('cancelled_at', { ascending: false })
+
+      if (error) throw error
+
+      const userIds = Array.from(new Set((rows || []).map((r) => r.user_id)))
+      let usersMap: Record<
+        string,
+        { firstname: string; lastname: string; email: string }
+      > = {}
+      if (userIds.length > 0) {
+        const { data: users } = await supabase
+          .from('Users')
+          .select('user_id, firstname, lastname, email')
+          .in('user_id', userIds)
+        usersMap = (users || []).reduce(
+          (acc, u) => ({
+            ...acc,
+            [u.user_id]: {
+              firstname: u.firstname,
+              lastname: u.lastname,
+              email: u.email,
+            },
+          }),
+          {},
+        )
+      }
+
+      setCancellations(
+        (rows || []).map((r) => ({
+          ...r,
+          firstname: usersMap[r.user_id]?.firstname,
+          lastname: usersMap[r.user_id]?.lastname,
+          email: usersMap[r.user_id]?.email,
+        })),
+      )
+    } catch (err) {
+      console.error('Error fetching cancellations:', err)
+      setCancellations([])
+    } finally {
+      setCancellationsLoading(false)
+    }
+  }
+
   if (loading && !dryRunResults.length) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -875,6 +960,214 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
           >
             View & Manage Groups
           </button>
+        </div>
+
+        {/* Match Cancellations (Fee Billing) */}
+        <div className="mb-8 rounded-lg bg-white shadow-md">
+          <div className="border-b border-gray-200 bg-gradient-to-r from-red-500 to-orange-500 px-6 py-4">
+            <h2 className="text-xl font-bold text-white">
+              Match Cancellations (Fee Billing)
+            </h2>
+            <p className="mt-1 text-sm text-white/90">
+              View student-initiated cancellations for ASPC fee tracking
+            </p>
+          </div>
+          <div className="p-6">
+            <div className="mb-4 flex flex-wrap items-end gap-4">
+              <div className="min-w-[160px]">
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  From Date
+                </label>
+                <input
+                  type="date"
+                  value={cancellationsDateStart}
+                  onChange={(e) => setCancellationsDateStart(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
+                />
+              </div>
+              <div className="min-w-[160px]">
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  To Date
+                </label>
+                <input
+                  type="date"
+                  value={cancellationsDateEnd}
+                  onChange={(e) => setCancellationsDateEnd(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
+                />
+              </div>
+              <button
+                onClick={fetchCancellations}
+                disabled={cancellationsLoading}
+                className="rounded-lg bg-red-600 px-4 py-2 font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {cancellationsLoading ? 'Loading...' : 'Load Cancellations'}
+              </button>
+            </div>
+
+            {cancellations.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Cancelled
+                      </th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Rider
+                      </th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Match Date/Time
+                      </th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Airport
+                      </th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        After Deadline
+                      </th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Before 1hr
+                      </th>
+                      <th className="px-4 py-2 text-left font-medium text-gray-600">
+                        Est. Fee
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {cancellations.map((c) => {
+                      const isLAX = c.airport?.toUpperCase() === 'LAX'
+                      const isONT = c.airport?.toUpperCase() === 'ONT'
+                      const fee = !c.cancelled_before_1hr
+                        ? isLAX
+                          ? 40
+                          : isONT
+                            ? 15
+                            : 0
+                        : c.cancelled_after_deadline
+                          ? isLAX
+                            ? 20
+                            : isONT
+                              ? 8
+                              : 0
+                          : 0
+                      return (
+                        <tr key={c.id} className="hover:bg-gray-50">
+                          <td className="whitespace-nowrap px-4 py-2 text-gray-700">
+                            {formatDateTime(c.cancelled_at)}
+                          </td>
+                          <td className="px-4 py-2">
+                            <span className="font-medium">
+                              {c.firstname} {c.lastname}
+                            </span>
+                            <br />
+                            <span className="text-xs text-gray-500">
+                              {c.email}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2 text-gray-700">
+                            {c.match_date} {c.match_time?.slice(0, 5)}
+                          </td>
+                          <td className="px-4 py-2">{c.airport}</td>
+                          <td className="px-4 py-2">
+                            {c.cancelled_after_deadline ? (
+                              <span className="rounded bg-amber-100 px-2 py-0.5 text-amber-800">
+                                Yes
+                              </span>
+                            ) : (
+                              <span className="text-gray-500">No</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2">
+                            {c.cancelled_before_1hr ? (
+                              <span className="rounded bg-green-100 px-2 py-0.5 text-green-800">
+                                Yes
+                              </span>
+                            ) : (
+                              <span className="rounded bg-red-100 px-2 py-0.5 text-red-800">
+                                No
+                              </span>
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2 font-medium">
+                            {fee > 0 ? `$${fee}` : '-'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+                <div className="mt-3 flex justify-between border-t border-gray-200 pt-3 text-sm text-gray-600">
+                  <span>
+                    {cancellations.length} cancellation
+                    {cancellations.length !== 1 ? 's' : ''}
+                  </span>
+                  <button
+                    onClick={() => {
+                      const csv = [
+                        [
+                          'Cancelled At',
+                          'Name',
+                          'Email',
+                          'Match Date',
+                          'Match Time',
+                          'Airport',
+                          'After Deadline',
+                          'Before 1hr',
+                          'Est. Fee',
+                        ],
+                        ...cancellations.map((c) => {
+                          const isLAX = c.airport?.toUpperCase() === 'LAX'
+                          const isONT = c.airport?.toUpperCase() === 'ONT'
+                          const fee = !c.cancelled_before_1hr
+                            ? isLAX
+                              ? 40
+                              : isONT
+                                ? 15
+                                : 0
+                            : c.cancelled_after_deadline
+                              ? isLAX
+                                ? 20
+                                : isONT
+                                  ? 8
+                                  : 0
+                              : 0
+                          return [
+                            formatDateTime(c.cancelled_at),
+                            `${c.firstname || ''} ${c.lastname || ''}`.trim(),
+                            c.email || '',
+                            c.match_date,
+                            c.match_time?.slice(0, 5) || '',
+                            c.airport,
+                            c.cancelled_after_deadline ? 'Yes' : 'No',
+                            c.cancelled_before_1hr ? 'Yes' : 'No',
+                            fee > 0 ? `$${fee}` : '-',
+                          ]
+                        }),
+                      ]
+                        .map((row) => row.join(','))
+                        .join('\n')
+                      const blob = new Blob([csv], { type: 'text/csv' })
+                      const url = window.URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = `match-cancellations-${cancellationsDateStart}-to-${cancellationsDateEnd}.csv`
+                      a.click()
+                      window.URL.revokeObjectURL(url)
+                    }}
+                    className="text-red-600 hover:underline"
+                  >
+                    Download CSV
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {cancellations.length === 0 && !cancellationsLoading && (
+              <p className="py-4 text-center text-gray-500">
+                Click &quot;Load Cancellations&quot; to view records
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Match Emails Section */}

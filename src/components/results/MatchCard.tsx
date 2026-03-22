@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useState } from 'react'
 import { createBrowserClient } from '@/utils/supabase'
 import { formatTime12Hour } from '@/utils/formatTime'
+import ConfirmCancelMatch from './ConfirmCancelMatch'
 
 interface MatchCardProps {
   matches: MatchWithDetails[]
@@ -94,6 +95,8 @@ const MatchCard = ({
   const { user } = useAuth()
   /** Prefer the logged-in user's row for date/voucher; fallback for edge cases */
   const primaryMatch = matches.find((m) => m.user_id === user?.id) ?? matches[0]
+  /** Alias for fields shared with merged main-branch UI (Connect / voucher checks) */
+  const firstMatch = primaryMatch
   const otherRiders = user ? matches.filter((m) => m.user_id !== user.id) : []
   const isSolo = otherRiders.length === 0
   const voucherStr = (primaryMatch.voucher ?? '').trim()
@@ -139,20 +142,31 @@ const MatchCard = ({
     return publicUrl
   }
 
-  // ===== COMMENTED OUT: CANCEL MATCH FUNCTIONALITY =====
-  // Uncomment this function to re-enable match cancellation
-  // const handleDelete = async () => {
-  //   if (!onDelete || isDeleting) return
-  //
-  //   try {
-  //     setIsDeleting(true)
-  //     await onDelete(firstMatch.ride_id)
-  //   } catch (error) {
-  //     console.error('Error deleting match:', error)
-  //   } finally {
-  //     setIsDeleting(false)
-  //   }
-  // }
+  const [showCancelModal, setShowCancelModal] = useState(false)
+
+  const handleCancelClick = () => {
+    setShowCancelModal(true)
+  }
+
+  const handleConfirmCancel = async () => {
+    if (!onDelete || isDeleting) return
+    try {
+      setIsDeleting(true)
+      await onDelete(primaryMatch.ride_id)
+      setShowCancelModal(false)
+    } catch (error) {
+      console.error('Error deleting match:', error)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // Use voucher existence (not is_subsidized). Connect rides never have vouchers, so exclude them.
+  const hasVoucher =
+    Boolean(firstMatch.voucher?.trim()) &&
+    firstMatch.uber_type?.toLowerCase() !== 'connect'
+
+  const isConnect = firstMatch.uber_type?.toLowerCase() === 'connect'
 
   const handleReminderClick = () => {
     if (!primaryMatch.date || !primaryMatch.time) return
@@ -202,12 +216,33 @@ const MatchCard = ({
                 : 'No time'}
             </p>
             <p className="mt-1 text-xl font-semibold text-gray-800">
-              {otherRiders.length === 0
-                ? "You're the only rider in this group right now."
-                : otherRiders.length === 1
-                  ? `You are matched with ${otherRiders[0].Users.firstname}`
-                  : `You are matched with ${otherRiders.length} people`}
+              {isConnect
+                ? `You are matched with ${matches.length} ${matches.length === 1 ? 'person' : 'people'}`
+                : otherRiders.length === 0
+                  ? "You're the only rider in this group right now."
+                  : otherRiders.length === 1
+                    ? `You are matched with ${otherRiders[0].Users.firstname}`
+                    : `You are matched with ${otherRiders.length} people`}
             </p>
+            {isConnect && (
+              <p className="mt-1.5 inline-flex w-fit items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-800">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                  />
+                </svg>
+                Subsidized Connect shuttle — no Uber needed
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -233,13 +268,15 @@ const MatchCard = ({
                 />
               </svg>
               <span className="font-medium text-gray-800">
-                {primaryMatch.Flights.airport}
+                {primaryMatch.Flights.to_airport
+                  ? `School → ${primaryMatch.Flights.airport}`
+                  : `${primaryMatch.Flights.airport} → School`}
               </span>
               <span className="text-sm text-gray-500">
                 {getAirportAddress(primaryMatch.Flights.airport)}
               </span>
             </p>
-            {hasUberVoucher && isGroupReady ? (
+            {hasVoucher && isGroupReady ? (
               <p className="flex flex-wrap items-center gap-1.5">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -369,7 +406,7 @@ const MatchCard = ({
             </p>
           ) : null}
 
-          {upcoming && rideId && (
+          {upcoming && rideId && !primaryMatch.Flights?.to_airport && (
             <Link
               href={`/aspc-delay/${rideId}`}
               className="mt-3 flex items-center gap-2 self-start rounded-lg border-2 border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 transition hover:border-amber-400 hover:bg-amber-100"
@@ -417,7 +454,7 @@ const MatchCard = ({
 
         {(otherRiders.length > 0 || upcoming) && (
           <div className="flex flex-col items-center gap-3 lg:items-end">
-            {otherRiders.length > 0 && (
+            {!isConnect && otherRiders.length > 0 && (
               <>
                 <p className="text-sm font-medium text-indigo-600">
                   Other Riders Contact Information
@@ -453,84 +490,64 @@ const MatchCard = ({
             )}
 
             {upcoming && (
-              // ===== CANCEL MATCH BUTTON - CURRENTLY DISABLED =====
-              // To re-enable:
-              // 1. Uncomment the handleDelete function above
-              // 2. Replace this button with the commented code below
-
-              <button
-                disabled={true}
-                className="mt-3 flex cursor-not-allowed items-center gap-1 rounded-lg border border-gray-200 bg-gray-100 px-4 py-1.5 text-sm font-medium text-gray-400 opacity-60"
-                title="Match cancellation is currently disabled"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+              <>
+                <button
+                  type="button"
+                  onClick={handleCancelClick}
+                  disabled={isDeleting}
+                  className={`mt-3 flex items-center gap-1 rounded-lg border border-red-200 bg-white px-4 py-1.5 text-sm font-medium transition-colors ${
+                    isDeleting
+                      ? 'cursor-not-allowed text-gray-500 opacity-60'
+                      : 'text-red-500 hover:bg-red-50 active:bg-red-100'
+                  }`}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-                Cancel Match
-              </button>
-
-              // ===== WORKING VERSION (COMMENTED OUT) =====
-              // Uncomment this to re-enable match cancellation:
-              // <button
-              //   onClick={handleDelete}
-              //   disabled={isDeleting}
-              //   className={`mt-3 flex items-center gap-1 rounded-lg border border-red-200 bg-white px-4 py-1.5 text-sm font-medium transition-colors ${
-              //     isDeleting
-              //       ? 'cursor-not-allowed text-gray-500 opacity-60'
-              //       : 'text-red-500 hover:bg-red-50 active:bg-red-100'
-              //   }`}
-              // >
-              //   {isDeleting ? (
-              //     <span className="flex items-center gap-2">
-              //       <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
-              //         <circle
-              //           className="opacity-25"
-              //           cx="12"
-              //           cy="12"
-              //           r="10"
-              //           stroke="currentColor"
-              //           strokeWidth="4"
-              //           fill="none"
-              //         ></circle>
-              //         <path
-              //           className="opacity-75"
-              //           fill="currentColor"
-              //           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              //         ></path>
-              //       </svg>
-              //       Processing...
-              //     </span>
-              //   ) : (
-              //     <>
-              //       <svg
-              //         xmlns="http://www.w3.org/2000/svg"
-              //         className="h-4 w-4"
-              //         fill="none"
-              //         viewBox="0 0 24 24"
-              //         stroke="currentColor"
-              //       >
-              //         <path
-              //           strokeLinecap="round"
-              //           strokeLinejoin="round"
-              //           strokeWidth={2}
-              //           d="M6 18L18 6M6 6l12 12"
-              //         />
-              //       </svg>
-              //       Cancel Match
-              //     </>
-              //   )}
-              // </button>
+                  {isDeleting ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                          fill="none"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                      Processing...
+                    </span>
+                  ) : (
+                    <>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                      Cancel Match
+                    </>
+                  )}
+                </button>
+                <ConfirmCancelMatch
+                  isOpen={showCancelModal}
+                  onClose={() => setShowCancelModal(false)}
+                  onConfirm={handleConfirmCancel}
+                  isDeleting={isDeleting}
+                />
+              </>
             )}
           </div>
         )}
