@@ -6114,6 +6114,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           if (m.outcome === 'kept_original_group_eta_earlier') {
             outcome =
               'kept on original group (new pickup time is before original group — not treated as a delay)'
+          } else if (m.outcome === 'delay_no_group_unmatched') {
+            outcome =
+              'removed from group — unmatched (no alternate group, no contingency voucher)'
           } else if (m.outcome === 'solo_ride_created') {
             if (m.skipped_contingency_new_eta_before_original === true) {
               outcome = `moved to new solo group #${m.new_ride_id ?? '?'} (contingency not applied — new ETA before original group)`

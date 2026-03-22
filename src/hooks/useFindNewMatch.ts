@@ -1,6 +1,5 @@
 'use client'
 
-import { useSubsidyLogic } from '@/hooks/useSubsidyLogic'
 import { calculateBagUnits, canAccommodateRider } from '@/utils/bagCapacity'
 import { createBrowserClient } from '@/utils/supabase'
 import { useCallback, useState } from 'react'
@@ -86,6 +85,7 @@ async function logAspcDelayToChangeLog(
       | 'groups_available'
       | 'solo_ride_created'
       | 'kept_original_group_eta_earlier'
+      | 'delay_no_group_unmatched'
     newRideId?: number
     /** Solo path: true only when contingency voucher was written onto the new match */
     contingencyVoucherAssigned?: boolean
@@ -195,6 +195,10 @@ export interface FindNewMatchResult {
    * New ETA is before original group pickup — rider stays on the same ride (no solo / no contingency).
    */
   keptOriginalGroupBecauseEarlierEta?: boolean
+  /**
+   * No alternate group and no contingency: match deleted, flight set unmatched (same as declining groups).
+   */
+  movedToUnmatched?: boolean
 }
 
 /**
@@ -243,16 +247,16 @@ export function getContingencyVoucherDeclineReasons(
  * Find new match: list groups to join or create a solo ride.
  * - Finds groups on same date/airport/direction in time window (5 min before to 6 hours after) that can accommodate their bags.
  * - If any: returns availableGroups; user chooses one and joinGroup() updates their Match to that ride.
- * - If none: creates a new Rides row (solo group) and updates their Match row to it.
- *   Contingency voucher: if you were subsidized before and had a code on file, it stays on
- *   `contingency_voucher` (main `voucher` stays empty) even when solo (min-rider rules do not block delay contingencies).
+ * - If none and no contingency applies: deletes the rider’s match and sets their flight unmatched
+ *   (they can use the unmatched flow)—same as explicitly declining all groups.
+ * - If none but contingency applies: creates a new Rides row (solo) and keeps the code on
+ *   `contingency_voucher` (main `voucher` stays empty).
  * - If the rider’s new ETA is strictly before the original group pickup, they are kept on the
  *   original ride (no rematch, no solo) — that is not treated as a delay for matching purposes.
  */
 export function useFindNewMatch() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { computeGroupSubsidized } = useSubsidyLogic()
 
   const findNewMatch = useCallback(
     async (params: FindNewMatchParams): Promise<FindNewMatchResult> => {
@@ -565,69 +569,19 @@ export function useFindNewMatch() {
           }
         }
 
-        // No available group: create a new Rides row (solo group) and update user's Match to it
+        // No available group: contingency solo ride OR remove match (unmatched)
         const soloTime = params.newEtaTimeEarliest || params.newEtaTime
         const soloTimeFormatted =
           soloTime.length === 5 ? `${soloTime}:00` : soloTime
-
-        const { data: rideData, error: rideError } = await supabase
-          .from('Rides')
-          .insert({ ride_date: params.newEtaDate })
-          .select('ride_id')
-          .single()
-
-        if (rideError || !rideData) {
-          return {
-            success: false,
-            error: rideError?.message ?? 'Failed to create new ride.',
-          }
-        }
-
-        const newRideId = rideData.ride_id
-
-        // Solo match subsidy flag (e.g. covered dates, school) — separate from delay contingency voucher
-        const { subsidized: soloSubsidized } = computeGroupSubsidized({
-          date: params.newEtaDate,
-          toAirport,
-          airport,
-          riderCount: 1,
-          riderSchools: [schoolObj?.school ?? ''],
-          uberType: 'X',
-        })
 
         const codeOnFile =
           Boolean(contingencyVoucher) &&
           String(contingencyVoucher).trim() !== ''
 
-        // Delay: apply stored contingency if rider was subsidized before — do not require min riders on solo.
         const rawContingencyCode =
           wasSubsidized && codeOnFile ? String(contingencyVoucher).trim() : ''
         const soloMatchVoucher = rawContingencyCode
         const voucherAssigned = soloMatchVoucher.length > 0
-        const effectiveIsSubsidized = voucherAssigned
-          ? wasSubsidized
-          : soloSubsidized
-
-        const { error: updateSoloError } = await supabase
-          .from('Matches')
-          .update({
-            ride_id: newRideId,
-            date: params.newEtaDate,
-            time: soloTimeFormatted,
-            uber_type: 'X',
-            /** Contingency must not be promoted to main Uber voucher field */
-            voucher: null,
-            is_subsidized: effectiveIsSubsidized,
-            ...(voucherAssigned
-              ? { contingency_voucher: soloMatchVoucher }
-              : {}),
-          })
-          .eq('ride_id', rid)
-          .eq('user_id', params.userId)
-
-        if (updateSoloError) {
-          return { success: false, error: updateSoloError.message }
-        }
 
         const contingencyVoucherNotAppliedReasons: string[] = []
         if (!voucherAssigned) {
@@ -648,6 +602,88 @@ export function useFindNewMatch() {
           }
         }
 
+        if (!voucherAssigned) {
+          const { error: deleteError } = await supabase
+            .from('Matches')
+            .delete()
+            .eq('ride_id', rid)
+            .eq('user_id', params.userId)
+
+          if (deleteError) {
+            return { success: false, error: deleteError.message }
+          }
+
+          const { error: flightUnmatchError } = await supabase
+            .from('Flights')
+            .update({ matched: false })
+            .eq('flight_id', flightId)
+
+          if (flightUnmatchError) {
+            return { success: false, error: flightUnmatchError.message }
+          }
+
+          await logAspcDelayToChangeLog(supabase, {
+            userId: params.userId,
+            rideId: rid,
+            flightId,
+            reasonForDelay: params.reasonForDelay,
+            oldFlightDate: (flight as { date: string }).date,
+            oldMatchDate,
+            oldMatchTime,
+            newEtaDate: params.newEtaDate,
+            newEtaTime: params.newEtaTime,
+            newEtaTimeEarliest: params.newEtaTimeEarliest,
+            newEtaTimeLatest: params.newEtaTimeLatest,
+            newFlight: params.newFlight ?? undefined,
+            outcome: 'delay_no_group_unmatched',
+          })
+
+          return {
+            success: true,
+            availableGroups: [],
+            wasSubsidized,
+            contingencyVoucher: null,
+            contingencyVoucherApplied: false,
+            contingencyVoucherNotAppliedReasons,
+            hadContingencyVoucherOnFile: codeOnFile,
+            movedToUnmatched: true,
+          }
+        }
+
+        const { data: rideData, error: rideError } = await supabase
+          .from('Rides')
+          .insert({ ride_date: params.newEtaDate })
+          .select('ride_id')
+          .single()
+
+        if (rideError || !rideData) {
+          return {
+            success: false,
+            error: rideError?.message ?? 'Failed to create new ride.',
+          }
+        }
+
+        const newRideId = rideData.ride_id
+
+        const { error: updateSoloError } = await supabase
+          .from('Matches')
+          .update({
+            ride_id: newRideId,
+            date: params.newEtaDate,
+            time: soloTimeFormatted,
+            uber_type: 'X',
+            /** Contingency must not be promoted to main Uber voucher field */
+            voucher: null,
+            is_subsidized: wasSubsidized,
+            contingency_voucher: soloMatchVoucher,
+          })
+          .eq('ride_id', rid)
+          .eq('user_id', params.userId)
+
+        if (updateSoloError) {
+          return { success: false, error: updateSoloError.message }
+        }
+
         await logAspcDelayToChangeLog(supabase, {
           userId: params.userId,
           rideId: rid,
@@ -663,21 +699,17 @@ export function useFindNewMatch() {
           newFlight: params.newFlight ?? undefined,
           outcome: 'solo_ride_created',
           newRideId: newRideId,
-          contingencyVoucherAssigned: voucherAssigned,
-          assignedContingencyVoucher: voucherAssigned
-            ? soloMatchVoucher
-            : undefined,
+          contingencyVoucherAssigned: true,
+          assignedContingencyVoucher: soloMatchVoucher,
         })
 
         return {
           success: true,
           availableGroups: [],
           wasSubsidized,
-          contingencyVoucher: voucherAssigned ? contingencyVoucher : null,
-          contingencyVoucherApplied: voucherAssigned,
-          contingencyVoucherNotAppliedReasons: voucherAssigned
-            ? []
-            : contingencyVoucherNotAppliedReasons,
+          contingencyVoucher: contingencyVoucher,
+          contingencyVoucherApplied: true,
+          contingencyVoucherNotAppliedReasons: [],
           hadContingencyVoucherOnFile: codeOnFile,
         }
       } catch (e) {
@@ -688,7 +720,7 @@ export function useFindNewMatch() {
         setLoading(false)
       }
     },
-    [computeGroupSubsidized],
+    [],
   )
 
   const joinGroup = useCallback(

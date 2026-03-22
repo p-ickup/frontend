@@ -359,6 +359,30 @@ export default function AspcDelayPage() {
                     </Link>
                   </p>
                 </>
+              ) : findResult.movedToUnmatched ? (
+                <>
+                  <p className="mb-3 text-gray-800">
+                    We couldn&apos;t find another group for your new pickup
+                    time. No contingency voucher was applied for these reasons:
+                  </p>
+                  <ul className="mb-4 list-disc space-y-2 pl-5 text-sm text-gray-700">
+                    {uniqueNoVoucherReasons.map((reason, i) => (
+                      <li key={i}>{reason}</li>
+                    ))}
+                  </ul>
+                  <p className="mb-4 text-gray-800">
+                    You&apos;ve been removed from your match so you can look for
+                    other riders on the unmatched page.
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    <Link
+                      href="/unmatched"
+                      className="font-medium text-teal-600 underline hover:text-teal-700"
+                    >
+                      Go to unmatched page
+                    </Link>
+                  </p>
+                </>
               ) : hasGroups ? (
                 <>
                   <h2 className="mb-2 text-lg font-semibold text-gray-800 sm:text-xl">
