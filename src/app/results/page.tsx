@@ -11,7 +11,6 @@ import { useAuth } from '@/hooks/useAuth'
 
 type Tables = Database['public']['Tables']
 type User = Tables['Users']['Row']
-type Flight = Tables['Flights']['Row']
 type Match = Tables['Matches']['Row']
 
 export interface MatchWithDetails extends Match {
@@ -74,7 +73,6 @@ export default function Results() {
         return
       }
 
-      // Step 1: Find all ride IDs where the user has a match
       const { data: userRideIds, error: rideError } = await supabase
         .from('Matches')
         .select('ride_id')
@@ -125,10 +123,10 @@ export default function Results() {
       if (matchError) throw matchError
       if (!allMatches) throw new Error('No matches found')
 
-      // Convert to MatchWithDetails array
-      const matchesWithDetails: MatchWithDetails[] = allMatches.filter(
-        (match) => match.user_id !== user.id,
-      )
+      // Include your own match so solo rides still appear (otherwise filtering
+      // out user_id === you removes every row when you're alone on a ride).
+      const matchesWithDetails: MatchWithDetails[] =
+        allMatches as MatchWithDetails[]
 
       // Group into upcoming and previous, and then by ride_id
       const now = new Date()
@@ -421,12 +419,10 @@ export default function Results() {
                 </h2>
                 {Object.keys(matches.upcoming).length > 0 ? (
                   (() => {
-                    // Group the upcoming matches by ride_id
                     const groupedUpcoming = groupMatchesByRideId(
                       Object.values(matches.upcoming).flat(),
                     )
 
-                    // Render a MatchCard for each group of matches with the same ride_id
                     return Object.entries(groupedUpcoming).map(
                       ([rideId, matchesForRide]) => (
                         <div key={rideId} className="mb-8">
@@ -443,17 +439,6 @@ export default function Results() {
                         </div>
                       ),
                     )
-
-                    // return Object.entries(groupedUpcoming).map(
-                    //   ([rideId, matchesForRide]) => (
-                    //     <MatchCard
-                    //       key={rideId}
-                    //       matches={matchesForRide}
-                    //       upcoming={true}
-                    //       onDelete={deleteMatch}
-                    //     />
-                    //   ),
-                    // )
                   })()
                 ) : (
                   <EmptyState type="upcoming" />

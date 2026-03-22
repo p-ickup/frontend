@@ -46,6 +46,11 @@ export interface ComputeSubsidyResult {
   covered: boolean
   /** True when subsidized and covered and not Connect — voucher can be assigned */
   assignVoucher: boolean
+  /**
+   * When assignVoucher is false, human-readable reasons (e.g. delay flow).
+   * Empty when assignVoucher is true.
+   */
+  voucherBlockers: string[]
 }
 
 /**
@@ -95,7 +100,36 @@ export function useSubsidyLogic() {
       const isConnect = uberType?.toLowerCase() === 'connect'
       const assignVoucher = subsidized && covered && !isConnect
 
-      return { subsidized, covered, assignVoucher }
+      const voucherBlockers: string[] = []
+      if (!assignVoucher) {
+        if (isConnect) {
+          voucherBlockers.push(
+            'Contingency vouchers are not applied to Uber Connect rides.',
+          )
+        }
+        if (!allAllowedSchool) {
+          const schoolLabel =
+            riderSchools.map((s) => (s ?? '').trim()).find(Boolean) ||
+            'not on file'
+          voucherBlockers.push(
+            `ASPC subsidy vouchers are only for ${ALLOWED_SCHOOL} riders (your school: ${schoolLabel}).`,
+          )
+        }
+        if (COVERED_DATES_EXPLICIT && !covered) {
+          voucherBlockers.push(
+            toAirport
+              ? 'Your new ride date is outside the subsidized travel dates for trips to the airport.'
+              : 'Your new ride date is outside the subsidized travel dates for trips from the airport.',
+          )
+        }
+        if (!meetsThreshold) {
+          voucherBlockers.push(
+            `Subsidized rides need at least ${minRiders} rider(s) in the same Uber at ${airport}; after this delay you are solo until you join a group.`,
+          )
+        }
+      }
+
+      return { subsidized, covered, assignVoucher, voucherBlockers }
     },
     [],
   )

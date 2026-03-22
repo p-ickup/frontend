@@ -36,6 +36,7 @@ export const COVERED_DATES_INBOUND: string[] = [
   '03-20',
   '03-21',
   '03-22', // Spring break return
+  '06-30',
 ]
 
 /** Min riders for subsidy by airport */
