@@ -258,6 +258,8 @@ export default function FlightForm({
       { start: '2026-03-13', end: '2026-03-15', type: 'departure' },
       // Spring Break Return: March 20-22, 2026
       { start: '2026-03-20', end: '2026-03-22', type: 'return' },
+      // Summer Break Departure: May 12 - May 19, 2026
+      { start: '2026-05-12', end: '2026-05-19', type: 'departure' },
     ]
 
     // Check if date is within any operational period
