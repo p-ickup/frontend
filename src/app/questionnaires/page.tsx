@@ -334,9 +334,24 @@ export default function Questionnaires() {
 
         {/* Action Buttons */}
         <div className="relative mb-8 flex flex-col items-center gap-4">
-          <div className="flex flex-wrap justify-center gap-4">
+          {/* <div className="flex flex-wrap justify-center gap-4">
+              <RedirectButton label="Update Profile" route="/profile" />
+              <RedirectButton label="Request Match" route="/matchForm" /> */}
+          <div className="flex flex-wrap items-start justify-center gap-4">
             <RedirectButton label="Update Profile" route="/profile" />
-            <RedirectButton label="Request Match" route="/matchForm" />
+            <div className="flex max-w-xs flex-col items-center gap-2">
+              <button
+                type="button"
+                disabled
+                className="mt-4 cursor-not-allowed rounded-lg bg-gray-300 px-6 py-3 text-lg font-semibold text-gray-500"
+                aria-disabled="true"
+              >
+                Request Match
+              </button>
+              <p className="text-center text-sm text-gray-600">
+                We will accept new match requests starting 4/19.
+              </p>
+            </div>
           </div>
         </div>
 

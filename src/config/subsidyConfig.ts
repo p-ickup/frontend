@@ -21,6 +21,14 @@ export const COVERED_DATES_OUTBOUND: string[] = [
   '03-13',
   '03-14',
   '03-15', // Spring break departure
+  '5/12',
+  '5/13',
+  '5/14',
+  '5/15',
+  '5/16',
+  '5/17',
+  '5/18',
+  '5/19',
 ]
 
 /** Allowed dates for inbound rides (to_airport false), MM-DD year-agnostic */

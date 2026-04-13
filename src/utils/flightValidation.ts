@@ -170,6 +170,14 @@ const SERVICE_PERIODS: ServicePeriod[] = [
     deadline: '2026-03-06T23:59:59-08:00',
     name: 'Spring Break',
   },
+  // Summer Break (5/12-5/19 departure)
+  //
+  {
+    start: '2026-05-07', // 5 days before 5/12
+    end: '2026-05-21', // 2 days after 5/19
+    deadline: '2026-05-06T23:59:59-08:00',
+    name: 'Summer Break',
+  },
 ]
 
 /**
