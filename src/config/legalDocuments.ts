@@ -10,4 +10,4 @@ export const PRIVACY_URL =
 export const LEGAL_VERSION = '1'
 
 /** Human-readable “as of” date for the published legal pack (align with counsel when updating) */
-export const LEGAL_LAST_UPDATED = 'April 1, 2026'
+export const LEGAL_LAST_UPDATED = 'April 19, 2026'

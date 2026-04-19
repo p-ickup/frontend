@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import RedirectButton from '@/components/buttons/RedirectButton'
-import SubmitSuccess from '@/components/questionnaires/SubmitSuccess'
+import SubmitSuccess, {
+  type SubmitSuccessVariant,
+} from '@/components/questionnaires/SubmitSuccess'
 import ManyBagsNotice from '@/components/questionnaires/ManyBagsNotice'
 import TripToggle from '@/components/questionnaires/ToWhereToggle'
 import { createBrowserClient } from '@/utils/supabase'
@@ -128,6 +130,10 @@ export default function FlightForm({
     null,
   )
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [submitSuccessVariant, setSubmitSuccessVariant] =
+    useState<SubmitSuccessVariant>('success')
+  const [submitSuccessReportFlightId, setSubmitSuccessReportFlightId] =
+    useState<number | null>(null)
 
   useEffect(() => {
     setIsModalOpen(false)
@@ -663,15 +669,22 @@ export default function FlightForm({
       if (!legalAction) {
         console.error('legal_acceptances: missing flight_id after Flights save')
         setMessage(
-          'Your flight request was saved, but we could not record your acceptance (missing flight reference). Please contact ridelink@aspc.pomona.edu.',
+          'Your flight request was saved, but we could not record your acceptance (missing flight reference). Please use the instructions in the dialog to email ridelink@aspc.pomona.edu.',
         )
         setIsValidationError(true)
         window.scrollTo({ top: 0, behavior: 'smooth' })
-        alert(
-          'Your flight request was saved.\n\nWe could not record your terms acceptance (missing flight reference). Please contact ridelink@aspc.pomona.edu.',
-        )
+        const reportId =
+          savedFlightId != null && Number.isFinite(savedFlightId)
+            ? savedFlightId
+            : flightId != null &&
+                flightId !== '' &&
+                Number.isFinite(Number(flightId))
+              ? Number(flightId)
+              : null
         setIsDuplicateError(false)
         isSubmittingRef.current = false
+        setSubmitSuccessVariant('legal_log_failed')
+        setSubmitSuccessReportFlightId(reportId)
         setIsModalOpen(true)
         if (onSuccess) {
           onSuccess()
@@ -699,21 +712,23 @@ export default function FlightForm({
       if (legalError) {
         console.error('legal_acceptances insert failed:', legalError)
         setMessage(
-          'Your flight request was saved, but we could not record your acceptance of the Terms & Conditions and Privacy Notice. Please contact ridelink@aspc.pomona.edu so we can fix your account records.',
+          'Your flight request was saved, but we could not record your acceptance of the Terms & Conditions and Privacy Notice. Please use the instructions in the dialog to email ridelink@aspc.pomona.edu.',
         )
         setIsValidationError(true)
         window.scrollTo({ top: 0, behavior: 'smooth' })
-        alert(
-          'Your flight request was saved.\n\nWe could not record your terms acceptance in our system. Please contact ridelink@aspc.pomona.edu for assistance.',
-        )
       }
 
-      // Clear any existing error messages before showing success modal
       if (!legalError) {
         setMessage('')
+        setSubmitSuccessVariant('success')
+        setSubmitSuccessReportFlightId(null)
+      } else {
+        setSubmitSuccessVariant('legal_log_failed')
+        setSubmitSuccessReportFlightId(savedFlightId)
       }
+
       setIsDuplicateError(false)
-      isSubmittingRef.current = false // Reset ref on success
+      isSubmittingRef.current = false
       setIsModalOpen(true)
       if (onSuccess) {
         onSuccess()
@@ -2091,7 +2106,13 @@ export default function FlightForm({
         <SubmitSuccess
           isOpen={isModalOpen}
           route={successRedirectRoute}
-          onClose={() => setIsModalOpen(false)}
+          variant={submitSuccessVariant}
+          reportFlightId={submitSuccessReportFlightId}
+          onClose={() => {
+            setIsModalOpen(false)
+            setSubmitSuccessVariant('success')
+            setSubmitSuccessReportFlightId(null)
+          }}
         />
 
         {/* Mobile Info Modal */}
