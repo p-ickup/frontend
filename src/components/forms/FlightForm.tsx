@@ -19,6 +19,7 @@ import {
   TooltipTrigger,
   useClickTooltip,
 } from '@/components/ui/tooltip'
+import { LEGAL_VERSION, PRIVACY_URL, TERMS_URL } from '@/config/legalDocuments'
 
 export interface FlightFormProps {
   mode: 'create' | 'edit'
@@ -31,7 +32,7 @@ export interface FlightFormProps {
 }
 
 export interface FlightData {
-  tripType: boolean
+  tripType: boolean | null
   airport: string
   airline_iata: string
   flight_no: string
@@ -59,7 +60,7 @@ export default function FlightForm({
   const supabase = createBrowserClient()
 
   // Form state
-  const [tripType, setTripType] = useState<boolean>(true)
+  const [tripType, setTripType] = useState<boolean | null>(null)
   const [airport, setAirport] = useState('')
   const [flight_no, setFlightNumber] = useState('')
   const [airline_iata, setAirlineIata] = useState('')
@@ -83,6 +84,13 @@ export default function FlightForm({
   const [isProfileComplete, setIsProfileComplete] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [ackAirlineDelaysCovered, setAckAirlineDelaysCovered] = useState(false)
+  const [ackCancellationNoShowFees, setAckCancellationNoShowFees] =
+    useState(false)
+
+  const allSubmitAcknowledgments =
+    termsAccepted && ackAirlineDelaysCovered && ackCancellationNoShowFees
 
   // Multi-page wizard state
   const [currentStep, setCurrentStep] = useState(1)
@@ -124,6 +132,14 @@ export default function FlightForm({
   useEffect(() => {
     setIsModalOpen(false)
   }, [])
+
+  useEffect(() => {
+    if (currentStep !== totalSteps) {
+      setTermsAccepted(false)
+      setAckAirlineDelaysCovered(false)
+      setAckCancellationNoShowFees(false)
+    }
+  }, [currentStep, totalSteps])
 
   // Check profile completeness on component mount
   useEffect(() => {
@@ -192,6 +208,12 @@ export default function FlightForm({
         return
       }
 
+      if (tripType === null) {
+        setIsDuplicateError(false)
+        setDuplicateErrorMessage('')
+        return
+      }
+
       try {
         const {
           data: { user },
@@ -219,7 +241,7 @@ export default function FlightForm({
           const formattedDate = `${month}/${day}/${year}`
 
           setDuplicateErrorMessage(
-            `You already have a ${tripType ? 'departure to' : 'return from'} ${airport} on ${formattedDate}. Please edit your existing flight instead.`,
+            `You already have a ${tripType === true ? 'departure to' : 'return from'} ${airport} on ${formattedDate}. Please edit your existing flight instead.`,
           )
           setIsDuplicateError(true)
         } else {
@@ -332,7 +354,11 @@ export default function FlightForm({
           )
         } else {
           console.log('Debug - Fetched flight data:', data)
-          setTripType(data.to_airport)
+          setTripType(
+            data.to_airport === null || data.to_airport === undefined
+              ? null
+              : data.to_airport,
+          )
           setAirport(data.airport)
           setAirlineIata(data.airline_iata)
           setFlightNumber(String(data.flight_no))
@@ -439,6 +465,20 @@ export default function FlightForm({
       return
     }
 
+    if (!allSubmitAcknowledgments) {
+      setMessage(
+        'Please confirm the Terms & Conditions and Privacy Notice, and check all acknowledgment boxes below them.',
+      )
+      setIsValidationError(true)
+      return
+    }
+
+    if (tripType === null) {
+      setMessage('Please select your trip direction (step 1).')
+      setIsValidationError(true)
+      return
+    }
+
     if (bag_no_personal + bag_no + bag_no_large >= 4) {
       if (e) {
         setPendingSubmit(e)
@@ -477,6 +517,22 @@ export default function FlightForm({
       return
     }
 
+    if (!allSubmitAcknowledgments) {
+      setMessage(
+        'Please confirm the Terms & Conditions and Privacy Notice, and check all acknowledgment boxes below them.',
+      )
+      setIsValidationError(true)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
+    if (tripType === null) {
+      setMessage('Please select your trip direction (step 1).')
+      setIsValidationError(true)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
     // Set submitting flags immediately to prevent race condition
     isSubmittingRef.current = true
     setIsSubmitting(true)
@@ -504,7 +560,7 @@ export default function FlightForm({
       }
 
       const flightData = {
-        to_airport: tripType,
+        to_airport: tripType as boolean,
         airport,
         flight_no: flight_no,
         airline_iata: airline_iata,
@@ -521,15 +577,24 @@ export default function FlightForm({
       }
 
       let error
+      let savedFlightId: number | null = null
+
       if (mode === 'create') {
-        const result = await supabase.from('Flights').insert([
-          {
-            user_id: user.id,
-            ...flightData,
-            matched: null, // Will be calculated later by matching algorithm
-          },
-        ])
+        const result = await supabase
+          .from('Flights')
+          .insert([
+            {
+              user_id: user.id,
+              ...flightData,
+              matched: null, // Will be calculated later by matching algorithm
+            },
+          ])
+          .select('flight_id')
+          .single()
         error = result.error
+        if (result.data?.flight_id != null) {
+          savedFlightId = result.data.flight_id
+        }
       } else {
         const result = await supabase
           .from('Flights')
@@ -538,7 +603,17 @@ export default function FlightForm({
             matched: null, // Reset to null so it can be recalculated
           })
           .eq('flight_id', flightId)
+          .select('flight_id')
+          .single()
         error = result.error
+        if (result.data?.flight_id != null) {
+          savedFlightId = result.data.flight_id
+        } else if (flightId != null && flightId !== '') {
+          const n = Number(flightId)
+          if (Number.isFinite(n)) {
+            savedFlightId = n
+          }
+        }
       }
 
       if (error) {
@@ -553,7 +628,7 @@ export default function FlightForm({
           const formattedDate = `${month}/${day}/${year}`
 
           setMessage(
-            `You already have a ${tripType ? 'departure to' : 'return from'} ${airport} on ${formattedDate}. Please edit your existing flight instead.`,
+            `You already have a ${tripType === true ? 'departure to' : 'return from'} ${airport} on ${formattedDate}. Please edit your existing flight instead.`,
           )
           setIsValidationError(true)
           setIsDuplicateError(true)
@@ -580,14 +655,70 @@ export default function FlightForm({
         return
       }
 
+      const legalAction =
+        savedFlightId != null && Number.isFinite(savedFlightId)
+          ? `${mode} ride ${savedFlightId}`
+          : null
+
+      if (!legalAction) {
+        console.error('legal_acceptances: missing flight_id after Flights save')
+        setMessage(
+          'Your flight request was saved, but we could not record your acceptance (missing flight reference). Please contact ridelink@aspc.pomona.edu.',
+        )
+        setIsValidationError(true)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        alert(
+          'Your flight request was saved.\n\nWe could not record your terms acceptance (missing flight reference). Please contact ridelink@aspc.pomona.edu.',
+        )
+        setIsDuplicateError(false)
+        isSubmittingRef.current = false
+        setIsModalOpen(true)
+        if (onSuccess) {
+          onSuccess()
+        }
+        setIsSubmitting(false)
+        return
+      }
+
+      const legalPayload = {
+        user_id: user.id,
+        terms_version: LEGAL_VERSION,
+        action: legalAction,
+      }
+
+      let legalError = (
+        await supabase.from('legal_acceptances').insert(legalPayload)
+      ).error
+      if (legalError) {
+        await new Promise((r) => setTimeout(r, 400))
+        legalError = (
+          await supabase.from('legal_acceptances').insert(legalPayload)
+        ).error
+      }
+
+      if (legalError) {
+        console.error('legal_acceptances insert failed:', legalError)
+        setMessage(
+          'Your flight request was saved, but we could not record your acceptance of the Terms & Conditions and Privacy Notice. Please contact ridelink@aspc.pomona.edu so we can fix your account records.',
+        )
+        setIsValidationError(true)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        alert(
+          'Your flight request was saved.\n\nWe could not record your terms acceptance in our system. Please contact ridelink@aspc.pomona.edu for assistance.',
+        )
+      }
+
       // Clear any existing error messages before showing success modal
-      setMessage('')
+      if (!legalError) {
+        setMessage('')
+      }
       setIsDuplicateError(false)
       isSubmittingRef.current = false // Reset ref on success
       setIsModalOpen(true)
       if (onSuccess) {
         onSuccess()
       }
+      setIsSubmitting(false)
     } catch (error) {
       console.error('Unexpected error:', error)
       // Display generic message to user while logging details for debugging
@@ -663,6 +794,11 @@ export default function FlightForm({
   const validateCurrentStep = (): boolean => {
     switch (currentStep) {
       case 1: // Trip direction
+        if (tripType === null) {
+          setMessage('Please select trip direction (to airport or to campus)')
+          setIsValidationError(true)
+          return false
+        }
         if (!airport) {
           setMessage('Please select an airport')
           setIsValidationError(true)
@@ -882,7 +1018,7 @@ export default function FlightForm({
                               : 'text-gray-700'
                           }`}
                         >
-                          To Airport from Campus
+                          To Airport
                         </div>
                         <div className="mt-1 text-sm text-gray-600">
                           Departing from Claremont
@@ -905,7 +1041,7 @@ export default function FlightForm({
                               : 'text-gray-700'
                           }`}
                         >
-                          To Campus from Airport
+                          To Campus
                         </div>
                         <div className="mt-1 text-sm text-gray-600">
                           Returning to Claremont
@@ -960,8 +1096,12 @@ export default function FlightForm({
                   <p className="mb-2 font-medium">Flight Information:</p>
                   <p>
                     Enter your flight date, time range when you can{' '}
-                    {tripType ? 'leave to' : 'leave from'} the airport, and
-                    flight details.
+                    {tripType === true
+                      ? 'leave to'
+                      : tripType === false
+                        ? 'leave from'
+                        : 'travel to or from'}{' '}
+                    the airport, and flight details.
                   </p>
                 </div>
 
@@ -973,9 +1113,11 @@ export default function FlightForm({
                     </label>
                     <p className="mb-2 text-sm text-gray-600">
                       Choose the day you want to{' '}
-                      {tripType
+                      {tripType === true
                         ? 'leave campus'
-                        : 'be picked up from the airport'}
+                        : tripType === false
+                          ? 'be picked up from the airport'
+                          : 'travel'}
                       . This might be different from your flight date if
                       traveling overnight or early morning.
                     </p>
@@ -992,7 +1134,12 @@ export default function FlightForm({
                   <div>
                     <label className="mb-2 block text-lg font-bold text-gray-800">
                       Earliest Time You&apos;re Able to Leave{' '}
-                      {tripType ? 'from Campus' : 'from Airport'} (PST)
+                      {tripType === true
+                        ? 'from Campus'
+                        : tripType === false
+                          ? 'from Airport'
+                          : 'from Campus or the airport'}{' '}
+                      (PST)
                     </label>
                     <input
                       type="time"
@@ -1008,7 +1155,12 @@ export default function FlightForm({
                     <div className="mb-2 flex items-center gap-2">
                       <label className="text-lg font-bold text-gray-800">
                         Latest Time You&apos;re Able to Leave{' '}
-                        {tripType ? 'from Campus' : 'from Airport'} (PST)
+                        {tripType === true
+                          ? 'from Campus'
+                          : tripType === false
+                            ? 'from Airport'
+                            : 'from Campus or the airport'}{' '}
+                        (PST)
                       </label>
                       <div className="hidden md:block">
                         <Tooltip {...timeRangeTooltip}>
@@ -1413,7 +1565,11 @@ export default function FlightForm({
                         Trip Direction
                       </p>
                       <p className="mt-1 text-lg font-semibold text-gray-900">
-                        {tripType ? 'To Airport' : 'To Campus'}
+                        {tripType === true
+                          ? 'To Airport'
+                          : tripType === false
+                            ? 'To Campus'
+                            : '—'}
                       </p>
                     </div>
                     <div>
@@ -1476,6 +1632,29 @@ export default function FlightForm({
                     ← Edit Information
                   </button>
                 </div>
+
+                {/* Opt-in checkbox */}
+                <label className="block rounded-lg bg-gray-100 p-4">
+                  <div className="flex items-start">
+                    <input
+                      type="checkbox"
+                      checked={optInUnmatched}
+                      onChange={(e) => setOptInUnmatched(e.target.checked)}
+                      className="mr-3 mt-1 h-5 w-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                    />
+                    <div>
+                      <strong className="text-gray-900">
+                        I would like to opt-in to the Unmatched page.
+                      </strong>
+                      <p className="mt-2 text-sm text-gray-700">
+                        If PICKUP is unable to match you through our algorithm,
+                        the Unmatched page will display your name, email, flight
+                        date, and time, so you can try to find others who you
+                        may be able to split a ride with.
+                      </p>
+                    </div>
+                  </div>
+                </label>
 
                 {/* ASPC Warning */}
                 {showASPCWarning && (
@@ -1576,28 +1755,102 @@ export default function FlightForm({
                   </div>
                 )}
 
-                {/* Opt-in checkbox */}
-                <label className="block rounded-lg bg-gray-100 p-4">
-                  <div className="flex items-start">
-                    <input
-                      type="checkbox"
-                      checked={optInUnmatched}
-                      onChange={(e) => setOptInUnmatched(e.target.checked)}
-                      className="mr-3 mt-1 h-5 w-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-                    />
-                    <div>
-                      <strong className="text-gray-900">
-                        Would you like to opt-in to the Unmatched page?
-                      </strong>
-                      <p className="mt-2 text-sm text-gray-700">
-                        If PICKUP is unable to match you through our algorithm,
-                        the Unmatched page will display your name, email, flight
-                        date, and time, so you can try to find others who you
-                        may be able to split a ride with.
-                      </p>
+                {/* Terms + acknowledgments (last step only) */}
+                <div className="touch-manipulation space-y-4 rounded-lg border-2 border-gray-200 bg-white p-3 sm:p-4">
+                  <label className="block cursor-pointer py-0.5">
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={termsAccepted}
+                        onChange={(e) => setTermsAccepted(e.target.checked)}
+                        className="mt-0.5 h-6 w-6 shrink-0 rounded border-gray-300 text-teal-600 focus:ring-teal-500 sm:mt-1 sm:h-5 sm:w-5"
+                      />
+                      <span className="min-w-0 break-words text-sm leading-relaxed text-gray-800">
+                        I have read, understand, and agree to the ASPC RideLink{' '}
+                        <a
+                          href={TERMS_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-teal-700 underline hover:text-teal-900"
+                          onClick={(ev) => ev.stopPropagation()}
+                        >
+                          Terms & Conditions
+                        </a>{' '}
+                        and the{' '}
+                        <a
+                          href={PRIVACY_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-teal-700 underline hover:text-teal-900"
+                          onClick={(ev) => ev.stopPropagation()}
+                        >
+                          Privacy Notice
+                        </a>
+                        . I understand that by checking this box and submitting
+                        my request, I enter into a binding agreement with ASPC
+                        on the terms below.
+                      </span>
                     </div>
+                  </label>
+
+                  <div className="space-y-3 border-t border-gray-200 pt-4">
+                    <p className="text-sm font-semibold text-gray-900">
+                      I acknowledge the following:
+                    </p>
+                    <label className="block cursor-pointer py-0.5">
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={ackCancellationNoShowFees}
+                          onChange={(e) =>
+                            setAckCancellationNoShowFees(e.target.checked)
+                          }
+                          className="mt-0.5 h-6 w-6 shrink-0 rounded border-gray-300 text-teal-600 focus:ring-teal-500 sm:mt-1 sm:h-5 sm:w-5"
+                        />
+                        <span className="min-w-0 break-words text-sm leading-relaxed text-gray-800">
+                          I acknowledge and agree that cancellation and no-show
+                          fees may apply under the{' '}
+                          <a
+                            href="https://p-ickup.com/aspc-fees"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-semibold text-teal-700 underline hover:text-teal-900"
+                            onClick={(ev) => ev.stopPropagation()}
+                          >
+                            ASPC Cancellation and Change Policies
+                          </a>
+                          .
+                        </span>
+                      </div>
+                    </label>
+                    <label className="block cursor-pointer py-0.5">
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={ackAirlineDelaysCovered}
+                          onChange={(e) =>
+                            setAckAirlineDelaysCovered(e.target.checked)
+                          }
+                          className="mt-0.5 h-6 w-6 shrink-0 rounded border-gray-300 text-teal-600 focus:ring-teal-500 sm:mt-1 sm:h-5 sm:w-5"
+                        />
+                        <span className="min-w-0 break-words text-sm leading-relaxed text-gray-800">
+                          I acknowledge that any airline-initiated delays or
+                          cancellations may be accommodated in accordance with
+                          ASPC RideLink Policies, and that I must promptly
+                          report related issues to ASPC RideLink at{' '}
+                          <a
+                            href="mailto:ridelink@aspc.pomona.edu"
+                            className="font-semibold text-teal-700 underline hover:text-teal-900"
+                            onClick={(ev) => ev.stopPropagation()}
+                          >
+                            ridelink@aspc.pomona.edu
+                          </a>
+                          .
+                        </span>
+                      </div>
+                    </label>
                   </div>
-                </label>
+                </div>
               </div>
             )}
 
@@ -1773,13 +2026,15 @@ export default function FlightForm({
                     isLoading ||
                     isSubmitting ||
                     isDuplicateError ||
-                    isPastDeadline
+                    isPastDeadline ||
+                    !allSubmitAcknowledgments
                   }
                   className={`rounded-lg px-8 py-3 font-semibold text-white transition-colors ${
                     isLoading ||
                     isSubmitting ||
                     isDuplicateError ||
-                    isPastDeadline
+                    isPastDeadline ||
+                    !allSubmitAcknowledgments
                       ? 'cursor-not-allowed bg-gray-400'
                       : 'bg-teal-500 hover:bg-teal-600'
                   }`}
