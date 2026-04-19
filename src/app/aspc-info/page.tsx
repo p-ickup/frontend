@@ -41,8 +41,8 @@ export default function ASPCInfoPage() {
       isInternal: false,
     },
     {
-      title: 'Program Policies',
-      description: 'Official policies and guidelines for ASPC RideLink',
+      title: 'Terms and Conditions',
+      description: 'Official terms and conditions for ASPC RideLink',
       url: 'https://nam10.safelinks.protection.outlook.com/?url=https%3A%2F%2Fdocs.google.com%2Fdocument%2Fd%2Fe%2F2PACX-1vSnd4UeEvul3M6_L5rPr3z1Shzlccuqa0aP-O5eifF7p_BIzfc-lKrNwAG95lCb4LnOWDeZ-Zz2YRa9%2Fpub&data=05%7C02%7Cjljz2022%40mymail.pomona.edu%7C50c1d711755241b1d90908ddfae05489%7C817f590439044ee8b3a5a65d4746ff70%7C0%7C0%7C638942563626080129%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=AjkV%2BM0VA9lvyyIxGxI9%2Bnd5s8BKGrG3yOJJBxY3teY%3D&reserved=0',
       icon: FileText,
       color: 'bg-purple-500',
