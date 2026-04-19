@@ -1802,8 +1802,7 @@ export default function FlightForm({
                           Privacy Notice
                         </a>
                         . I understand that by checking this box and submitting
-                        my request, I enter into a binding agreement with ASPC
-                        on the terms below.
+                        my request, I enter into a binding agreement with ASPC.
                       </span>
                     </div>
                   </label>
