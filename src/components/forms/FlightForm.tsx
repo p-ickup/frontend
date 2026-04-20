@@ -1005,8 +1005,8 @@ export default function FlightForm({
                     Let&apos;s start with the basics:
                   </p>
                   <p>
-                    Tell us whether you&apos;re traveling to the airport from
-                    campus or returning to campus from the airport.
+                    Tell us whether you&apos;re traveling to the airport or
+                    returning to campus.
                   </p>
                 </div>
 
@@ -1041,25 +1041,30 @@ export default function FlightForm({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setTripType(false)}
-                        className={`rounded-xl border-2 p-6 text-center transition-all ${
-                          tripType === false
-                            ? 'border-teal-500 bg-teal-50'
-                            : 'border-gray-300 bg-white hover:border-gray-400'
-                        }`}
+                        // onClick={() => setTripType(false)}
+                        // className={`rounded-xl border-2 p-6 text-center transition-all ${
+                        //   tripType === false
+                        //     ? 'border-teal-500 bg-teal-50'
+                        //     : 'border-gray-300 bg-white hover:border-gray-400'
+                        // }`}
+                        disabled
+                        aria-disabled="true"
+                        className="cursor-not-allowed rounded-xl border-2 border-gray-200 bg-gray-100 p-6 text-center opacity-60"
                       >
                         <div className="mb-2 text-3xl">🏫</div>
-                        <div
+                        {/* <div
                           className={`text-lg font-bold ${
                             tripType === false
                               ? 'text-teal-700'
                               : 'text-gray-700'
                           }`}
-                        >
+                        > */}
+                        <div className="text-lg font-bold text-gray-600">
                           To Campus
                         </div>
-                        <div className="mt-1 text-sm text-gray-600">
-                          Returning to Claremont
+                        <div className="mt-1 text-sm text-gray-500">
+                          (Unavailable for Summer Break departures)
+                          {/* Returning to Claremont */}
                         </div>
                       </button>
                     </div>
