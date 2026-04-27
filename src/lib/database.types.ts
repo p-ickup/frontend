@@ -352,69 +352,6 @@ export type Database = {
         }
         Relationships: []
       }
-      match_deletion_logs: {
-        Row: {
-          can_be_restored: boolean | null
-          contingency_voucher: string | null
-          date: string | null
-          deleted_at: string | null
-          deleted_by_user_id: string | null
-          deletion_context: string | null
-          deletion_reason: string | null
-          flight_id: number
-          is_subsidized: boolean | null
-          is_verified: boolean | null
-          log_id: number
-          match_created_at: string | null
-          match_id: number
-          ride_id: number
-          source: string | null
-          time: string | null
-          user_id: string
-          voucher: string | null
-        }
-        Insert: {
-          can_be_restored?: boolean | null
-          contingency_voucher?: string | null
-          date?: string | null
-          deleted_at?: string | null
-          deleted_by_user_id?: string | null
-          deletion_context?: string | null
-          deletion_reason?: string | null
-          flight_id: number
-          is_subsidized?: boolean | null
-          is_verified?: boolean | null
-          log_id?: number
-          match_created_at?: string | null
-          match_id: number
-          ride_id: number
-          source?: string | null
-          time?: string | null
-          user_id: string
-          voucher?: string | null
-        }
-        Update: {
-          can_be_restored?: boolean | null
-          contingency_voucher?: string | null
-          date?: string | null
-          deleted_at?: string | null
-          deleted_by_user_id?: string | null
-          deletion_context?: string | null
-          deletion_reason?: string | null
-          flight_id?: number
-          is_subsidized?: boolean | null
-          is_verified?: boolean | null
-          log_id?: number
-          match_created_at?: string | null
-          match_id?: number
-          ride_id?: number
-          source?: string | null
-          time?: string | null
-          user_id?: string
-          voucher?: string | null
-        }
-        Relationships: []
-      }
       Matches: {
         Row: {
           contingency_voucher: string | null
@@ -651,18 +588,6 @@ export type Database = {
           school?: string
           sms_opt_in?: boolean
           user_id?: string
-        }
-        Relationships: []
-      }
-      v_url: {
-        Row: {
-          secret: string | null
-        }
-        Insert: {
-          secret?: string | null
-        }
-        Update: {
-          secret?: string | null
         }
         Relationships: []
       }
