@@ -1,6 +1,5 @@
--- Transactional match cancellation.
--- Replaces the stub RPC so ride cancellation audit, match deletion, and
--- flight unmatched updates succeed or roll back together.
+-- Fix: PostgreSQL error "FOR UPDATE cannot be applied to the nullable side of an outer join"
+-- when cancel_own_match used `for update of m, f` with LEFT JOIN Flights.
 
 begin;
 
@@ -46,7 +45,6 @@ begin
     on f.flight_id = m.flight_id
   where m.ride_id = p_ride_id
     and m.user_id = auth.uid()
-  -- FOR UPDATE cannot target the nullable side (Flights) of a LEFT JOIN; lock Matches only.
   for update of m;
 
   if not found then
@@ -151,8 +149,5 @@ begin
   );
 end;
 $function$;
-
-revoke execute on function public.cancel_own_match(bigint) from public, anon;
-grant execute on function public.cancel_own_match(bigint) to authenticated, service_role;
 
 commit;

@@ -1,21 +1,15 @@
 'use client'
 
-// <<<<<<< unmatchedpage-yunju&josh
-import { createClient } from '@supabase/supabase-js'
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-)
-// where old main starts
 import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-// >>>>>>> main
+import { createBrowserClient } from '@/utils/supabase'
 
 export default function PickupHeader() {
+  const supabase = createBrowserClient()
   const { user, avatarUrl, signOut, signInWithGoogle } = useAuth()
   const router = useRouter()
   const [avatarKey, setAvatarKey] = useState(0)
@@ -35,7 +29,7 @@ export default function PickupHeader() {
           .from('Users')
           .select('role')
           .eq('user_id', user.id)
-          .single()
+          .maybeSingle()
 
         if (userProfile?.role) {
           const normalizedRole = userProfile.role.toLowerCase()
