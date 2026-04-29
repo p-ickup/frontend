@@ -81,7 +81,7 @@ export default function ASPCPolicy() {
               {/* Spring Break */}
               <div className="mb-6 rounded-xl bg-gradient-to-r from-orange-50 to-amber-50 p-6">
                 <h3 className="mb-3 text-xl font-semibold text-gray-800">
-                  Spring Break
+                  Summer Break
                 </h3>
                 <div className="space-y-3">
                   <div>
@@ -89,7 +89,7 @@ export default function ASPCPolicy() {
                       Deadline to request:
                     </p>
                     <p className="text-gray-700">
-                      Friday, March 6, 2026 at 11:59 PM PST
+                      Wednesday, May 6, 2026 at 11:59 PM PST
                     </p>
                   </div>
                   <div>
@@ -97,8 +97,8 @@ export default function ASPCPolicy() {
                       Service Window:
                     </p>
                     <ul className="ml-5 list-disc space-y-1 text-gray-700">
-                      <li>Departures: March 13-15</li>
-                      <li>Returns: March 20-22</li>
+                      <li>Departures: May 12-19</li>
+                      {/* <li>Returns: March 20-22</li> */}
                     </ul>
                   </div>
                 </div>

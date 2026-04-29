@@ -5,7 +5,6 @@ import FlightForm from '@/components/forms/FlightForm'
 export default function MatchForm() {
   return (
     <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
-      {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
         <div className="animate-float absolute left-1/4 top-20 h-16 w-16 rotate-12 rounded-2xl bg-gradient-to-br from-teal-400/20 to-teal-600/20"></div>
@@ -20,9 +19,8 @@ export default function MatchForm() {
       </div>
 
       <div className="relative flex min-h-screen w-full items-center justify-center p-4">
-        <div className="w-full max-w-7xl">
-          {/* Header Section */}
-          <div className="mb-4 text-center md:mb-8">
+        <div className="w-full max-w-4xl">
+          <div className="mb-6 text-center md:mb-8">
             <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-teal-500 to-yellow-100 shadow-lg md:mb-6 md:h-20 md:w-20">
               <svg
                 className="h-8 w-8 text-white md:h-10 md:w-10"
@@ -46,22 +44,9 @@ export default function MatchForm() {
             </p>
           </div>
 
-          {/* Form Container - Hidden on mobile, shown on desktop */}
-          <div className="hidden rounded-3xl bg-white/80 p-12 shadow-2xl backdrop-blur-sm md:block">
+          <div className="rounded-3xl bg-white/80 p-6 shadow-2xl backdrop-blur-sm md:p-12">
             <FlightForm
               mode="create"
-              // title="Flight Information"
-              submitButtonText="Request Match"
-              successMessage="✅ Flight details submitted successfully!"
-              successRedirectRoute="/questionnaires"
-            />
-          </div>
-
-          {/* Mobile Form - No container, simpler */}
-          <div className="block md:hidden">
-            <FlightForm
-              mode="create"
-              // title="Flight Information"
               submitButtonText="Request Match"
               successMessage="✅ Flight details submitted successfully!"
               successRedirectRoute="/questionnaires"

@@ -49,7 +49,7 @@ export default function UnmatchedPage() {
   const [showIndividuals, setShowIndividuals] = useState(false)
 
   // Function to convert military time to 12-hour format
-  const formatTime = (militaryTime: string) => {
+  const formatTime = (militaryTime: string | null | undefined) => {
     if (!militaryTime) return 'N/A'
 
     const [hours, minutes] = militaryTime.split(':').map(Number)
@@ -682,11 +682,17 @@ export default function UnmatchedPage() {
           }
           onConfirm={() => {
             if (selectedGroup) {
-              sendMatchRequest(
-                selectedGroup.flights[0].user_id,
-                selectedGroup.flights[0].flight_id,
-              )
+              const receiverId = selectedGroup.flights[0].user_id
+              if (!receiverId) {
+                alert('Could not determine the rider for this group.')
+                return
+              }
+              sendMatchRequest(receiverId, selectedGroup.flights[0].flight_id)
             } else if (selectedFlight) {
+              if (!selectedFlight.user_id) {
+                alert('Could not determine the rider for this flight.')
+                return
+              }
               sendMatchRequest(selectedFlight.user_id, selectedFlight.flight_id)
             }
           }}

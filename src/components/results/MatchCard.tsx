@@ -17,7 +17,8 @@ interface MatchCardProps {
   isGroupReady?: boolean
 }
 
-const getAirportAddress = (airport: string): string => {
+const getAirportAddress = (airport: string | null): string => {
+  if (!airport) return ''
   const airports: Record<string, string> = {
     LAX: 'World Way, Los Angeles, CA 90045',
     SNA: '18601 Airport Way, Santa Ana, CA 92707',

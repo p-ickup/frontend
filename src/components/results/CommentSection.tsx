@@ -55,6 +55,7 @@ export default function CommentSection({ rideId }: { rideId: number }) {
     const optimisticComment: CommentWithUser = {
       id: optimisticId,
       ride_id: rideId,
+      match_id: null,
       user_id: user.id,
       comment: trimmed,
       created_at: new Date().toISOString(),
