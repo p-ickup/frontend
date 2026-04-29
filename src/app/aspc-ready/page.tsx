@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { createBrowserClient } from '@/utils/supabase'
+import { postJson, requestJson } from '@/utils/api'
 import { useSearchParams } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
@@ -57,7 +57,6 @@ function AspcReadyContent() {
   const rideId = rideIdParam ? parseInt(rideIdParam, 10) : null
 
   const { user, isAuthenticated, signInWithGoogle } = useAuth()
-  const supabase = createBrowserClient()
 
   const [matches, setMatches] = useState<MatchRow[]>([])
   const [userRides, setUserRides] = useState<
@@ -77,118 +76,25 @@ function AspcReadyContent() {
   const fetchRideData = useCallback(async () => {
     if (!user) return
 
-    if (rideId) {
-      const { data, error: fetchError } = await supabase
-        .from('Matches')
-        .select(
-          `
-          ride_id,
-          user_id,
-          date,
-          time,
-          ready_for_pickup_at,
-          ready_for_pickup_status,
-          reported_missing_user_ids,
-          group_ready_at,
-          uber_type,
-          voucher,
-          contingency_voucher,
-          Flights (airport, to_airport, date),
-          Users (user_id, firstname)
-        `,
-        )
-        .eq('ride_id', rideId)
+    try {
+      const result = await requestJson<{
+        success: boolean
+        matches: MatchRow[]
+        userRides: { ride_id: number; label: string }[]
+      }>(rideId ? `/api/aspc-ready?rideId=${rideId}` : '/api/aspc-ready')
 
-      if (fetchError) {
-        setError(fetchError.message)
-        setMatches([])
-        return
-      }
-
-      const matchesData = (data || []) as unknown as MatchRow[]
-      const isMember = matchesData.some((m) => m.user_id === user.id)
-      if (!isMember) {
-        setError('You are not a member of this ride.')
-        setMatches([])
-        return
-      }
-
-      setMatches(matchesData)
-    } else {
-      const { data: userMatches, error: rideError } = await supabase
-        .from('Matches')
-        .select(
-          `
-          ride_id,
-          date,
-          time,
-          group_ready_at,
-          Flights (airport, to_airport, date)
-        `,
-        )
-        .eq('user_id', user.id)
-
-      if (rideError) {
-        setError(rideError.message)
-        setUserRides([])
-        return
-      }
-
-      const now = new Date()
-      const rideEntries = (userMatches || []).map(
-        (m: {
-          ride_id: number
-          date: string | null
-          time: string | null
-          Flights: unknown
-        }) => {
-          const flight = Array.isArray(m.Flights)
-            ? (
-                m.Flights as {
-                  airport?: string
-                  to_airport?: boolean
-                  date?: string
-                }[]
-              )[0]
-            : (m.Flights as {
-                airport?: string
-                to_airport?: boolean
-                date?: string
-              } | null)
-          const date = m.date || flight?.date || ''
-          const time = m.time || '00:00'
-          const d = date
-            ? new Date(date + 'T00:00:00').toLocaleDateString()
-            : 'Unknown'
-          const dir = flight?.to_airport ? 'School → ' : ''
-          const sortKey =
-            date && time ? new Date(date + 'T' + time).getTime() : 0
-          return {
-            ride_id: m.ride_id,
-            label: `${dir}${flight?.airport || 'Airport'} | ${d}`,
-            sortKey,
-          }
-        },
+      setMatches((result.matches || []) as MatchRow[])
+      setUserRides(result.userRides || [])
+    } catch (fetchError) {
+      setError(
+        fetchError instanceof Error
+          ? fetchError.message
+          : 'Failed to load ride data.',
       )
-      // Deduplicate by ride_id (keep first)
-      const seenRideIds = new Set<number>()
-      const deduped = rideEntries.filter((r) => {
-        if (seenRideIds.has(r.ride_id)) return false
-        seenRideIds.add(r.ride_id)
-        return true
-      })
-      // Sort: upcoming first (soonest first), then past (most recent past first)
-      const sorted = deduped.sort((a, b) => {
-        const aUpcoming = a.sortKey >= now.getTime()
-        const bUpcoming = b.sortKey >= now.getTime()
-        if (aUpcoming && !bUpcoming) return -1
-        if (!aUpcoming && bUpcoming) return 1
-        if (aUpcoming && bUpcoming) return a.sortKey - b.sortKey
-        return b.sortKey - a.sortKey
-      })
-      setUserRides(sorted.map(({ ride_id, label }) => ({ ride_id, label })))
+      setMatches([])
+      setUserRides([])
     }
-  }, [user, rideId, supabase])
+  }, [user, rideId])
 
   useEffect(() => {
     if (user) {
@@ -246,60 +152,36 @@ function AspcReadyContent() {
     setSubmitting(true)
     setError('')
 
-    const status = everyoneReady ? 'ready' : 'reporting_missing'
-    const reportedMissing = everyoneReady ? [] : missingUserIds
-
-    const { error: updateError } = await supabase
-      .from('Matches')
-      .update({
-        ready_for_pickup_at: new Date().toISOString(),
-        ready_for_pickup_status: status,
-        reported_missing_user_ids: reportedMissing,
-      })
-      .eq('ride_id', rideId)
-      .eq('user_id', user.id)
-
-    if (updateError) {
-      setError(updateError.message)
-      setSubmitting(false)
-      return
-    }
-
-    const { data: updatedMatches, error: selectError } = await supabase
-      .from('Matches')
-      .select(
-        'user_id, ready_for_pickup_at, ready_for_pickup_status, reported_missing_user_ids',
+    try {
+      const result = await postJson<{ success: boolean; nowReady: boolean }>(
+        '/api/aspc-ready/report',
+        {
+          rideId,
+          everyoneReady,
+          missingUserIds,
+        },
       )
-      .eq('ride_id', rideId)
 
-    if (selectError) {
-      setError(selectError.message)
+      setSuccess('Your response was saved.')
       setSubmitting(false)
-      return
-    }
 
-    const matchesData = (updatedMatches || []) as MatchRow[]
-    const nowReady = matchesData.length > 0 && isGroupReady(matchesData)
-
-    if (nowReady) {
-      await supabase
-        .from('Matches')
-        .update({ group_ready_at: new Date().toISOString() })
-        .eq('ride_id', rideId)
-    }
-
-    setSuccess('Your response was saved.')
-    setSubmitting(false)
-
-    if (nowReady) {
-      setSuccess(
-        'Your group is ready! Your voucher is now available on the results page.',
+      if (result.nowReady) {
+        setSuccess(
+          'Your group is ready! Your voucher is now available on the results page.',
+        )
+        router.refresh()
+        setTimeout(() => router.push('/results'), 2000)
+      } else {
+        router.refresh()
+        void fetchRideData()
+      }
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : 'Failed to save your response.',
       )
-      router.refresh()
-      setTimeout(() => router.push('/results'), 2000)
-    } else {
-      router.refresh()
-      void fetchRideData()
+      setSubmitting(false)
     }
   }
 

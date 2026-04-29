@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
-import { createBrowserClient } from '@/utils/supabase'
+import { requestJson } from '@/utils/api'
 import { useCallback, useEffect, useState } from 'react'
 import RedirectButton from '@/components/buttons/RedirectButton'
 import FlightConfirmStep from '@/components/aspc-delay/FlightConfirmStep'
@@ -41,7 +41,6 @@ export default function AspcDelayPage() {
   const params = useParams()
   const rideId = params.rideId as string
   const { user } = useAuth()
-  const supabase = createBrowserClient()
   const {
     findNewMatch,
     joinGroup,
@@ -72,53 +71,18 @@ export default function AspcDelayPage() {
         setError('Invalid ride.')
         return
       }
-      const { data, error: fetchError } = await supabase
-        .from('Matches')
-        .select(
-          `
-          ride_id,
-          user_id,
-          date,
-          time,
-          Flights (
-            airport,
-            to_airport,
-            date,
-            flight_no,
-            airline_iata,
-            earliest_time,
-            latest_time
-          )
-        `,
-        )
-        .eq('ride_id', rid)
-        .eq('user_id', user.id)
-        .maybeSingle()
+      const result = await requestJson<{
+        success: boolean
+        currentFlight: DelayFormCurrentFlight | null
+        defaultEtaDate: string
+      }>(`/api/aspc-delay?rideId=${rid}`)
 
-      if (fetchError) {
-        setError(fetchError.message)
-        return
-      }
-      if (!data) {
-        setError('You are not part of this ride.')
-        return
-      }
-      const flight = Array.isArray(data.Flights)
-        ? data.Flights[0]
-        : data.Flights
-      if (!flight) {
+      const f = result.currentFlight
+      if (!f) {
         setError('No flight found for this match.')
         return
       }
-      const f = flight as {
-        airport: string
-        to_airport: boolean
-        date: string
-        flight_no: string
-        airline_iata: string
-        earliest_time?: string
-        latest_time?: string
-      }
+
       setCurrentFlight({
         airport: f.airport,
         to_airport: f.to_airport,
@@ -128,12 +92,21 @@ export default function AspcDelayPage() {
         earliest_time: f.earliest_time,
         latest_time: f.latest_time,
       })
-      setDefaultEtaDate(f.date)
-      setFormState((s) => ({ ...s, newEtaDate: s.newEtaDate || f.date }))
+      setDefaultEtaDate(result.defaultEtaDate || f.date)
+      setFormState((s) => ({
+        ...s,
+        newEtaDate: s.newEtaDate || result.defaultEtaDate || f.date,
+      }))
+    } catch (fetchError) {
+      setError(
+        fetchError instanceof Error
+          ? fetchError.message
+          : 'Failed to load ride information.',
+      )
     } finally {
       setLoading(false)
     }
-  }, [user, rideId, supabase])
+  }, [user, rideId])
 
   useEffect(() => {
     if (user && rideId) void fetchRideAndFlight()
@@ -150,25 +123,6 @@ export default function AspcDelayPage() {
       if (s.step === 3) return { ...s, step: 2 }
       return s
     })
-
-  const persistReasonForDelay = useCallback(
-    async (reason: DelayReasonKey, customText: string) => {
-      if (!user || !rideId) return
-      const value =
-        reason === 'custom'
-          ? `Custom Delay: "${customText.trim()}"`
-          : REASON_FOR_DELAY_LABELS[reason as DelayReasonKey]
-      const { error: updateError } = await supabase
-        .from('Matches')
-        .update({ reason_for_delay: value } as Record<string, unknown>)
-        .eq('ride_id', parseInt(rideId, 10))
-        .eq('user_id', user.id)
-      if (updateError) {
-        console.error('Failed to save reason_for_delay:', updateError)
-      }
-    },
-    [user, rideId, supabase],
-  )
 
   const handleConfirmSame = () => {
     setFormState((s) => ({ ...s, flightUnchanged: true, step: 2 }))
@@ -192,16 +146,6 @@ export default function AspcDelayPage() {
   }
 
   const handleReasonContinue = async () => {
-    if (
-      formState.reasonForDelay &&
-      (formState.reasonForDelay !== 'custom' ||
-        formState.customReasonText.trim())
-    ) {
-      await persistReasonForDelay(
-        formState.reasonForDelay as DelayReasonKey,
-        formState.customReasonText,
-      )
-    }
     goToStep3()
   }
 

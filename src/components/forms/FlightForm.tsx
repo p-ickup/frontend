@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import RedirectButton from '@/components/buttons/RedirectButton'
 import SubmitSuccess, {
@@ -8,6 +8,7 @@ import SubmitSuccess, {
 } from '@/components/questionnaires/SubmitSuccess'
 import ManyBagsNotice from '@/components/questionnaires/ManyBagsNotice'
 import TripToggle from '@/components/questionnaires/ToWhereToggle'
+import { ApiRouteError, patchJson, postJson } from '@/utils/api'
 import { createBrowserClient } from '@/utils/supabase'
 import { validateUserProfile } from '@/utils/profileValidation'
 import {
@@ -59,7 +60,7 @@ export default function FlightForm({
   successRedirectRoute,
   onSuccess,
 }: FlightFormProps) {
-  const supabase = createBrowserClient()
+  const supabase = useMemo(() => createBrowserClient(), [])
 
   // Form state
   const [tripType, setTripType] = useState<boolean | null>(null)
@@ -175,14 +176,7 @@ export default function FlightForm({
       }
     }
     fetchUserSchool()
-  }, [])
-
-  // Check ASPC subsidy eligibility when date, airport, or times change
-  useEffect(() => {
-    if (dateOfFlight && airport && userSchool) {
-      checkASPCSubsidyEligibility()
-    }
-  }, [dateOfFlight, airport, userSchool, earliestArrival, latestArrival])
+  }, [supabase])
 
   // Check if selected date is past its deadline in real-time
   useEffect(() => {
@@ -263,7 +257,7 @@ export default function FlightForm({
   }, [dateOfFlight, airport, tripType, mode, supabase])
 
   // ASPC subsidy checking function
-  const checkASPCSubsidyEligibility = () => {
+  const checkASPCSubsidyEligibility = useCallback(() => {
     if (!dateOfFlight || !userSchool) return
 
     // Only show ASPC warnings for Pomona College students
@@ -338,7 +332,21 @@ export default function FlightForm({
     setIsASPCGuaranteed(false) // No more guaranteed rides under new policy
     setAspcWarningMessage(warningMessage)
     setShowASPCWarning(true)
-  }
+  }, [airport, dateOfFlight, earliestArrival, latestArrival, userSchool])
+
+  // Check ASPC subsidy eligibility when date, airport, or times change
+  useEffect(() => {
+    if (dateOfFlight && airport && userSchool) {
+      checkASPCSubsidyEligibility()
+    }
+  }, [
+    airport,
+    checkASPCSubsidyEligibility,
+    dateOfFlight,
+    earliestArrival,
+    latestArrival,
+    userSchool,
+  ])
 
   // Load existing flight data for edit mode
   useEffect(() => {
@@ -359,7 +367,6 @@ export default function FlightForm({
             'Unable to load flight data. Please refresh the page or contact support if the problem persists.',
           )
         } else {
-          console.log('Debug - Fetched flight data:', data)
           setTripType(
             data.to_airport === null || data.to_airport === undefined
               ? null
@@ -505,7 +512,6 @@ export default function FlightForm({
   // Handle keyboard events to prevent Enter key from submitting form on steps 1-3
   const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
     if (e.key === 'Enter' && currentStep !== totalSteps) {
-      console.log('Prevented Enter key on step:', currentStep)
       e.preventDefault()
       return false
     }
@@ -586,39 +592,31 @@ export default function FlightForm({
       let savedFlightId: number | null = null
 
       if (mode === 'create') {
-        const result = await supabase
-          .from('Flights')
-          .insert([
-            {
-              user_id: user.id,
-              ...flightData,
-              matched: null, // Will be calculated later by matching algorithm
-            },
-          ])
-          .select('flight_id')
-          .single()
-        error = result.error
-        if (result.data?.flight_id != null) {
-          savedFlightId = result.data.flight_id
+        try {
+          const result = await postJson<{
+            success: boolean
+            flightId?: number
+          }>('/api/flights', { payload: flightData })
+          savedFlightId =
+            result.flightId != null && Number.isFinite(result.flightId)
+              ? result.flightId
+              : null
+          error = null
+        } catch (routeError) {
+          error = routeError
         }
       } else {
-        const result = await supabase
-          .from('Flights')
-          .update({
-            ...flightData,
-            matched: null, // Reset to null so it can be recalculated
-          })
-          .eq('flight_id', flightId)
-          .select('flight_id')
-          .single()
-        error = result.error
-        if (result.data?.flight_id != null) {
-          savedFlightId = result.data.flight_id
-        } else if (flightId != null && flightId !== '') {
-          const n = Number(flightId)
-          if (Number.isFinite(n)) {
-            savedFlightId = n
+        try {
+          await patchJson(`/api/flights/${flightId}`, { payload: flightData })
+          if (flightId != null && flightId !== '') {
+            const n = Number(flightId)
+            if (Number.isFinite(n)) {
+              savedFlightId = n
+            }
           }
+          error = null
+        } catch (routeError) {
+          error = routeError
         }
       }
 
@@ -627,8 +625,8 @@ export default function FlightForm({
 
         // Check if it's a unique constraint violation (duplicate flight)
         if (
-          error.code === '23505' ||
-          error.message.includes('unique_user_flight_per_day')
+          (error instanceof ApiRouteError && error.status === 409) ||
+          (error as Error).message.includes('unique_user_flight_per_day')
         ) {
           const [year, month, day] = dateOfFlight.split('-')
           const formattedDate = `${month}/${day}/${year}`

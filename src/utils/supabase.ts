@@ -6,11 +6,24 @@ import {
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 
-export const createBrowserClient = () =>
-  browserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
+/** One browser client avoids multiple GoTrueClient instances sharing the same storage key. */
+let browserClientSingleton: any = null
+
+export const createBrowserClient = () => {
+  if (typeof window === 'undefined') {
+    return browserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    )
+  }
+  if (!browserClientSingleton) {
+    browserClientSingleton = browserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    )
+  }
+  return browserClientSingleton
+}
 
 export const createServerClient = (cookieStore: ReturnType<typeof cookies>) =>
   serverClient(

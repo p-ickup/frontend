@@ -1,16 +1,30 @@
 'use client'
 
-import { createBrowserClient } from '@/utils/supabase'
+import { postJson, requestJson } from '@/utils/api'
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import EmptyState from '@/components/results/EmptyState'
-import RedirectButton from '@/components/buttons/RedirectButton'
+
+type IncomingMatchRequest = {
+  id: string
+  sender_flight?: {
+    flight_id: number
+    airport: string | null
+    earliest_time: string | null
+    latest_time: string | null
+    date: string | null
+    user_id: string | null
+    to_airport: boolean | null
+    Users?: {
+      firstname: string | null
+      lastname: string | null
+    } | null
+  } | null
+}
 
 export default function MatchRequestsPage() {
-  const supabase = createBrowserClient()
   const { user, isAuthenticated, isLoading, signInWithGoogle } = useAuth()
-  const [requests, setRequests] = useState<any[]>([])
-  const [userId, setUserId] = useState<string>('')
+  const [requests, setRequests] = useState<IncomingMatchRequest[]>([])
 
   const load = useCallback(async () => {
     if (!user) {
@@ -18,28 +32,18 @@ export default function MatchRequestsPage() {
       return
     }
 
-    setUserId(user.id)
+    try {
+      const result = await requestJson<{
+        success: boolean
+        requests: IncomingMatchRequest[]
+      }>('/api/match-requests/incoming')
 
-    const { data, error: fetchError } = await supabase
-      .from('MatchRequests')
-      .select(
-        `*,
-        sender_flight:Flights!MatchRequests_sender_flight_id_fkey(
-          flight_id, airport, earliest_time, latest_time, date, user_id, to_airport,
-          Users (firstname, lastname)
-        )
-      `,
-      )
-      .eq('receiver_id', user.id)
-      .eq('status', 'pending')
-
-    if (fetchError) {
+      setRequests(result.requests || [])
+    } catch (fetchError) {
       console.error('Error fetching match requests:', fetchError)
       return
     }
-
-    setRequests(data || [])
-  }, [user, supabase])
+  }, [user])
 
   useEffect(() => {
     if (user) {
@@ -48,121 +52,21 @@ export default function MatchRequestsPage() {
   }, [user, load])
 
   const handleAccept = async (req: any) => {
-    const { id, sender_id, sender_flight_id, receiver_flight_id } = req
-
-    const { error: updateStatusErr } = await supabase
-      .from('MatchRequests')
-      .update({ status: 'accepted' })
-      .eq('id', id)
-
-    if (updateStatusErr) {
-      console.error('Failed to update status:', updateStatusErr)
-      return
+    try {
+      await postJson('/api/match-requests/accept', { id: req.id })
+      setRequests((prev) => prev.filter((r) => r.id !== req.id))
+    } catch (error) {
+      console.error('Failed to accept request:', error)
     }
-
-    const { data: existingReceiverMatch, error: receiverMatchErr } =
-      await supabase
-        .from('Matches')
-        .select('ride_id')
-        .eq('user_id', userId)
-        .limit(1)
-        .single()
-
-    const useRideId =
-      !receiverMatchErr && existingReceiverMatch?.ride_id
-        ? existingReceiverMatch.ride_id
-        : (() => {
-            return supabase
-              .from('Matches')
-              .select('ride_id')
-              .order('ride_id', { ascending: false })
-              .limit(1)
-              .then((res) => (res.data?.[0]?.ride_id ?? 0) + 1)
-          })()
-
-    let finalRideId: number
-
-    if (typeof useRideId === 'number') {
-      finalRideId = useRideId
-    } else {
-      finalRideId = await useRideId
-    }
-
-    const created_at = new Date().toISOString()
-
-    const insertRes = await supabase.from('Matches').insert([
-      {
-        ride_id: finalRideId,
-        user_id: sender_id,
-        flight_id: sender_flight_id,
-        created_at,
-      },
-    ])
-
-    if (insertRes.error) {
-      console.error('Error inserting matches:', insertRes.error)
-      return
-    }
-
-    const updateSender = await supabase
-      .from('Flights')
-      .update({ matched: true })
-      .eq('flight_id', sender_flight_id)
-
-    const updateReceiver = await supabase
-      .from('Flights')
-      .update({ matched: true })
-      .eq('flight_id', receiver_flight_id)
-
-    if (updateSender.error || updateReceiver.error) {
-      console.error(
-        'Failed to update matched flags:',
-        updateSender.error,
-        updateReceiver.error,
-      )
-    } else {
-      console.log('Flights updated to matched')
-    }
-
-    const { error: deleteRequestErr } = await supabase
-      .from('MatchRequests')
-      .delete()
-      .eq('id', id)
-
-    if (deleteRequestErr) {
-      console.error(
-        'Failed to delete MatchRequest after match:',
-        deleteRequestErr,
-      )
-    } else {
-      console.log('MatchRequest deleted after match')
-    }
-
-    setRequests((prev) => prev.filter((r) => r.id !== id))
   }
 
   const handleReject = async (id: string) => {
-    const { error: updateError } = await supabase
-      .from('MatchRequests')
-      .update({ status: 'rejected' })
-      .eq('id', id)
-
-    if (updateError) {
-      console.error('Failed to reject request:', updateError)
-      return
+    try {
+      await postJson('/api/match-requests/reject', { id })
+      setRequests((prev) => prev.filter((r) => r.id !== id))
+    } catch (error) {
+      console.error('Failed to reject request:', error)
     }
-
-    const { error: deleteError } = await supabase
-      .from('MatchRequests')
-      .delete()
-      .eq('id', id)
-
-    if (deleteError) {
-      console.error('Failed to delete rejected request:', deleteError)
-      return
-    }
-
-    setRequests((prev) => prev.filter((r) => r.id !== id))
   }
 
   // Show loading state while checking authentication

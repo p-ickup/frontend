@@ -1,8 +1,8 @@
 'use client'
 
 import RedirectButton from '@/components/buttons/RedirectButton'
+import { postJson, requestJson } from '@/utils/api'
 import type { Database } from '@/lib/database.types'
-import { createBrowserClient } from '@/utils/supabase'
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
@@ -23,7 +23,6 @@ interface GroupedMatch {
 }
 
 export default function UnmatchedPage() {
-  const supabase = createBrowserClient()
   const {
     user,
     isAuthenticated,
@@ -70,146 +69,30 @@ export default function UnmatchedPage() {
 
     setUserId(user.id)
 
-    const { data: myFlightsData } = await supabase
-      .from('Flights')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('matched', false)
-      .eq('opt_in', true)
+    try {
+      const result = await requestJson<{
+        success: boolean
+        flights: FlightWithUser[]
+        groups: GroupedMatch[]
+        myFlights: Flight[]
+        pendingRequests: number[]
+        userEligible: boolean
+      }>('/api/unmatched/options')
 
-    console.log('Fetched unmatched flights:', myFlightsData)
-
-    if (myFlightsData) {
-      setMyFlights(myFlightsData)
-      const hasUnmatchedOptInFlight = myFlightsData.length > 0
-      setUserEligible(hasUnmatchedOptInFlight)
-    }
-
-    const { data: pendingMatchData } = await supabase
-      .from('MatchRequests')
-      .select('receiver_flight_id')
-      .eq('sender_id', user.id)
-      .eq('status', 'pending')
-
-    if (pendingMatchData) {
-      setPendingRequests(
-        pendingMatchData.map(
-          (req: { receiver_flight_id: number }) => req.receiver_flight_id,
-        ),
-      )
-    }
-
-    const { data: flightData, error: flightError } = await supabase
-      .from('Flights')
-      .select('*, Users:Users!Flights_user_id_fkey(firstname, lastname, email)')
-      .eq('opt_in', true)
-      .eq('matched', false)
-      .neq('user_id', user.id)
-
-    // Query for non-subsidized groups
-    const { data: matchData, error: matchError } = await supabase
-      .from('Matches')
-      .select(
-        'ride_id, time, is_subsidized, flight:Flights(flight_id, airport, earliest_time, latest_time, date, user_id, matched, to_airport, opt_in, Users(firstname, lastname, email))',
-      )
-      .eq('is_subsidized', false)
-
-    if (flightError || matchError) {
-      console.error('Error fetching data:', flightError || matchError)
+      setFlights(result.flights)
+      setGroups(result.groups)
+      setMyFlights(result.myFlights)
+      setPendingRequests(result.pendingRequests)
+      setUserEligible(result.userEligible)
+      setLoading(false)
+      return
+    } catch (fetchError) {
+      console.error('Error fetching data:', fetchError)
       setError('Error fetching flight or match data.')
       setLoading(false)
       return
     }
-
-    // setFlights(
-    //   (flightData || []).filter((flight) => isWithinNext3Days(flight.date) ),
-    // )
-
-    // Filter for future flights only (no time limit)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    setFlights(
-      (flightData || [])
-        .filter((flight) => {
-          const flightDate = new Date(flight.date)
-          flightDate.setHours(0, 0, 0, 0)
-          return flightDate >= today
-        })
-        .sort((a, b) => {
-          // First sort by date
-          const dateA = new Date(a.date).getTime()
-          const dateB = new Date(b.date).getTime()
-
-          if (dateA !== dateB) {
-            return dateA - dateB
-          }
-
-          // If dates are the same, sort by earliest_time
-          const timeA = a.earliest_time || '00:00'
-          const timeB = b.earliest_time || '00:00'
-
-          return timeA.localeCompare(timeB)
-        }),
-    )
-
-    // Group by ride_id and include the match time
-    const reduced = (matchData as any[]).reduce(
-      (acc, match) => {
-        const rideId = match.ride_id
-        if (!acc[rideId]) {
-          acc[rideId] = {
-            ride_id: rideId,
-            flights: [],
-            time: match.time,
-          }
-        }
-        if (match.flight && Array.isArray(match.flight)) {
-          acc[rideId].flights.push(...match.flight)
-        } else if (match.flight) {
-          acc[rideId].flights.push(match.flight)
-        }
-        return acc
-      },
-      {} as Record<number, GroupedMatch>,
-    )
-
-    // Filter for groups with upcoming flights (any future date), at least one person opted in, and less than 4 people
-    const grouped = (Object.values(reduced) as GroupedMatch[])
-      .filter((group) => {
-        return (
-          group.flights.length > 0 &&
-          group.flights.length < 4 &&
-          group.flights.every((flight) => {
-            if (!flight.date) return false
-            const flightDate = new Date(flight.date)
-            flightDate.setHours(0, 0, 0, 0)
-            const todayCheck = new Date()
-            todayCheck.setHours(0, 0, 0, 0)
-            return flightDate >= todayCheck
-          }) &&
-          group.flights.some((flight) => flight.opt_in === true)
-        )
-      })
-      .sort((a, b) => {
-        // Sort by earliest flight date in each group
-        const dateA = new Date(a.flights[0]?.date || '').getTime()
-        const dateB = new Date(b.flights[0]?.date || '').getTime()
-
-        if (dateA !== dateB) {
-          return dateA - dateB
-        }
-
-        // If dates are the same, sort by match time
-        const timeA = a.time || '00:00'
-        const timeB = b.time || '00:00'
-
-        return timeA.localeCompare(timeB)
-      })
-
-    setGroups(grouped)
-    setLoading(false)
-  }, [supabase, user])
+  }, [user])
 
   useEffect(() => {
     if (user) {
@@ -228,32 +111,24 @@ export default function UnmatchedPage() {
       return
     }
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
+    if (!user) {
       alert('You must be logged in to send requests.')
       return
     }
 
-    const { error } = await supabase.from('MatchRequests').insert([
-      {
-        sender_id: user.id,
-        receiver_id: receiverId,
-        sender_flight_id: selectedMyFlightId,
-        receiver_flight_id: receiverFlightId,
-        status: 'pending',
-      },
-    ])
-
-    if (error) {
-      console.error('Failed to send match request:', error.message)
+    try {
+      await postJson('/api/match-requests/send', {
+        receiverId,
+        senderFlightId: selectedMyFlightId,
+        receiverFlightId,
+      })
+    } catch (error) {
+      console.error('Failed to send match request:', error)
       alert('Failed to send request.')
-    } else {
-      alert('Match request sent!')
+      return
     }
+
+    alert('Match request sent!')
 
     // 🔥 Refresh page data immediately
     await fetchData()
@@ -884,12 +759,6 @@ function isWithinNext7Days(flightDateStr: string) {
 
   const diffTime = startOfFlightDay.getTime() - startOfToday.getTime()
   const diffDays = diffTime / (1000 * 60 * 60 * 24)
-
-  console.log(`DEBUG: Flight on ${flightDateStr}: ${diffDays} days away`)
-  console.log(
-    `DEBUG: Today: ${startOfToday.toISOString()}, Flight: ${startOfFlightDay.toISOString()}`,
-  )
-  console.log(`DEBUG: Within 7 days? ${diffDays >= 0 && diffDays <= 7}`)
 
   // return diffDays >= 0 && diffDays <= 3
   return diffDays >= 0 && diffDays <= 7
