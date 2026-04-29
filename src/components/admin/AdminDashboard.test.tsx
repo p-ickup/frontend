@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
+const buildNoShowLookupMock = jest.fn()
 const postJsonMock = jest.fn()
 const pushMock = jest.fn()
 const useAuthMock = jest.fn()
@@ -12,6 +13,14 @@ jest.mock('@/utils/api', () => ({
 
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => useAuthMock(),
+}))
+
+jest.mock('@/utils/adminMatchNoShows', () => ({
+  buildNoShowLookup: (...args: unknown[]) => buildNoShowLookupMock(...args),
+  parseNoShowKey: (key: string) => {
+    const [rideId, missingId] = key.split(':')
+    return rideId && missingId ? { rideId: Number(rideId), missingId } : null
+  },
 }))
 
 jest.mock('@/utils/supabase', () => ({
@@ -130,6 +139,7 @@ describe('AdminDashboard', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     useAuthMock.mockReturnValue({ user: null })
+    buildNoShowLookupMock.mockResolvedValue(new Map())
     postJsonMock.mockResolvedValue({
       success: true,
       would_send: 2,
@@ -234,6 +244,35 @@ describe('AdminDashboard', () => {
         }
       }
 
+      if (
+        state.table === 'Matches' &&
+        state.ops.some(
+          (op) =>
+            op.type === 'range' &&
+            JSON.stringify(op.value) === JSON.stringify([0, 999]),
+        )
+      ) {
+        return {
+          data: [
+            {
+              ride_id: 77,
+              user_id: 'student-1',
+              reported_missing_user_ids: ['student-2'],
+              date: '2026-01-19',
+              ready_for_pickup_at: '2026-01-19T12:00:00Z',
+            },
+            {
+              ride_id: 77,
+              user_id: 'student-2',
+              reported_missing_user_ids: null,
+              date: '2026-01-19',
+              ready_for_pickup_at: null,
+            },
+          ],
+          error: null,
+        }
+      }
+
       if (state.table === 'match_cancellations') {
         return {
           data: [
@@ -265,6 +304,12 @@ describe('AdminDashboard', () => {
               firstname: 'Taylor',
               lastname: 'Student',
               email: 'taylor@example.com',
+            },
+            {
+              user_id: 'student-2',
+              firstname: 'Jordan',
+              lastname: 'Student',
+              email: 'jordan@example.com',
             },
           ],
           error: null,
@@ -319,6 +364,86 @@ describe('AdminDashboard', () => {
       ),
     )
     expect(window.alert).toHaveBeenCalled()
+    expect(
+      await screen.findByText(/Preview: Would send 2 emails/i),
+    ).toBeInTheDocument()
+    expect(await screen.findByText(/student@example.com/i)).toBeInTheDocument()
+  })
+
+  it('sends match emails after confirmation and shows the result summary', async () => {
+    postJsonMock.mockResolvedValueOnce({
+      success: true,
+      sent: 2,
+      failed: 0,
+      total: 2,
+    })
+
+    renderDashboard()
+
+    await screen.findByText('Pickup Dashboard')
+    await userEvent.click(
+      screen.getByRole('button', { name: /Send All Match Emails/i }),
+    )
+
+    await waitFor(() =>
+      expect(postJsonMock).toHaveBeenCalledWith(
+        '/api/admin/send-match-emails',
+        expect.objectContaining({
+          date_start: expect.any(String),
+        }),
+      ),
+    )
+    expect(window.confirm).toHaveBeenCalled()
+    expect(window.alert).toHaveBeenCalledWith(
+      expect.stringContaining('Sent: 2'),
+    )
+    expect(await screen.findByText('2/2')).toBeInTheDocument()
+  })
+
+  it('blocks unmatched email preview until both dates are selected', async () => {
+    renderDashboard()
+
+    await screen.findByText('Pickup Dashboard')
+    await userEvent.click(
+      screen.getByRole('button', { name: /Preview Unmatched \(Dry Run\)/i }),
+    )
+
+    expect(postJsonMock).not.toHaveBeenCalled()
+    expect(window.alert).toHaveBeenCalledWith(
+      expect.stringContaining('Please select both start and end dates'),
+    )
+  })
+
+  it('loads and renders no-show rows on demand', async () => {
+    buildNoShowLookupMock.mockResolvedValueOnce(
+      new Map([
+        [
+          '77:student-2',
+          {
+            reporterCount: 1,
+            reporterUserIds: ['student-1'],
+            reporterNames: ['Taylor Student'],
+            flag: 'orange',
+            submittedDelayForRide: true,
+            hadNewFlightOnDelay: false,
+            missingRiderSubmittedReady: false,
+          },
+        ],
+      ]),
+    )
+
+    renderDashboard()
+
+    await screen.findByText('Pickup Dashboard')
+    await userEvent.click(
+      screen.getByRole('button', { name: /Load no-shows/i }),
+    )
+
+    expect(await screen.findByText('Jordan Student')).toBeInTheDocument()
+    expect(await screen.findByText('Taylor Student')).toBeInTheDocument()
+    expect(await screen.findByText('1/2')).toBeInTheDocument()
+    expect(await screen.findByText('Delay form in log')).toBeInTheDocument()
+    expect(await screen.findByText('Not yet')).toBeInTheDocument()
   })
 
   it('loads and renders cancellation rows on demand', async () => {

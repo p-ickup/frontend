@@ -2968,13 +2968,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
                           if (usersError) throw usersError
 
-                          const flightsMap = new Map(
+                          const flightsMap = new Map<number, any>(
                             flightsData?.map((flight: any) => [
                               flight.flight_id,
                               flight,
                             ]) || [],
                           )
-                          const usersMap = new Map(
+                          const usersMap = new Map<string, any>(
                             usersData?.map((dashboardUser: any) => [
                               dashboardUser.user_id,
                               dashboardUser,
@@ -3051,7 +3051,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             .map((row) =>
                               row
                                 .map(
-                                  (cell) =>
+                                  (cell: unknown) =>
                                     `"${String(cell).replace(/"/g, '""')}"`,
                                 )
                                 .join(','),
@@ -3122,7 +3122,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
                           if (usersError) throw usersError
 
-                          const usersMap = new Map(
+                          const usersMap = new Map<string, any>(
                             usersData?.map((dashboardUser: any) => [
                               dashboardUser.user_id,
                               dashboardUser,
@@ -3189,7 +3189,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             .map((row) =>
                               row
                                 .map(
-                                  (cell) =>
+                                  (cell: unknown) =>
                                     `"${String(cell).replace(/"/g, '""')}"`,
                                 )
                                 .join(','),

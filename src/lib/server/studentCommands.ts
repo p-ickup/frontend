@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { normalizeFlightWritePayload } from '@/lib/server/flightWritePayload'
 import { canEditFlight } from '@/utils/flightValidation'
 import { isGroupReady } from '@/utils/groupReadiness'
 
@@ -308,12 +309,14 @@ export async function createOwnFlight({
   userId: string
   payload: Record<string, unknown>
 }) {
+  const normalizedPayload = normalizeFlightWritePayload(payload)
+
   const { data, error } = await supabase
     .from('Flights')
     .insert([
       {
+        ...normalizedPayload,
         user_id: userId,
-        ...payload,
         matched: null,
       },
     ])
@@ -359,10 +362,15 @@ export async function updateOwnFlight({
     throw createError('This flight can no longer be edited.', 403)
   }
 
+  const normalizedPayload = normalizeFlightWritePayload(payload)
+  if (Object.keys(normalizedPayload).length === 0) {
+    throw createError('At least one editable flight field is required.', 400)
+  }
+
   const { error } = await supabase
     .from('Flights')
     .update({
-      ...payload,
+      ...normalizedPayload,
       matched: null,
     })
     .eq('flight_id', flightId)

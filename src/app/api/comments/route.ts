@@ -3,7 +3,6 @@ import {
   requireAuthenticatedRoute,
   routeErrorJson,
 } from '@/lib/server/auth'
-import { createServiceRoleClient } from '@/lib/server/serviceRole'
 import {
   createRideComment,
   getRideComments,
@@ -25,7 +24,7 @@ export async function GET(request: Request) {
     }
 
     const result = await getRideComments({
-      supabase: createServiceRoleClient(),
+      supabase: auth.supabase,
       userId: auth.user.id,
       rideId,
     })
@@ -55,7 +54,7 @@ export async function POST(request: Request) {
     }
 
     const result = await createRideComment({
-      supabase: createServiceRoleClient(),
+      supabase: auth.supabase,
       userId: auth.user.id,
       rideId,
       comment,

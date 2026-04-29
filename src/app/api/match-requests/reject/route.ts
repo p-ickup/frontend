@@ -3,7 +3,6 @@ import {
   badRequestJson,
   routeErrorJson,
 } from '@/lib/server/auth'
-import { createServiceRoleClient } from '@/lib/server/serviceRole'
 import { rejectMatchRequest } from '@/lib/server/studentCommands'
 import { NextResponse } from 'next/server'
 
@@ -22,7 +21,7 @@ export async function POST(request: Request) {
     }
 
     const result = await rejectMatchRequest({
-      supabase: createServiceRoleClient(),
+      supabase: auth.supabase,
       userId: auth.user.id,
       requestId,
     })

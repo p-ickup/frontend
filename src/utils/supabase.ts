@@ -7,7 +7,7 @@ import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 
 /** One browser client avoids multiple GoTrueClient instances sharing the same storage key. */
-let browserClientSingleton: ReturnType<typeof browserClient> | null = null
+let browserClientSingleton: any = null
 
 export const createBrowserClient = () => {
   if (typeof window === 'undefined') {

@@ -4,6 +4,7 @@ import type {
   ChangeLogEntry,
   Rider,
 } from '@/components/admin/groups-management/types'
+import { normalizeFlightWritePayload } from '@/lib/server/flightWritePayload'
 import { roundToNearest5Minutes } from '@/components/admin/groups-management/utils'
 
 type GroupsSupabaseClient = any
@@ -599,9 +600,26 @@ export const addUnmatchedFlight = async ({
   supabase: GroupsSupabaseClient
   payload: Record<string, unknown>
 }) => {
+  const normalizedPayload = normalizeFlightWritePayload(payload)
+  const userId =
+    typeof payload.user_id === 'string' && payload.user_id.trim() !== ''
+      ? payload.user_id
+      : null
+
+  if (!userId) {
+    throw createError(
+      { message: 'User ID is required for unmatched flights.' },
+      'Failed to create flight',
+    )
+  }
+
   const { data, error } = await supabase
     .from('Flights')
-    .insert(payload)
+    .insert({
+      ...normalizedPayload,
+      user_id: userId,
+      matched: false,
+    })
     .select('flight_id')
     .single()
 
