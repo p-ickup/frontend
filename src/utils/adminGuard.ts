@@ -16,10 +16,10 @@ export async function checkAdminAccess() {
   } = await supabase.auth.getUser()
 
   if (authError || !user) {
-    console.log('[Admin Guard] Access denied: No user or auth error', {
-      hasUser: !!user,
-      error: authError?.message,
-    })
+    console.warn(
+      '[Admin Guard] Access denied during auth check.',
+      authError?.message,
+    )
     return null
   }
 
@@ -31,11 +31,10 @@ export async function checkAdminAccess() {
     .single()
 
   if (profileError || !userProfile) {
-    console.log('[Admin Guard] Access denied: Could not fetch user profile', {
-      userId: user.id,
-      userEmail: user.email,
-      error: profileError?.message,
-    })
+    console.warn(
+      '[Admin Guard] Access denied while loading admin profile.',
+      profileError?.message,
+    )
     return null
   }
 
@@ -47,12 +46,7 @@ export async function checkAdminAccess() {
     !role ||
     (normalizedRole !== 'admin' && normalizedRole !== 'super_admin')
   ) {
-    console.log('[Admin Guard] Access denied: Invalid role', {
-      userId: user.id,
-      userEmail: user.email,
-      currentRole: role || 'NULL',
-      userProfile: userProfile,
-    })
+    console.warn('[Admin Guard] Access denied for non-admin role.')
     return null
   }
 
@@ -84,10 +78,10 @@ export async function requireAdminAccess() {
   } = await supabase.auth.getUser()
 
   if (authError || !user) {
-    console.log('[Admin Guard API] Access denied: No user or auth error', {
-      hasUser: !!user,
-      error: authError?.message,
-    })
+    console.warn(
+      '[Admin Guard API] Access denied during auth check.',
+      authError?.message,
+    )
     return {
       error: new NextResponse('Forbidden', { status: 403 }),
       user: null,
@@ -102,13 +96,9 @@ export async function requireAdminAccess() {
     .single()
 
   if (profileError || !userProfile) {
-    console.log(
-      '[Admin Guard API] Access denied: Could not fetch user profile',
-      {
-        userId: user.id,
-        userEmail: user.email,
-        error: profileError?.message,
-      },
+    console.warn(
+      '[Admin Guard API] Access denied while loading admin profile.',
+      profileError?.message,
     )
     return {
       error: new NextResponse('Forbidden', { status: 403 }),
@@ -124,12 +114,7 @@ export async function requireAdminAccess() {
     !role ||
     (normalizedRole !== 'admin' && normalizedRole !== 'super_admin')
   ) {
-    console.log('[Admin Guard API] Access denied: Invalid role', {
-      userId: user.id,
-      userEmail: user.email,
-      currentRole: role || 'NULL',
-      userProfile: userProfile,
-    })
+    console.warn('[Admin Guard API] Access denied for non-admin role.')
     return {
       error: new NextResponse('Forbidden', { status: 403 }),
       user: null,

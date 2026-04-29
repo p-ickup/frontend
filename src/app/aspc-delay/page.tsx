@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { createBrowserClient } from '@/utils/supabase'
+import { requestJson } from '@/utils/api'
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import RedirectButton from '@/components/buttons/RedirectButton'
@@ -15,7 +15,6 @@ type RideEntry = {
 
 function AspcDelayListContent() {
   const { user, isAuthenticated, signInWithGoogle } = useAuth()
-  const supabase = createBrowserClient()
 
   const [userRides, setUserRides] = useState<
     { ride_id: number; label: string }[]
@@ -26,77 +25,23 @@ function AspcDelayListContent() {
   const fetchRideData = useCallback(async () => {
     if (!user) return
 
-    const { data: userMatches, error: rideError } = await supabase
-      .from('Matches')
-      .select(
-        `
-        ride_id,
-        date,
-        time,
-        Flights (airport, to_airport, date)
-      `,
-      )
-      .eq('user_id', user.id)
+    try {
+      const result = await requestJson<{
+        success: boolean
+        userRides: { ride_id: number; label: string }[]
+      }>('/api/aspc-delay')
 
-    if (rideError) {
-      setError(rideError.message)
+      setUserRides(result.userRides || [])
+    } catch (rideError) {
+      setError(
+        rideError instanceof Error
+          ? rideError.message
+          : 'Failed to load ride data.',
+      )
       setUserRides([])
       return
     }
-
-    const now = new Date()
-    const rideEntries = (userMatches || []).map(
-      (m: {
-        ride_id: number
-        date: string | null
-        time: string | null
-        Flights: unknown
-      }) => {
-        const flight = Array.isArray(m.Flights)
-          ? (
-              m.Flights as {
-                airport?: string
-                to_airport?: boolean
-                date?: string
-              }[]
-            )[0]
-          : (m.Flights as {
-              airport?: string
-              to_airport?: boolean
-              date?: string
-            } | null)
-        const date = m.date || flight?.date || ''
-        const time = m.time || '00:00'
-        const d = date
-          ? new Date(date + 'T00:00:00').toLocaleDateString()
-          : 'Unknown'
-        const dir = flight?.to_airport ? 'School → ' : ''
-        const sortKey = date && time ? new Date(date + 'T' + time).getTime() : 0
-        return {
-          ride_id: m.ride_id,
-          label: `${dir}${flight?.airport || 'Airport'} | ${d}`,
-          sortKey,
-        }
-      },
-    )
-    // Deduplicate by ride_id (keep first)
-    const seenRideIds = new Set<number>()
-    const deduped = rideEntries.filter((r: RideEntry) => {
-      if (seenRideIds.has(r.ride_id)) return false
-      seenRideIds.add(r.ride_id)
-      return true
-    })
-    // Sort: upcoming first (soonest first), then past (most recent past first)
-    const sorted = deduped.sort((a: RideEntry, b: RideEntry) => {
-      const aUpcoming = a.sortKey >= now.getTime()
-      const bUpcoming = b.sortKey >= now.getTime()
-      if (aUpcoming && !bUpcoming) return -1
-      if (!aUpcoming && bUpcoming) return 1
-      if (aUpcoming && bUpcoming) return a.sortKey - b.sortKey
-      return b.sortKey - a.sortKey
-    })
-    setUserRides(sorted.map(({ ride_id, label }) => ({ ride_id, label })))
-  }, [user, supabase])
+  }, [user])
 
   useEffect(() => {
     if (user) {

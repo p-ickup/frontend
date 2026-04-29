@@ -6,6 +6,7 @@ import {
   parseNoShowKey,
   type NoShowRiderInfo,
 } from '@/utils/adminMatchNoShows'
+import { postJson } from '@/utils/api'
 import { createBrowserClient } from '@/utils/supabase'
 import { User } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
@@ -436,13 +437,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       setDryRunResult(null)
       setBatchEmailResult(null)
 
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-      if (!supabaseUrl || !supabaseAnonKey) {
-        throw new Error('Missing Supabase configuration')
-      }
-
       const body: any = { dry_run: true }
 
       // Add date range if provided
@@ -453,26 +447,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         body.date_end = matchEmailDateEnd
       }
 
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/send-all-match-emails-batch`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${supabaseAnonKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(body),
-        },
-      )
-
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: 'Unknown error' }))
-        throw new Error(errorData.error || `HTTP ${response.status}`)
-      }
-
-      const result = await response.json()
+      const result = await postJson<any>('/api/admin/send-match-emails', body)
 
       if (result.success) {
         const wouldSend = result.would_send ?? 0
@@ -530,13 +505,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       setBatchEmailResult(null)
       setDryRunResult(null)
 
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-      if (!supabaseUrl || !supabaseAnonKey) {
-        throw new Error('Missing Supabase configuration')
-      }
-
       const body: any = {}
 
       // Add date range if provided
@@ -547,26 +515,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         body.date_end = matchEmailDateEnd
       }
 
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/send-all-match-emails-batch`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${supabaseAnonKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(body),
-        },
-      )
-
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: 'Unknown error' }))
-        throw new Error(errorData.error || `HTTP ${response.status}`)
-      }
-
-      const result = await response.json()
+      const result = await postJson<any>('/api/admin/send-match-emails', body)
 
       if (result.success) {
         const sent = result.sent ?? 0
@@ -607,13 +556,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       setUnmatchedDryRunResult(null)
       setUnmatchedEmailResult(null)
 
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-      if (!supabaseUrl || !supabaseAnonKey) {
-        throw new Error('Missing Supabase configuration')
-      }
-
       if (!unmatchedEmailDateStart || !unmatchedEmailDateEnd) {
         alert(
           '⚠️ Please select both start and end dates for the unmatched email range.',
@@ -621,30 +563,11 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         return
       }
 
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/send-unmatched-emails-batch`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${supabaseAnonKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            date_start: unmatchedEmailDateStart,
-            date_end: unmatchedEmailDateEnd,
-            dry_run: true,
-          }),
-        },
-      )
-
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: 'Unknown error' }))
-        throw new Error(errorData.error || `HTTP ${response.status}`)
-      }
-
-      const result = await response.json()
+      const result = await postJson<any>('/api/admin/send-unmatched-emails', {
+        date_start: unmatchedEmailDateStart,
+        date_end: unmatchedEmailDateEnd,
+        dry_run: true,
+      })
 
       if (result.success) {
         const wouldSend = result.would_send ?? 0
@@ -702,37 +625,11 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       setUnmatchedEmailResult(null)
       setUnmatchedDryRunResult(null)
 
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-      if (!supabaseUrl || !supabaseAnonKey) {
-        throw new Error('Missing Supabase configuration')
-      }
-
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/send-unmatched-emails-batch`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${supabaseAnonKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            date_start: unmatchedEmailDateStart,
-            date_end: unmatchedEmailDateEnd,
-            dry_run: false,
-          }),
-        },
-      )
-
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: 'Unknown error' }))
-        throw new Error(errorData.error || `HTTP ${response.status}`)
-      }
-
-      const result = await response.json()
+      const result = await postJson<any>('/api/admin/send-unmatched-emails', {
+        date_start: unmatchedEmailDateStart,
+        date_end: unmatchedEmailDateEnd,
+        dry_run: false,
+      })
 
       if (result.success) {
         const sent = result.sent ?? 0

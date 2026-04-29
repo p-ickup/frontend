@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import RedirectButton from '@/components/buttons/RedirectButton'
+import { deleteJson } from '@/utils/api'
 import { createBrowserClient } from '@/utils/supabase'
 import Image from 'next/image'
 import ConfirmCancel from '@/components/questionnaires/ConfirmCancel'
@@ -123,19 +124,15 @@ export default function Questionnaires() {
     if (!modalFlightId) return // Ensure there is a flight ID
 
     console.log('Deleting flight with ID:', modalFlightId)
-    const { error } = await supabase
-      .from('Flights')
-      .delete()
-      .eq('flight_id', modalFlightId)
-
-    if (error) {
-      console.error('Error deleting match form:', error)
-      setMessage('Error deleting form.')
-    } else {
+    try {
+      await deleteJson(`/api/flights/${modalFlightId}`)
       setMatchForms((prevForms) =>
         prevForms.filter((form) => form.flight_id !== modalFlightId),
       )
       console.log(`Flight ${modalFlightId} deleted successfully.`)
+    } catch (error) {
+      console.error('Error deleting match form:', error)
+      setMessage('Error deleting form.')
     }
 
     setModalFlightId(null) // ✅ Close modal after deletion

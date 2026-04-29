@@ -1,21 +1,17 @@
 'use client'
 
-import { createBrowserClient } from '@/utils/supabase'
-import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import StarRating from '@/components/feedback/StarRating'
+import { postJson, requestJson } from '@/utils/api'
 
 export default function FeedbackForm() {
-  const supabase = createBrowserClient()
-
   type Ride = {
-    user_id: string
     flight_id: string
     Flights: {
       date: string
       to_airport: boolean
       airport: string
-    }
+    } | null
   }
 
   const [rides, setRides] = useState<Ride[]>([])
@@ -23,37 +19,24 @@ export default function FeedbackForm() {
   const [overall, setOverall] = useState<number>(0)
   const [convenience, setConvenience] = useState<number>(0)
   const [comments, setComments] = useState('')
-  const [userId, setUserId] = useState('')
 
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
 
   useEffect(() => {
-    // Fetch rides (matches) from Supabase
     const fetchRides = async () => {
-      const { data, error } = await supabase
-        .from('Matches')
-        .select('user_id, flight_id, Flights(date, to_airport, airport)') // join Flights table
-
-      if (error) {
+      try {
+        const result = await requestJson<{
+          success: boolean
+          rides: Ride[]
+        }>('/api/feedback')
+        setRides(result.rides || [])
+      } catch (error) {
         console.error('Error fetching rides:', error)
-      } else {
-        setRides(data as unknown as Ride[])
       }
     }
 
-    // Fetch current user
-    const fetchUser = async () => {
-      const { data, error } = await supabase.auth.getUser()
-      if (error) {
-        console.error('Error fetching user:', error)
-      } else if (data?.user) {
-        setUserId(data.user.id)
-      }
-    }
-
-    fetchRides()
-    fetchUser()
+    void fetchRides()
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -74,34 +57,22 @@ export default function FeedbackForm() {
       return
     }
 
-    const { data: matchedRide, error: rideError } = await supabase
-      .from('Matches')
-      .select('user_id, flight_id, Flights(date, to_airport, airport)')
-      .eq('flight_id', selectedFlight)
-      .eq('user_id', userId)
-      .single() // ensure you only get one match
-
-    console.log('Matched ride data:', matchedRide)
-
-    const { error: feedbackError } = await supabase.from('Feedback').insert([
-      {
-        user_id: userId,
-        flight_id: selectedFlight,
+    try {
+      await postJson('/api/feedback', {
+        flightId: Number(selectedFlight),
         overall,
         convenience,
         comments,
-      },
-    ])
+      })
 
-    if (feedbackError) {
-      console.error('Error submitting feedback:', feedbackError)
-      alert(`Error submitting feedback: ${feedbackError.message}`)
-    } else {
       alert('Feedback submitted successfully!')
       setSelectedFlight('')
       setOverall(0)
       setConvenience(0)
       setComments('')
+    } catch (error: any) {
+      console.error('Error submitting feedback:', error)
+      alert(`Error submitting feedback: ${error?.message || 'Unknown error'}`)
     }
   }
 
@@ -203,6 +174,7 @@ export default function FeedbackForm() {
                   <option value="">-- Select Match --</option>
                   {rides
                     .filter((ride) => {
+                      if (!ride.Flights?.date) return false
                       const oneYearAgo = new Date()
                       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
                       const [year, month, day] = ride.Flights.date
@@ -210,9 +182,10 @@ export default function FeedbackForm() {
                         .map(Number)
                       const flightDate = new Date(year, month - 1, day)
 
-                      return ride.user_id === userId && flightDate >= oneYearAgo
+                      return flightDate >= oneYearAgo
                     })
                     .map((ride) => {
+                      if (!ride.Flights?.date) return null
                       const [year, month, day] = ride.Flights.date
                         .split('-')
                         .map(Number)
@@ -340,6 +313,7 @@ export default function FeedbackForm() {
                   <option value="">-- Select Match --</option>
                   {rides
                     .filter((ride) => {
+                      if (!ride.Flights?.date) return false
                       const oneYearAgo = new Date()
                       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
                       const [year, month, day] = ride.Flights.date
@@ -347,9 +321,10 @@ export default function FeedbackForm() {
                         .map(Number)
                       const flightDate = new Date(year, month - 1, day)
 
-                      return ride.user_id === userId && flightDate >= oneYearAgo
+                      return flightDate >= oneYearAgo
                     })
                     .map((ride) => {
+                      if (!ride.Flights?.date) return null
                       const [year, month, day] = ride.Flights.date
                         .split('-')
                         .map(Number)

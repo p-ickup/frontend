@@ -1,8 +1,9 @@
 'use client'
 
+import { addUnmatchedFlight } from '@/components/admin/groups-management/services/groupsWriteService'
 import { createBrowserClient } from '@/utils/supabase'
 import { Plane, Search, User, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type ChangeLogAction =
   | 'RUN_ALGORITHM'
@@ -45,7 +46,7 @@ export default function AddRider({
   onSuccess,
   logToChangeLog,
 }: AddRiderProps) {
-  const supabase = createBrowserClient()
+  const supabase = useMemo(() => createBrowserClient(), [])
   const [step, setStep] = useState<
     'select-school' | 'select-user' | 'flight-info'
   >('select-school')
@@ -69,21 +70,7 @@ export default function AddRider({
   const [carryOnBags, setCarryOnBags] = useState(0)
   const [submitting, setSubmitting] = useState(false)
 
-  // Fetch schools on mount
-  useEffect(() => {
-    if (isOpen && step === 'select-school') {
-      fetchSchools()
-    }
-  }, [isOpen, step])
-
-  // Fetch users when school is selected
-  useEffect(() => {
-    if (selectedSchool && step === 'select-user') {
-      fetchUsersBySchool(selectedSchool)
-    }
-  }, [selectedSchool, step])
-
-  const fetchSchools = async () => {
+  const fetchSchools = useCallback(async () => {
     setLoading(true)
     try {
       const { data, error } = await supabase
@@ -108,33 +95,50 @@ export default function AddRider({
     } finally {
       setLoading(false)
     }
-  }
+  }, [supabase])
 
-  const fetchUsersBySchool = async (school: string) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { data, error } = await supabase
-        .from('Users')
-        .select('user_id, firstname, lastname, school, email, phonenumber')
-        .eq('school', school)
-        .order('firstname')
-        .order('lastname')
+  const fetchUsersBySchool = useCallback(
+    async (school: string) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data, error } = await supabase
+          .from('Users')
+          .select('user_id, firstname, lastname, school, email, phonenumber')
+          .eq('school', school)
+          .order('firstname')
+          .order('lastname')
 
-      if (error) {
-        console.error('Error fetching users:', error)
+        if (error) {
+          console.error('Error fetching users:', error)
+          setError('Failed to fetch users')
+          return
+        }
+
+        setUsers(data || [])
+      } catch (err) {
+        console.error('Error fetching users:', err)
         setError('Failed to fetch users')
-        return
+      } finally {
+        setLoading(false)
       }
+    },
+    [supabase],
+  )
 
-      setUsers(data || [])
-    } catch (err) {
-      console.error('Error fetching users:', err)
-      setError('Failed to fetch users')
-    } finally {
-      setLoading(false)
+  // Fetch schools on mount
+  useEffect(() => {
+    if (isOpen && step === 'select-school') {
+      fetchSchools()
     }
-  }
+  }, [fetchSchools, isOpen, step])
+
+  // Fetch users when school is selected
+  useEffect(() => {
+    if (selectedSchool && step === 'select-user') {
+      fetchUsersBySchool(selectedSchool)
+    }
+  }, [fetchUsersBySchool, selectedSchool, step])
 
   const handleSchoolSelect = (school: string) => {
     setSelectedSchool(school)
@@ -198,23 +202,13 @@ export default function AddRider({
       e.stopPropagation()
     }
 
-    console.log('[AddRider] handleSubmit called', {
-      selectedUser: selectedUser?.user_id,
-      date,
-      timeRange,
-      flightNo,
-      airlineIata,
-    })
-
     if (!selectedUser) {
-      console.error('[AddRider] No user selected')
       setError('No user selected')
       return
     }
 
     // Validate required fields
     if (!date || !timeRange) {
-      console.error('[AddRider] Missing required fields', { date, timeRange })
       setError('Date and time range are required')
       return
     }
@@ -228,13 +222,11 @@ export default function AddRider({
       // Format without spaces: "12:00-16:00"
       timeRangeParts = timeRange.split('-').map((t) => t.trim())
     } else {
-      console.error('[AddRider] Invalid time range format', { timeRange })
       setError('Time range must be in format: HH:MM - HH:MM or HH:MM-HH:MM')
       return
     }
 
     if (timeRangeParts.length !== 2) {
-      console.error('[AddRider] Invalid time range format', { timeRange })
       setError('Time range must be in format: HH:MM - HH:MM or HH:MM-HH:MM')
       return
     }
@@ -245,12 +237,10 @@ export default function AddRider({
       !timeRegex.test(timeRangeParts[0]) ||
       !timeRegex.test(timeRangeParts[1])
     ) {
-      console.error('[AddRider] Invalid time format', { timeRangeParts })
       setError('Times must be in 24-hour format: HH:MM (e.g., 12:00, 16:00)')
       return
     }
 
-    console.log('[AddRider] Starting submission')
     setSubmitting(true)
     setError(null)
 
@@ -261,7 +251,6 @@ export default function AddRider({
       // Generate random flight number if not provided
       let finalFlightNo = flightNo
       if (!finalFlightNo) {
-        console.log('[AddRider] Generating random flight number')
         let attempts = 0
         const maxAttempts = 100
 
@@ -281,7 +270,7 @@ export default function AddRider({
 
           if (checkError) {
             console.error(
-              '[AddRider] Error checking for duplicate flight number:',
+              'Error checking for duplicate flight number:',
               checkError,
             )
             // If check fails, use the random number anyway
@@ -292,10 +281,6 @@ export default function AddRider({
           if (!existingFlights || existingFlights.length === 0) {
             // Flight number is available
             finalFlightNo = randomFlightNo
-            console.log(
-              '[AddRider] Generated unique flight number:',
-              finalFlightNo,
-            )
             break
           }
 
@@ -312,9 +297,8 @@ export default function AddRider({
       }
 
       // Insert flight (no duplicate check - multiple people can have the same flight on the same date)
-      const { data: flightData, error: flightError } = await supabase
-        .from('Flights')
-        .insert({
+      const flightData = await addUnmatchedFlight({
+        flight: {
           user_id: selectedUser.user_id,
           flight_no: finalFlightNo,
           airline_iata: airlineIata || null,
@@ -327,21 +311,11 @@ export default function AddRider({
           bag_no_large: checkedBags,
           bag_no_personal: carryOnBags,
           matched: false,
-          opt_in: true, // Default to opted in for unmatched
-        })
-        .select('flight_id')
-        .single()
+          opt_in: true,
+        },
+      })
 
-      if (flightError) {
-        console.error('Error creating flight:', flightError)
-        setError(
-          `Failed to create flight: ${flightError.message || 'Unknown error'}`,
-        )
-        setSubmitting(false)
-        return
-      }
-
-      if (!flightData) {
+      if (!flightData?.flightId) {
         setError('Flight was created but no data was returned')
         setSubmitting(false)
         return
@@ -363,8 +337,8 @@ export default function AddRider({
               action_description: `Added new unmatched rider: ${selectedUser.firstname} ${selectedUser.lastname} with ${flightIdentifier} on ${date}`,
               rider_name: `${selectedUser.firstname} ${selectedUser.lastname}`,
               rider_user_id: selectedUser.user_id,
-              rider_flight_id: flightData.flight_id,
-              flight_id: flightData.flight_id,
+              rider_flight_id: flightData.flightId,
+              flight_id: flightData.flightId,
               date: date,
               flight_no: finalFlightNo,
               airline_iata: airlineIata || null,
@@ -388,20 +362,12 @@ export default function AddRider({
         }
       }
 
-      console.log('[AddRider] Flight created successfully', { flightData })
-
       // Success - reset and close
       resetForm()
-      console.log('[AddRider] Calling onSuccess and onClose')
       onSuccess?.()
       onClose()
     } catch (err: any) {
-      console.error('[AddRider] Error submitting flight:', err)
-      console.error('[AddRider] Error details:', {
-        message: err?.message,
-        stack: err?.stack,
-        error: err,
-      })
+      console.error('Error submitting flight:', err)
       setError(
         `Failed to create flight: ${err?.message || 'Unknown error occurred'}`,
       )
@@ -727,15 +693,7 @@ export default function AddRider({
           {step === 'flight-info' && (
             <button
               type="button"
-              onClick={(e) => {
-                console.log('[AddRider] Create Flight button clicked', {
-                  submitting,
-                  date,
-                  timeRange,
-                  disabled: submitting || !date || !timeRange,
-                })
-                handleSubmit(e)
-              }}
+              onClick={handleSubmit}
               disabled={submitting || !date || !timeRange}
               className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
             >

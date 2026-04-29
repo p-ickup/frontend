@@ -4,9 +4,9 @@ import RedirectButton from '@/components/buttons/RedirectButton'
 import EmptyState from '@/components/results/EmptyState'
 import MatchCard from '@/components/results/MatchCard'
 import type { Database } from '@/lib/database.types'
-import { createBrowserClient } from '@/utils/supabase'
+import { postJson, requestJson } from '@/utils/api'
 import { isGroupReady } from '@/utils/groupReadiness'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 
 type Tables = Database['public']['Tables']
@@ -16,7 +16,6 @@ type Match = Tables['Matches']['Row']
 export interface MatchWithDetails extends Match {
   Flights: Database['public']['Tables']['Flights']['Row']
   Users: Database['public']['Tables']['Users']['Row']
-  Comments: Database['public']['Tables']['Comments']['Row'][] // Add this line
 }
 
 interface GroupedMatches {
@@ -52,19 +51,9 @@ export default function Results() {
   >({})
   const [showPrevious, setShowPrevious] = useState(false)
   const [loading, setLoading] = useState(true)
-  const supabase = createBrowserClient()
   const { user, isAuthenticated, signInWithGoogle } = useAuth()
 
-  useEffect(() => {
-    if (user) {
-      // console.log('Current User ID:', user.id);
-      void fetchMatches()
-    } else {
-      setLoading(false)
-    }
-  }, [user])
-
-  const fetchMatches = async () => {
+  const fetchMatches = useCallback(async () => {
     try {
       setLoading(true)
 
@@ -73,60 +62,18 @@ export default function Results() {
         return
       }
 
-      const { data: userRideIds, error: rideError } = await supabase
-        .from('Matches')
-        .select('ride_id')
-        .eq('user_id', user.id)
+      const result = await requestJson<{
+        success: boolean
+        matches: MatchWithDetails[]
+      }>('/api/results')
 
-      if (rideError) throw rideError
-      if (!userRideIds || userRideIds.length === 0) {
+      if (!result.matches || result.matches.length === 0) {
         setMatches({ upcoming: {}, previous: {} })
         setRideReadiness({})
         return
       }
 
-      // Step 2: Get all matches for those rides with user and flight details
-      const { data: allMatches, error: matchError } = await supabase
-        .from('Matches')
-        .select(
-          `
-        *,
-        Flights (*),
-        Users (*),
-        Comments (
-          *,
-          Users (
-            firstname
-          )
-        )
-      `,
-        )
-        .in(
-          'ride_id',
-          userRideIds.map((r) => r.ride_id),
-        )
-
-      // const { data: allMatches, error: matchError } = await supabase
-      //   .from('Matches')
-      //   .select(
-      //     `
-      //   *,
-      //   Flights (*),
-      //   Users (*)
-      // `,
-      //   )
-      //   .in(
-      //     'ride_id',
-      //     userRideIds.map((r) => r.ride_id),
-      //   )
-
-      if (matchError) throw matchError
-      if (!allMatches) throw new Error('No matches found')
-
-      // Include your own match so solo rides still appear (otherwise filtering
-      // out user_id === you removes every row when you're alone on a ride).
-      const matchesWithDetails: MatchWithDetails[] =
-        allMatches as MatchWithDetails[]
+      const matchesWithDetails = result.matches
 
       // Group into upcoming and previous, and then by ride_id
       const now = new Date()
@@ -173,9 +120,13 @@ export default function Results() {
         number,
         { isReady: boolean; matchDateTime: Date | null }
       > = {}
-      const rideIds = Array.from(new Set(allMatches.map((m) => m.ride_id)))
+      const rideIds = Array.from(
+        new Set(matchesWithDetails.map((match) => match.ride_id)),
+      )
       for (const rideId of rideIds) {
-        const rideMatches = allMatches.filter((m) => m.ride_id === rideId)
+        const rideMatches = matchesWithDetails.filter(
+          (match) => match.ride_id === rideId,
+        )
         const firstMatch = rideMatches[0]
         let matchDateTime: Date | null = null
         if (firstMatch?.date && firstMatch?.time) {
@@ -196,11 +147,9 @@ export default function Results() {
         const isReady = groupReadyAt != null || computedReady || timePassed
 
         if (computedReady && groupReadyAt == null) {
-          const { error: updateError } = await supabase
-            .from('Matches')
-            .update({ group_ready_at: new Date().toISOString() })
-            .eq('ride_id', rideId)
-          if (updateError) {
+          try {
+            await postJson('/api/matches/mark-group-ready', { rideId })
+          } catch (updateError) {
             console.error(
               `[results] Failed to set group_ready_at for ride ${rideId}:`,
               updateError,
@@ -212,7 +161,6 @@ export default function Results() {
       }
       setRideReadiness(readiness)
       setMatches(grouped)
-      console.log('Grouped matches:', grouped)
     } catch (error) {
       console.error('Error details:', error)
       setMatches({ upcoming: {}, previous: {} })
@@ -220,7 +168,16 @@ export default function Results() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    if (user) {
+      // console.log('Current User ID:', user.id);
+      void fetchMatches()
+    } else {
+      setLoading(false)
+    }
+  }, [user, fetchMatches])
 
   const deleteMatch = async (rideId: number) => {
     if (!user) {
@@ -229,139 +186,7 @@ export default function Results() {
     }
 
     try {
-      // 1. Fetch user's match and flight for this ride
-      const { data: userMatch, error: fetchMatchError } = await supabase
-        .from('Matches')
-        .select(
-          `
-          id,
-          flight_id,
-          date,
-          time,
-          is_subsidized,
-          Flights (
-            airport,
-            to_airport,
-            date,
-            earliest_time
-          )
-        `,
-        )
-        .eq('ride_id', rideId)
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (fetchMatchError) {
-        console.error('Error fetching user match:', fetchMatchError)
-        throw fetchMatchError
-      }
-      if (!userMatch) {
-        throw new Error('Match not found')
-      }
-
-      const flight = Array.isArray(userMatch.Flights)
-        ? userMatch.Flights[0]
-        : userMatch.Flights
-      const airport = (flight as { airport: string })?.airport || 'LAX'
-      const toAirport = (flight as { to_airport: boolean })?.to_airport ?? true
-      const flightDate = (flight as { date: string })?.date
-      const matchDate = userMatch.date || flightDate || ''
-      const matchTime =
-        userMatch.time ||
-        (flight as { earliest_time?: string })?.earliest_time ||
-        '12:00:00'
-
-      // 2. Compute fee-related fields
-      // Everyone who cancels has a match, so they're past the matching deadline by definition.
-      const cancelledAfterDeadline = true
-
-      const [year, month, day] = matchDate.split('-').map(Number)
-      const [hours, minutes] = matchTime.split(':').map(Number)
-      const matchDateTime = new Date(year, month - 1, day, hours, minutes)
-      const oneHourBeforeMatch = new Date(
-        matchDateTime.getTime() - 60 * 60 * 1000,
-      )
-      const cancelledBefore1hr = new Date() <= oneHourBeforeMatch
-
-      // 3. Insert into match_cancellations (audit for fee billing)
-      const { error: insertError } = await supabase
-        .from('match_cancellations')
-        .insert({
-          ride_id: rideId,
-          user_id: user.id,
-          flight_id: userMatch.flight_id,
-          match_date: matchDate,
-          match_time: matchTime.length === 5 ? `${matchTime}:00` : matchTime,
-          airport,
-          to_airport: toAirport,
-          is_subsidized: userMatch.is_subsidized ?? null,
-          cancelled_after_deadline: cancelledAfterDeadline,
-          cancelled_before_1hr: cancelledBefore1hr,
-          cancellation_type: 'student_initiated',
-        })
-
-      if (insertError) {
-        console.error('Error logging cancellation:', insertError)
-        // Don't throw - proceed with deletion; audit is best-effort
-      }
-
-      // 4. Get all matches for this ride (need flight_id to update Flights when deleting all)
-      const { data: allRideMatches, error: fetchAllError } = await supabase
-        .from('Matches')
-        .select('user_id, flight_id')
-        .eq('ride_id', rideId)
-
-      if (fetchAllError) {
-        console.error('Error fetching ride matches:', fetchAllError)
-        throw fetchAllError
-      }
-
-      // 5. Delete matches
-      if (allRideMatches && allRideMatches.length <= 2) {
-        const { error: deleteAllError } = await supabase
-          .from('Matches')
-          .delete()
-          .eq('ride_id', rideId)
-
-        if (deleteAllError) {
-          console.error('Error deleting all matches:', deleteAllError)
-          throw deleteAllError
-        }
-      } else {
-        const { error: deleteUserError } = await supabase
-          .from('Matches')
-          .delete()
-          .eq('ride_id', rideId)
-          .eq('user_id', user.id)
-
-        if (deleteUserError) {
-          console.error('Error deleting user match:', deleteUserError)
-          throw deleteUserError
-        }
-      }
-
-      // 6. Set Flights.matched = false for all affected users
-      // When we deleted all matches (<=2), every user in the ride is now unmatched.
-      // When we deleted only one match (>2), only the cancelling user is unmatched.
-      const flightIdsToUpdate =
-        allRideMatches && allRideMatches.length <= 2
-          ? allRideMatches.map((m) => m.flight_id)
-          : [userMatch.flight_id]
-
-      for (const fid of flightIdsToUpdate) {
-        const { error: updateFlightError } = await supabase
-          .from('Flights')
-          .update({ matched: false })
-          .eq('flight_id', fid)
-
-        if (updateFlightError) {
-          console.error(
-            `Error updating flight ${fid} matched status:`,
-            updateFlightError,
-          )
-        }
-      }
-
+      await postJson('/api/matches/cancel', { rideId })
       await fetchMatches()
     } catch (error) {
       console.error('Error in delete operation:', error)

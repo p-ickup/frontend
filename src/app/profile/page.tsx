@@ -1,8 +1,9 @@
 'use client'
 
+import { postJson } from '@/utils/api'
 import { createBrowserClient } from '@/utils/supabase'
 import Image from 'next/image'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   validateImage,
   compressImage,
@@ -13,7 +14,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { FileUploadInfo } from '@/components/ui/file-upload-info'
 
 export default function Questionnaire() {
-  const supabase = createBrowserClient()
+  const supabase = useMemo(() => createBrowserClient(), [])
   const { updateAvatarUrl } = useAuth()
 
   const [firstname, setFirstName] = useState('')
@@ -77,7 +78,7 @@ export default function Questionnaire() {
     }
 
     fetchUserData()
-  }, [])
+  }, [supabase])
 
   // Delete old profile picture from storage
   const deleteOldPhoto = async (photoUrl: string) => {
@@ -199,11 +200,10 @@ export default function Questionnaire() {
       }
     }
 
-    const { data, error } = await supabase.from('Users').upsert(
-      [
-        {
-          user_id: user.id,
-          email: email, // User's preferred contact email
+    try {
+      await postJson('/api/profile', {
+        profile: {
+          email, // User's preferred contact email
           firstname,
           lastname,
           school,
@@ -212,25 +212,24 @@ export default function Questionnaire() {
           photo_url: updatedPhotoUrl,
           instagram: instagram || null,
         },
-      ],
-      { onConflict: 'user_id' },
-    )
-
-    if (error) {
+      })
+    } catch (error) {
+      console.error('Error saving profile:', error)
       setMessage('Something went wrong. Please try again.')
-    } else {
-      setMessage(
-        hasProfile
-          ? '✅ Profile updated successfully!'
-          : //  \n Any profile picture changes will appear upon refresh.
-            '✅ Profile created successfully!',
-      )
-      setHasProfile(true)
-      setPhotoUrl(updatedPhotoUrl)
-      // Update the avatar URL in the header immediately
-      updateAvatarUrl(updatedPhotoUrl)
-      setPhoto(null) // Clear the file input
+      return
     }
+
+    setMessage(
+      hasProfile
+        ? '✅ Profile updated successfully!'
+        : //  \n Any profile picture changes will appear upon refresh.
+          '✅ Profile created successfully!',
+    )
+    setHasProfile(true)
+    setPhotoUrl(updatedPhotoUrl)
+    // Update the avatar URL in the header immediately
+    updateAvatarUrl(updatedPhotoUrl)
+    setPhoto(null) // Clear the file input
   }
 
   return (

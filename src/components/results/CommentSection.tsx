@@ -1,23 +1,25 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { createBrowserClient } from '@/utils/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import type { Database } from '@/lib/database.types'
+import { postJson, requestJson } from '@/utils/api'
 
 type Comment = Database['public']['Tables']['Comments']['Row']
-type User = Database['public']['Tables']['Users']['Row']
+type UserSummary = {
+  user_id: string
+  firstname: string | null
+}
 
 type CommentWithUser = Comment & {
-  user?: User
+  user?: UserSummary | null
 }
 
 export default function CommentSection({ rideId }: { rideId: number }) {
   const [newComment, setNewComment] = useState('')
   const [commentList, setCommentList] = useState<CommentWithUser[]>([])
-  const supabase = createBrowserClient()
   const { user } = useAuth()
-  const [userDetails, setUserDetails] = useState<User | null>(null)
+  const [userDetails, setUserDetails] = useState<UserSummary | null>(null)
 
   const bottomRef = useRef<HTMLDivElement | null>(null)
 
@@ -27,51 +29,31 @@ export default function CommentSection({ rideId }: { rideId: number }) {
   }, [commentList])
 
   useEffect(() => {
-    if (user?.id) {
-      const fetchUserDetails = async () => {
-        const { data, error } = await supabase
-          .from('Users')
-          .select(
-            'user_id, created_at, firstname, lastname, phonenumber, school, photo_url, instagram, email, sms_opt_in',
-          )
-          .eq('user_id', user.id)
-          .single()
-
-        if (error) {
-          console.error('Error fetching user details:', error)
-        } else {
-          setUserDetails(data)
-        }
-      }
-
-      fetchUserDetails()
-    }
-  }, [user?.id])
-
-  useEffect(() => {
     const fetchComments = async () => {
-      const { data, error } = await supabase
-        .from('Comments')
-        .select('*, user:Users(user_id, firstname)')
-        .eq('ride_id', rideId)
-        .order('created_at', { ascending: true })
+      try {
+        const result = await requestJson<{
+          success: boolean
+          comments: CommentWithUser[]
+          currentUser: UserSummary | null
+        }>(`/api/comments?rideId=${rideId}`)
 
-      if (error) {
+        setCommentList(result.comments || [])
+        setUserDetails(result.currentUser)
+      } catch (error) {
         console.error('Error fetching comments:', error)
-      } else {
-        setCommentList(data)
       }
     }
 
-    fetchComments()
-  }, [rideId])
+    void fetchComments()
+  }, [rideId, user?.id])
 
   const handleAddComment = async () => {
     const trimmed = newComment.trim()
     if (!trimmed || !user || !userDetails) return
 
+    const optimisticId = -Date.now()
     const optimisticComment: CommentWithUser = {
-      id: -1,
+      id: optimisticId,
       ride_id: rideId,
       user_id: user.id,
       comment: trimmed,
@@ -82,33 +64,23 @@ export default function CommentSection({ rideId }: { rideId: number }) {
     setCommentList((prev) => [...prev, optimisticComment])
     setNewComment('')
 
-    const { data, error } = await supabase
-      .from('Comments')
-      .insert({
-        ride_id: rideId,
-        user_id: user.id,
+    try {
+      const result = await postJson<{
+        success: boolean
+        comment: CommentWithUser
+      }>('/api/comments', {
+        rideId,
         comment: trimmed,
       })
-      .select('*, user:Users(user_id, firstname)')
-      .single()
 
-    if (error || !data) {
-      console.error('Error adding comment:', error)
       setCommentList((prev) =>
-        prev.filter((c) => c.id !== optimisticComment.id),
+        prev.map((comment) =>
+          comment.id === optimisticId ? result.comment : comment,
+        ),
       )
-    } else {
-      const { data: updatedComments, error: refetchError } = await supabase
-        .from('Comments')
-        .select('*, user:Users(user_id, firstname)')
-        .eq('ride_id', rideId)
-        .order('created_at', { ascending: true })
-
-      if (refetchError) {
-        console.error('Error refetching comments:', refetchError)
-      } else {
-        setCommentList(updatedComments)
-      }
+    } catch (error) {
+      console.error('Error adding comment:', error)
+      setCommentList((prev) => prev.filter((c) => c.id !== optimisticId))
     }
   }
 
