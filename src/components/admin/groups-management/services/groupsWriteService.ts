@@ -35,6 +35,7 @@ export const logChangeLogEntry = async ({
   metadata,
   targetGroupId,
   targetUserId,
+  changeBatchId,
   confirmed = false,
 }: {
   supabase: GroupsSupabaseClient
@@ -43,6 +44,7 @@ export const logChangeLogEntry = async ({
   metadata?: any
   targetGroupId?: number
   targetUserId?: string
+  changeBatchId?: string
   confirmed?: boolean
 }) => {
   await runAdminGroupCommand('log_change_log_entry', {
@@ -51,6 +53,7 @@ export const logChangeLogEntry = async ({
     metadata,
     targetGroupId,
     targetUserId,
+    changeBatchId,
     confirmed,
   })
 }
@@ -291,37 +294,6 @@ export const confirmChangeLogEntries = async ({
   changeLogIds: string[]
 }) => {
   await runAdminGroupCommand('confirm_change_log_entries', { changeLogIds })
-}
-
-export const findRelatedGroupChangeLogIds = async ({
-  rideId,
-}: {
-  supabase: GroupsSupabaseClient
-  rideId: number
-}) => {
-  const result = await runAdminGroupCommand<{ ids: string[] }>(
-    'find_related_group_change_log_ids',
-    { rideId },
-  )
-  return result.ids || []
-}
-
-export const findPendingUnmatchedChangeLogIds = async ({
-  userId,
-  flightId,
-}: {
-  supabase: GroupsSupabaseClient
-  userId: string
-  flightId: number
-}) => {
-  const result = await runAdminGroupCommand<{ ids: string[] }>(
-    'find_pending_unmatched_change_log_ids',
-    {
-      userId,
-      flightId,
-    },
-  )
-  return result.ids || []
 }
 
 export const createGroupRecords = async ({

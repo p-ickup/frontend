@@ -25,7 +25,6 @@ import {
   deleteGroupRecords,
   deleteRiderMatches,
   fetchRiderByFlightId,
-  findPendingUnmatchedChangeLogIds,
   logChangeLogEntry,
   markFlightsMatchedState,
   normalizeVoucherInput,
@@ -252,28 +251,25 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       targetGroupId?: number,
       targetUserId?: string,
       confirmed: boolean = false,
+      changeBatchId?: string,
     ) => {
-      try {
-        const currentUser = authUser || user
-        if (!currentUser) {
-          return
-        }
-
-        await logChangeLogEntry({
-          supabase,
-          actorUserId: currentUser.id,
-          action,
-          metadata,
-          targetGroupId,
-          targetUserId,
-          confirmed,
-        })
-
-        await new Promise((resolve) => setTimeout(resolve, 200))
-        await fetchChangeLog()
-      } catch (error) {
-        console.error('Error in logToChangeLog:', error)
+      const currentUser = authUser || user
+      if (!currentUser) {
+        return
       }
+
+      await logChangeLogEntry({
+        supabase,
+        actorUserId: currentUser.id,
+        action,
+        metadata,
+        targetGroupId,
+        targetUserId,
+        changeBatchId,
+        confirmed,
+      })
+
+      await fetchChangeLog()
     },
     [authUser, user, supabase, fetchChangeLog],
   )
@@ -1572,11 +1568,16 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
         // Auto-confirm unmatched individual change if rider was previously unmatched
         // Check if there's an unconfirmed ChangeLog entry for this flight_id where they were removed to unmatched
-        const unmatchedChangeLogIds = await findPendingUnmatchedChangeLogIds({
-          supabase,
-          userId: rider.user_id,
-          flightId: rider.flight_id,
-        })
+        const pendingUnmatchedItem = unmatchedIndividuals.find(
+          (item) => item.rider.flight_id === rider.flight_id,
+        )
+        const unmatchedChangeLogIds =
+          pendingUnmatchedItem?.changeLogIds &&
+          pendingUnmatchedItem.changeLogIds.length > 0
+            ? pendingUnmatchedItem.changeLogIds
+            : pendingUnmatchedItem?.changeLogId
+              ? [pendingUnmatchedItem.changeLogId]
+              : []
 
         if (unmatchedChangeLogIds.length > 0) {
           await confirmChangeLogEntries({
@@ -1770,6 +1771,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         }
 
         // Log to ChangeLog
+        const changeBatchId = crypto.randomUUID()
+
         // If rider came from another group, log REMOVE_FROM_GROUP first
         if (sourceGroupId) {
           await logToChangeLog(
@@ -1785,6 +1788,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             },
             sourceGroupId, // Set target_group_id to the source group that was changed
             rider.user_id,
+            false,
+            changeBatchId,
           )
         }
 
@@ -1802,6 +1807,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           },
           group.ride_id, // Set target_group_id to the group that was changed
           rider.user_id,
+          false,
+          changeBatchId,
         )
 
         // Refresh Changed Groups so the group appears immediately without page refresh
@@ -1823,6 +1830,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       supabase,
       corralRiders,
       computeGroupSubsidized,
+      unmatchedIndividuals,
     ],
   )
 
@@ -2020,11 +2028,16 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       })
 
       for (const rider of selectedRidersForNewGroup) {
-        const changeLogIds = await findPendingUnmatchedChangeLogIds({
-          supabase,
-          userId: rider.user_id,
-          flightId: rider.flight_id,
-        })
+        const pendingUnmatchedItem = unmatchedIndividuals.find(
+          (item) => item.rider.flight_id === rider.flight_id,
+        )
+        const changeLogIds =
+          pendingUnmatchedItem?.changeLogIds &&
+          pendingUnmatchedItem.changeLogIds.length > 0
+            ? pendingUnmatchedItem.changeLogIds
+            : pendingUnmatchedItem?.changeLogId
+              ? [pendingUnmatchedItem.changeLogId]
+              : []
 
         if (changeLogIds.length > 0) {
           await confirmChangeLogEntries({
@@ -2050,6 +2063,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           is_subsidized: calculatedIsSubsidized,
         },
         rideId,
+        undefined,
+        false,
+        crypto.randomUUID(),
       )
 
       const selectedFlightIds = new Set(
@@ -2084,6 +2100,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     newGroupVoucher,
     selectedRidersForNewGroup,
     supabase,
+    unmatchedIndividuals,
   ])
 
   // Add rider to new group selection
@@ -2908,15 +2925,16 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       onClick={async () => {
                         try {
                           setErrorMessage(null)
-                          const endDefault = new Date()
-                          const startDefault = new Date()
-                          startDefault.setDate(startDefault.getDate() - 90)
-                          const rangeStart =
-                            dateRangeStart ||
-                            startDefault.toISOString().split('T')[0]
-                          const rangeEnd =
-                            dateRangeEnd ||
-                            endDefault.toISOString().split('T')[0]
+                          const rangeStart = dateRangeStart
+                          const rangeEnd = dateRangeEnd
+
+                          if (!rangeStart || !rangeEnd) {
+                            setErrorMessage(
+                              'Please select both a start and end date before downloading the matched CSV.',
+                            )
+                            setTimeout(() => setErrorMessage(null), 5000)
+                            return
+                          }
 
                           const { data: matchesData, error: matchesError } =
                             await supabase
@@ -3084,6 +3102,17 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       onClick={async () => {
                         try {
                           setErrorMessage(null)
+                          const rangeStart = dateRangeStart
+                          const rangeEnd = dateRangeEnd
+
+                          if (!rangeStart || !rangeEnd) {
+                            setErrorMessage(
+                              'Please select both a start and end date before downloading the unmatched CSV.',
+                            )
+                            setTimeout(() => setErrorMessage(null), 5000)
+                            return
+                          }
+
                           const { data: flightsData, error: flightsError } =
                             await supabase
                               .from('Flights')
@@ -3091,8 +3120,8 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                                 'flight_id, date, earliest_time, latest_time, airport, to_airport, airline_iata, flight_no, bag_no_personal, bag_no, bag_no_large, user_id',
                               )
                               .eq('matched', false)
-                              .gte('date', '2026-01-10')
-                              .lte('date', '2026-01-24')
+                              .gte('date', rangeStart)
+                              .lte('date', rangeEnd)
                               .order('date', { ascending: true })
                               .order('earliest_time', { ascending: true })
                               .order('flight_id', { ascending: true })
@@ -3200,7 +3229,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                           const url = window.URL.createObjectURL(blob)
                           const link = document.createElement('a')
                           link.href = url
-                          link.download = `unmatched-${new Date().toISOString().split('T')[0]}.csv`
+                          link.download = `unmatched-${rangeStart}-to-${rangeEnd}.csv`
                           link.click()
                           window.URL.revokeObjectURL(url)
                         } catch (error: any) {

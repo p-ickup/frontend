@@ -15,7 +15,6 @@ const refreshChangeLogMock = jest.fn().mockResolvedValue(undefined)
 const refreshUnconfirmedMock = jest.fn().mockResolvedValue(undefined)
 
 const createGroupRecordsMock = jest.fn()
-const findPendingUnmatchedChangeLogIdsMock = jest.fn().mockResolvedValue([])
 const confirmChangeLogEntriesMock = jest.fn().mockResolvedValue(undefined)
 const logChangeLogEntryMock = jest.fn().mockResolvedValue(undefined)
 
@@ -66,8 +65,6 @@ jest.mock(
     deleteGroupRecords: jest.fn(),
     deleteRiderMatches: jest.fn(),
     fetchRiderByFlightId: jest.fn(),
-    findPendingUnmatchedChangeLogIds: (...args: unknown[]) =>
-      findPendingUnmatchedChangeLogIdsMock(...args),
     logChangeLogEntry: (...args: unknown[]) => logChangeLogEntryMock(...args),
     markFlightsMatchedState: jest.fn(),
     normalizeVoucherInput: (voucher: string) => {
@@ -209,6 +206,8 @@ const adminUser = {
   email: 'admin@example.com',
 } as any
 
+const randomUuidMock = jest.fn(() => 'batch-uuid-1')
+
 const openCreateGroupPanel = async () => {
   await userEvent.click(screen.getByTitle(/Expand sidebar/i))
   const createGroupButtons = screen.getAllByRole('button', {
@@ -220,6 +219,12 @@ const openCreateGroupPanel = async () => {
 describe('GroupsManagement', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    Object.defineProperty(globalThis, 'crypto', {
+      value: {
+        randomUUID: randomUuidMock,
+      },
+      configurable: true,
+    })
     createGroupRecordsMock.mockResolvedValue({
       rideId: 555,
       normalizedVoucher: '',

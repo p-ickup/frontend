@@ -1,7 +1,6 @@
 import { GeistSans } from 'geist/font/sans'
 import ThemeProvider from '@/providers/ThemeProvider'
 import NextTopLoader from 'nextjs-toploader'
-import { Analytics } from '@vercel/analytics/react'
 import './globals.css'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import ReactQueryProvider from '@/providers/ReactQueryProvider'
@@ -39,7 +38,6 @@ export default function RootLayout({
                 <PickupHeader />
                 <div className="flex-1">{children}</div>
                 <PickupFooter />
-                <Analytics />
               </div>
               <ReactQueryDevtools initialIsOpen={false} />
             </TooltipProvider>

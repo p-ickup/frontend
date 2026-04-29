@@ -25,11 +25,13 @@ export default function PickupHeader() {
       }
 
       try {
-        const { data: userProfile } = await supabase
+        const { data: userProfiles } = await supabase
           .from('Users')
           .select('role')
           .eq('user_id', user.id)
-          .maybeSingle()
+          .limit(1)
+
+        const userProfile = userProfiles?.[0] || null
 
         if (userProfile?.role) {
           const normalizedRole = userProfile.role.toLowerCase()

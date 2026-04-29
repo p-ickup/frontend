@@ -5,8 +5,6 @@ import { useState } from 'react'
 
 import {
   confirmChangeLogEntries,
-  findPendingUnmatchedChangeLogIds,
-  findRelatedGroupChangeLogIds,
   sendAllMatchEmailsBatch,
 } from './services/groupsWriteService'
 import {
@@ -590,14 +588,10 @@ export default function ChangesPanel() {
                       new Set(prev).add(changedGroup.group.ride_id),
                     )
                     try {
-                      const relatedChangeLogIds =
-                        await findRelatedGroupChangeLogIds({
-                          supabase,
-                          rideId: changedGroup.group.ride_id,
-                        })
                       const changeLogIds =
-                        relatedChangeLogIds.length > 0
-                          ? relatedChangeLogIds
+                        changedGroup.changeLogIds &&
+                        changedGroup.changeLogIds.length > 0
+                          ? changedGroup.changeLogIds
                           : changedGroup.changeLogId
                             ? [changedGroup.changeLogId]
                             : []
@@ -611,7 +605,7 @@ export default function ChangesPanel() {
 
                       try {
                         await logToChangeLog(
-                          'UPDATE_GROUP_TIME',
+                          'EMAIL_CONFIRMED',
                           {
                             email_confirmed: true,
                             ride_id: changedGroup.group.ride_id,
@@ -624,7 +618,7 @@ export default function ChangesPanel() {
                               (rider: any) => rider.user_id,
                             ),
                           },
-                          undefined,
+                          changedGroup.group.ride_id,
                           undefined,
                           true,
                         )
@@ -770,16 +764,9 @@ export default function ChangesPanel() {
                       )
 
                       try {
-                        const relatedChangeLogIds =
-                          await findPendingUnmatchedChangeLogIds({
-                            supabase,
-                            userId: item.rider.user_id,
-                            flightId: item.rider.flight_id,
-                          })
-
                         const changeLogIds =
-                          relatedChangeLogIds.length > 0
-                            ? relatedChangeLogIds
+                          item.changeLogIds && item.changeLogIds.length > 0
+                            ? item.changeLogIds
                             : item.changeLogId
                               ? [item.changeLogId]
                               : []

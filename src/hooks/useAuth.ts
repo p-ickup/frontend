@@ -35,11 +35,13 @@ export function useAuth() {
     if (!userData) return null
 
     try {
-      const { data: userProfile } = await supabase
+      const { data: userProfiles } = await supabase
         .from('Users')
         .select('photo_url')
         .eq('user_id', userData.id)
-        .single()
+        .limit(1)
+
+      const userProfile = userProfiles?.[0] || null
 
       if (userProfile?.photo_url) {
         return userProfile.photo_url
@@ -115,10 +117,21 @@ export function useAuth() {
 
   // Login with Google
   const signInWithGoogle = async () => {
-    // Use the current domain for the callback URL
-    const callbackUrl =
-      process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL ||
-      `${window.location.origin}/auth/callback`
+    const isLocalHost =
+      typeof window !== 'undefined' &&
+      ['localhost', '0.0.0.0', '127.0.0.1'].includes(window.location.hostname)
+
+    const normalizedOrigin =
+      isLocalHost && typeof window !== 'undefined'
+        ? `http://localhost:${window.location.port || '3000'}`
+        : window.location.origin
+
+    // In local development, always force a local callback URL even if a
+    // production NEXT_PUBLIC_AUTH_CALLBACK_URL is present in the environment.
+    const callbackUrl = isLocalHost
+      ? `${normalizedOrigin}/auth/callback`
+      : process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL ||
+        `${normalizedOrigin}/auth/callback`
 
     // console.log('useAuth: signInWithGoogle called from:', window.location.origin)
     // console.log('useAuth: callbackUrl will be:', callbackUrl)

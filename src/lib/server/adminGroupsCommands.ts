@@ -66,6 +66,7 @@ export const logChangeLogEntry = async ({
   metadata,
   targetGroupId,
   targetUserId,
+  changeBatchId,
   confirmed = false,
 }: {
   supabase: GroupsSupabaseClient
@@ -74,6 +75,7 @@ export const logChangeLogEntry = async ({
   metadata?: any
   targetGroupId?: number
   targetUserId?: string
+  changeBatchId?: string
   confirmed?: boolean
 }) => {
   const { data: userProfile, error: roleError } = await supabase
@@ -102,6 +104,7 @@ export const logChangeLogEntry = async ({
     actor_user_id: actorUserId,
     actor_role: userProfile?.role || 'Admin',
     action,
+    change_batch_id: changeBatchId || null,
     target_group_id: targetGroupId || null,
     target_user_id: targetUserId || null,
     metadata: serializedMetadata,
@@ -478,67 +481,6 @@ export const confirmChangeLogEntries = async ({
   if (error) {
     throw createError(error, 'Failed to confirm change log entries')
   }
-}
-
-export const findRelatedGroupChangeLogIds = async ({
-  supabase,
-  rideId,
-}: {
-  supabase: GroupsSupabaseClient
-  rideId: number
-}) => {
-  const { data, error } = await supabase
-    .from('ChangeLog')
-    .select('id')
-    .eq('confirmed', false)
-    .in('action', [
-      'UPDATE_GROUP_TIME',
-      'ADD_TO_GROUP',
-      'REMOVE_FROM_GROUP',
-      'CREATE_GROUP',
-      'DELETE_GROUP',
-    ])
-    .or(
-      `metadata->>ride_id.eq.${rideId},metadata->>to_group.eq.${rideId},metadata->>from_group.eq.${rideId}`,
-    )
-
-  if (error) {
-    throw createError(error, 'Failed to find related group changes')
-  }
-
-  return (data || []).map((entry: any) => entry.id)
-}
-
-export const findPendingUnmatchedChangeLogIds = async ({
-  supabase,
-  userId,
-  flightId,
-}: {
-  supabase: GroupsSupabaseClient
-  userId: string
-  flightId: number
-}) => {
-  const { data, error } = await supabase
-    .from('ChangeLog')
-    .select('id, metadata')
-    .eq('confirmed', false)
-    .eq('action', 'REMOVE_FROM_GROUP')
-    .eq('target_user_id', userId)
-
-  if (error) {
-    throw createError(error, 'Failed to find unmatched change logs')
-  }
-
-  return (data || [])
-    .filter((entry: any) => {
-      const metadata = entry.metadata || {}
-      return (
-        metadata.to === 'unmatched' &&
-        (metadata.rider_flight_id === flightId ||
-          metadata.flight_id === flightId)
-      )
-    })
-    .map((entry: any) => entry.id)
 }
 
 export const createGroupRecords = async ({

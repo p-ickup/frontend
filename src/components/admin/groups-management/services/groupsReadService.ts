@@ -21,6 +21,7 @@ type PendingChangeRow = {
   metadata?: any
   created_at: string
   action: string
+  change_batch_id?: string | null
   confirmed?: boolean
   target_group_id?: number | string | null
   target_user_id?: string | null
@@ -168,7 +169,7 @@ const resolveGroupChangeTypes = (
 }
 
 const deleteReversedPendingChanges = async (
-  supabase: GroupsSupabaseClient,
+  _supabase: GroupsSupabaseClient,
   groups: Group[],
   changes: PendingChangeRow[],
 ): Promise<PendingChangeRow[]> => {
@@ -277,30 +278,11 @@ const deleteReversedPendingChanges = async (
   }
 
   const uniqueChangeIds = Array.from(new Set(changesToDelete))
-  const { error: deleteError } = await supabase
-    .from('ChangeLog')
-    .delete()
-    .in('id', uniqueChangeIds)
+  const deletedIds = new Set(uniqueChangeIds)
 
-  if (deleteError) {
-    throw createError(
-      deleteError,
-      'Failed to delete reversed change log entries',
-    )
-  }
-
-  const { data: refreshedChanges, error } = await supabase
-    .from('ChangeLog')
-    .select('id, metadata, created_at, action, confirmed, target_group_id')
-    .eq('confirmed', false)
-    .in('action', CHANGE_ACTIONS)
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    throw createError(error, 'Failed to reload pending changes')
-  }
-
-  return refreshedChanges || []
+  // Treat reversed add/remove pairs as resolved for the pending UI without
+  // mutating the audit trail itself.
+  return changes.filter((change) => !deletedIds.has(change.id))
 }
 
 export const fetchLastAlgorithmRunWindow = async (
@@ -692,6 +674,7 @@ export const fetchChangeLogEntries = async (
       actor_role,
       action,
       algorithm_run_id,
+      change_batch_id,
       target_group_id,
       target_user_id,
       ignored_error,
@@ -740,6 +723,7 @@ export const fetchChangeLogEntries = async (
       actor_role: entry.actor_role,
       action: entry.action,
       algorithm_run_id: entry.algorithm_run_id,
+      change_batch_id: entry.change_batch_id,
       target_group_id: entry.target_group_id,
       target_user_id: entry.target_user_id,
       ignored_error: entry.ignored_error,
@@ -764,7 +748,9 @@ export const fetchPendingChangesSnapshot = async ({
 }): Promise<PendingChangesSnapshot> => {
   const { data, error } = await supabase
     .from('ChangeLog')
-    .select('id, metadata, created_at, action, confirmed, target_group_id')
+    .select(
+      'id, metadata, created_at, action, change_batch_id, confirmed, target_group_id',
+    )
     .eq('confirmed', false)
     .in('action', CHANGE_ACTIONS)
     .order('created_at', { ascending: false })
@@ -794,6 +780,7 @@ export const fetchPendingChangesSnapshot = async ({
       date: string
       becameUnmatchedAt: string
       changeLogId: string
+      changeLogIds: string[]
     }
   >()
 
@@ -817,8 +804,16 @@ export const fetchPendingChangesSnapshot = async ({
         date: metadata.date || '',
         becameUnmatchedAt: change.created_at,
         changeLogId: change.id,
+        changeLogIds: existing
+          ? Array.from(new Set([...existing.changeLogIds, change.id]))
+          : [change.id],
       })
+      return
     }
+
+    existing.changeLogIds = Array.from(
+      new Set([...existing.changeLogIds, change.id]),
+    )
   })
 
   const finalGroupChanges = new Map<
@@ -827,6 +822,7 @@ export const fetchPendingChangesSnapshot = async ({
       changeType: 'modified' | 'deleted'
       changedAt: string
       changeLogId: string
+      changeLogIds: string[]
     }
   >()
 
@@ -843,8 +839,16 @@ export const fetchPendingChangesSnapshot = async ({
         changeType: change.action === 'DELETE_GROUP' ? 'deleted' : 'modified',
         changedAt: change.created_at,
         changeLogId: change.id,
+        changeLogIds: existing
+          ? Array.from(new Set([...existing.changeLogIds, change.id]))
+          : [change.id],
       })
+      return
     }
+
+    existing.changeLogIds = Array.from(
+      new Set([...existing.changeLogIds, change.id]),
+    )
   })
 
   const changeTypesByGroup = resolveGroupChangeTypes(processedChanges)
@@ -866,6 +870,7 @@ export const fetchPendingChangesSnapshot = async ({
       changedAt: changeInfo.changedAt,
       emailsSent: false,
       changeLogId: changeInfo.changeLogId,
+      changeLogIds: changeInfo.changeLogIds,
       changeDescriptions: consolidateChangeDescriptions(rawDescriptions),
     })
   })
@@ -960,6 +965,7 @@ export const fetchPendingChangesSnapshot = async ({
       becameUnmatchedAt: change.becameUnmatchedAt,
       emailSent: false,
       changeLogId: change.changeLogId,
+      changeLogIds: change.changeLogIds,
     })
   })
 

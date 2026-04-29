@@ -61,6 +61,7 @@ export interface ChangeLogEntry {
     | 'ADD_FLIGHT'
     | 'ASPC_DELAY'
   algorithm_run_id?: string | null
+  change_batch_id?: string | null
   target_group_id?: string | null
   target_user_id?: string | null
   ignored_error: boolean
@@ -89,6 +90,7 @@ export interface ChangedGroup {
   changedAt: string
   emailsSent: boolean
   changeLogId?: string
+  changeLogIds?: string[]
   changeDescriptions?: string[]
 }
 
@@ -97,6 +99,7 @@ export interface UnmatchedIndividual {
   becameUnmatchedAt: string
   emailSent: boolean
   changeLogId?: string
+  changeLogIds?: string[]
 }
 
 export interface EditRiderForm {
