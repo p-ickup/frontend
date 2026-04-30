@@ -123,7 +123,7 @@ const MatchCard = ({
   const getProfileUrl = (photoPath: string | null) => {
     if (!photoPath) return '/images/profileIcon.webp'
     if (photoPath.startsWith('/images')) return photoPath
-    if (photoPath.includes('supabase.co')) return photoPath
+    if (/^https?:\/\//i.test(photoPath)) return photoPath
 
     // Check cache first
     if (urlCache[photoPath]) {

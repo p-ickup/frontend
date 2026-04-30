@@ -121,17 +121,21 @@ export function useAuth() {
       typeof window !== 'undefined' &&
       ['localhost', '0.0.0.0', '127.0.0.1'].includes(window.location.hostname)
 
-    const normalizedOrigin =
-      isLocalHost && typeof window !== 'undefined'
-        ? `http://localhost:${window.location.port || '3000'}`
-        : window.location.origin
+    const callbackOrigin =
+      typeof window !== 'undefined'
+        ? window.location.origin
+        : process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL?.replace(
+            /\/auth\/callback$/,
+            '',
+          ) || 'http://localhost:3000'
 
-    // In local development, always force a local callback URL even if a
-    // production NEXT_PUBLIC_AUTH_CALLBACK_URL is present in the environment.
+    // In local development, preserve the exact host that started the OAuth
+    // flow. PKCE stores the verifier on the initiating origin, so localhost
+    // must return to localhost and 0.0.0.0 must return to 0.0.0.0.
     const callbackUrl = isLocalHost
-      ? `${normalizedOrigin}/auth/callback`
+      ? `${callbackOrigin}/auth/callback`
       : process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL ||
-        `${normalizedOrigin}/auth/callback`
+        `${callbackOrigin}/auth/callback`
 
     // console.log('useAuth: signInWithGoogle called from:', window.location.origin)
     // console.log('useAuth: callbackUrl will be:', callbackUrl)

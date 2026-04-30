@@ -19,13 +19,26 @@ const splitName = (fullName: string | null | undefined) => {
   return { firstname, lastname }
 }
 
+const getRequestOrigin = (request: Request, requestUrl: URL) => {
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  const host =
+    request.headers.get('x-forwarded-host') || request.headers.get('host')
+
+  if (host) {
+    return `${forwardedProto || requestUrl.protocol.replace(':', '')}://${host}`
+  }
+
+  return requestUrl.origin
+}
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
+  const requestOrigin = getRequestOrigin(request, requestUrl)
   const code = requestUrl.searchParams.get('code')
   const redirectTo = requestUrl.searchParams.get('redirectTo') || '/' // Default to home
   const errorRedirect = (message: string) =>
     NextResponse.redirect(
-      `${requestUrl.origin}/?authError=${encodeURIComponent(message)}`,
+      `${requestOrigin}/?authError=${encodeURIComponent(message)}`,
     )
 
   if (!code) {
@@ -44,48 +57,52 @@ export async function GET(request: Request) {
 
     const user = data.user
     if (user) {
-      const serviceRole = createServiceRoleClient()
-      const metadata = user.user_metadata || {}
-      const identityData = user.identities?.[0]?.identity_data || {}
-      const fallbackName =
-        metadata.full_name ||
-        metadata.name ||
-        identityData.full_name ||
-        identityData.name
+      try {
+        const serviceRole = createServiceRoleClient()
+        const metadata = user.user_metadata || {}
+        const identityData = user.identities?.[0]?.identity_data || {}
+        const fallbackName =
+          metadata.full_name ||
+          metadata.name ||
+          identityData.full_name ||
+          identityData.name
 
-      const { firstname, lastname } = splitName(fallbackName)
+        const { firstname, lastname } = splitName(fallbackName)
 
-      const school =
-        typeof metadata.school === 'string' && metadata.school.trim() !== ''
-          ? metadata.school.trim()
-          : 'Unknown'
+        const school =
+          typeof metadata.school === 'string' && metadata.school.trim() !== ''
+            ? metadata.school.trim()
+            : 'Unknown'
 
-      const photoUrl =
-        metadata.avatar_url ||
-        metadata.picture ||
-        identityData.avatar_url ||
-        identityData.picture ||
-        null
+        const photoUrl =
+          metadata.avatar_url ||
+          metadata.picture ||
+          identityData.avatar_url ||
+          identityData.picture ||
+          null
 
-      const { error: upsertError } = await serviceRole.from('Users').upsert(
-        {
-          user_id: user.id,
-          email: user.email || null,
-          firstname,
-          lastname,
-          school,
-          photo_url: photoUrl,
-        },
-        { onConflict: 'user_id' },
-      )
+        const { error: upsertError } = await serviceRole.from('Users').upsert(
+          {
+            user_id: user.id,
+            email: user.email || null,
+            firstname,
+            lastname,
+            school,
+            photo_url: photoUrl,
+          },
+          { onConflict: 'user_id' },
+        )
 
-      if (upsertError) {
-        console.error('Failed to create/update user profile:', upsertError)
+        if (upsertError) {
+          console.error('Failed to create/update user profile:', upsertError)
+        }
+      } catch (profileError) {
+        console.error('Profile bootstrap failed after login:', profileError)
       }
     }
 
     // Redirect user to intended page or homepage
-    return NextResponse.redirect(`${requestUrl.origin}${redirectTo}`)
+    return NextResponse.redirect(`${requestOrigin}${redirectTo}`)
   } catch (error) {
     console.error('Unexpected Error:', error)
     return errorRedirect('Unexpected error occurred')
