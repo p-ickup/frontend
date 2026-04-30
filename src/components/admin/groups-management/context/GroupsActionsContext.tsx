@@ -74,6 +74,7 @@ export interface GroupsActionsContextValue {
     targetGroupId?: number,
     targetUserId?: string,
     confirmed?: boolean,
+    changeBatchId?: string,
   ) => Promise<void>
   openEditGroupOverrides: (group: Group) => void
   openEditRider: (rider: Rider) => void

@@ -20,8 +20,6 @@ import {
   createGroupRecords,
   deleteGroupRecords,
   deleteRiderMatches,
-  findPendingUnmatchedChangeLogIds,
-  findRelatedGroupChangeLogIds,
   logChangeLogEntry,
   markFlightsMatchedState,
   removeGroupMatch,
@@ -68,6 +66,10 @@ export async function POST(request: Request) {
           metadata: payload.metadata,
           targetGroupId: payload.targetGroupId,
           targetUserId: payload.targetUserId,
+          changeBatchId:
+            typeof payload.changeBatchId === 'string'
+              ? payload.changeBatchId
+              : undefined,
           confirmed: payload.confirmed,
         })
         return NextResponse.json({ success: true })
@@ -274,35 +276,6 @@ export async function POST(request: Request) {
           changeLogIds: payload.changeLogIds,
         })
         return NextResponse.json({ success: true })
-      }
-
-      case 'find_related_group_change_log_ids': {
-        const ids = await findRelatedGroupChangeLogIds({
-          supabase: adminSupabase,
-          rideId: payload.rideId,
-        })
-        await assertAdminScopeForChangeLogIds({
-          supabase: adminSupabase,
-          profile: auth.profile,
-          changeLogIds: ids,
-        })
-        return NextResponse.json({ ids })
-      }
-
-      case 'find_pending_unmatched_change_log_ids': {
-        await assertAdminScopeForUserFlightPair({
-          supabase: adminSupabase,
-          profile: auth.profile,
-          userId: String(payload.userId),
-          flightId: Number(payload.flightId),
-        })
-
-        const ids = await findPendingUnmatchedChangeLogIds({
-          supabase: adminSupabase,
-          userId: payload.userId,
-          flightId: payload.flightId,
-        })
-        return NextResponse.json({ ids })
       }
 
       case 'create_group_records': {

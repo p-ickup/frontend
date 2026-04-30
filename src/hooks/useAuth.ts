@@ -35,11 +35,13 @@ export function useAuth() {
     if (!userData) return null
 
     try {
-      const { data: userProfile } = await supabase
+      const { data: userProfiles } = await supabase
         .from('Users')
         .select('photo_url')
         .eq('user_id', userData.id)
-        .single()
+        .limit(1)
+
+      const userProfile = userProfiles?.[0] || null
 
       if (userProfile?.photo_url) {
         return userProfile.photo_url
@@ -115,10 +117,25 @@ export function useAuth() {
 
   // Login with Google
   const signInWithGoogle = async () => {
-    // Use the current domain for the callback URL
-    const callbackUrl =
-      process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL ||
-      `${window.location.origin}/auth/callback`
+    const isLocalHost =
+      typeof window !== 'undefined' &&
+      ['localhost', '0.0.0.0', '127.0.0.1'].includes(window.location.hostname)
+
+    const callbackOrigin =
+      typeof window !== 'undefined'
+        ? window.location.origin
+        : process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL?.replace(
+            /\/auth\/callback$/,
+            '',
+          ) || 'http://localhost:3000'
+
+    // In local development, preserve the exact host that started the OAuth
+    // flow. PKCE stores the verifier on the initiating origin, so localhost
+    // must return to localhost and 0.0.0.0 must return to 0.0.0.0.
+    const callbackUrl = isLocalHost
+      ? `${callbackOrigin}/auth/callback`
+      : process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL ||
+        `${callbackOrigin}/auth/callback`
 
     // console.log('useAuth: signInWithGoogle called from:', window.location.origin)
     // console.log('useAuth: callbackUrl will be:', callbackUrl)
