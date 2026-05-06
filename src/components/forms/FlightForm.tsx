@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import RedirectButton from '@/components/buttons/RedirectButton'
 import SubmitSuccess, {
   type SubmitSuccessVariant,
@@ -61,6 +62,7 @@ export default function FlightForm({
   onSuccess,
 }: FlightFormProps) {
   const supabase = useMemo(() => createBrowserClient(), [])
+  const router = useRouter()
 
   // Form state
   const [tripType, setTripType] = useState<boolean | null>(null)
@@ -85,6 +87,7 @@ export default function FlightForm({
   const [isDuplicateError, setIsDuplicateError] = useState(false)
   const [isPastDeadline, setIsPastDeadline] = useState(false)
   const [isProfileComplete, setIsProfileComplete] = useState(true)
+  const [profileCheckComplete, setProfileCheckComplete] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [termsAccepted, setTermsAccepted] = useState(false)
@@ -151,11 +154,23 @@ export default function FlightForm({
   // Check profile completeness on component mount
   useEffect(() => {
     const checkProfileStatus = async () => {
-      const profileValidation = await validateUserProfile()
-      setIsProfileComplete(profileValidation.isValid)
+      try {
+        const profileValidation = await validateUserProfile()
+        setIsProfileComplete(profileValidation.isValid)
+        setProfileCheckComplete(true)
+
+        if (!profileValidation.isValid) {
+          router.replace('/profile')
+        }
+      } catch (error) {
+        console.error('Error checking profile status:', error)
+        setIsProfileComplete(false)
+        setProfileCheckComplete(true)
+        router.replace('/profile')
+      }
     }
     checkProfileStatus()
-  }, [])
+  }, [router])
 
   // Fetch user school information
   useEffect(() => {
@@ -889,6 +904,14 @@ export default function FlightForm({
       default:
         return ''
     }
+  }
+
+  if (!profileCheckComplete || !isProfileComplete) {
+    return (
+      <div className="flex items-center justify-center p-6 text-sm text-gray-600">
+        Checking profile...
+      </div>
+    )
   }
 
   return (

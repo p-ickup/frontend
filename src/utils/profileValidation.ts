@@ -7,6 +7,9 @@ export interface ProfileValidationResult {
   hasCompleteProfile: boolean
 }
 
+const hasRequiredProfileValue = (value: unknown) =>
+  typeof value === 'string' && value.trim() !== '' && value.trim() !== 'Unknown'
+
 export const validateUserProfile =
   async (): Promise<ProfileValidationResult> => {
     const supabase = createBrowserClient()
@@ -44,10 +47,15 @@ export const validateUserProfile =
     const missingFields: string[] = []
 
     // Check required profile fields
-    if (!userProfile.firstname) missingFields.push('first name')
-    if (!userProfile.lastname) missingFields.push('last name')
-    if (!userProfile.school) missingFields.push('school')
-    if (!userProfile.phonenumber) missingFields.push('phone number')
+    if (!hasRequiredProfileValue(userProfile.firstname))
+      missingFields.push('first name')
+    if (!hasRequiredProfileValue(userProfile.lastname))
+      missingFields.push('last name')
+    if (!hasRequiredProfileValue(userProfile.school))
+      missingFields.push('school')
+    if (!hasRequiredProfileValue(userProfile.email)) missingFields.push('email')
+    if (!hasRequiredProfileValue(userProfile.phonenumber))
+      missingFields.push('phone number')
 
     // Check for profile picture (custom or Google) - COMMENTED OUT TO FIX CRITICAL ISSUE
     // const hasCustomPhoto = !!userProfile.photo_url

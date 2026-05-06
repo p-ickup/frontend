@@ -3,7 +3,7 @@
 import { postJson } from '@/utils/api'
 import { createBrowserClient } from '@/utils/supabase'
 import Image from 'next/image'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   validateImage,
   compressImage,
@@ -30,6 +30,31 @@ export default function Questionnaire() {
   const [loading, setLoading] = useState(true)
   const [hasProfile, setHasProfile] = useState(false)
   const [hasGooglePhoto, setHasGooglePhoto] = useState(false)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [showUpdateReminder, setShowUpdateReminder] = useState(false)
+
+  const markUnsaved = useCallback(() => {
+    setHasUnsavedChanges(true)
+    setShowUpdateReminder(false)
+  }, [])
+
+  const hasRequiredProfileValue = (value: string) =>
+    value.trim() !== '' && value.trim() !== 'Unknown'
+
+  const isProfileFormIncomplete = useCallback(
+    () =>
+      !hasRequiredProfileValue(firstname) ||
+      !hasRequiredProfileValue(lastname) ||
+      !hasRequiredProfileValue(school) ||
+      !hasRequiredProfileValue(email) ||
+      !hasRequiredProfileValue(phonenumber),
+    [email, firstname, lastname, phonenumber, school],
+  )
+
+  const shouldBlockProfileExit = useCallback(
+    () => hasUnsavedChanges || isProfileFormIncomplete(),
+    [hasUnsavedChanges, isProfileFormIncomplete],
+  )
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -65,7 +90,7 @@ export default function Questionnaire() {
       } else if (data) {
         setFirstName(data.firstname || '')
         setLastName(data.lastname || '')
-        setSchool(data.school || '')
+        setSchool(data.school === 'Unknown' ? '' : data.school || '')
         setEmail(data.email || user.email || '')
         setPhoneNumber(data.phonenumber || '')
         setSmsOptIn(data.sms_opt_in || false)
@@ -79,6 +104,41 @@ export default function Questionnaire() {
 
     fetchUserData()
   }, [supabase])
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!shouldBlockProfileExit()) return
+
+      setShowUpdateReminder(true)
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [shouldBlockProfileExit])
+
+  useEffect(() => {
+    const handleClickAway = (event: MouseEvent) => {
+      if (!shouldBlockProfileExit()) return
+
+      const target = event.target as HTMLElement | null
+      const submitButton = target?.closest('button[type="submit"]')
+      if (submitButton) return
+
+      const clickableTarget = target?.closest(
+        'a[href], button, [role="button"], .cursor-pointer',
+      )
+      if (!clickableTarget) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      setShowUpdateReminder(true)
+    }
+
+    document.addEventListener('click', handleClickAway, true)
+    return () => document.removeEventListener('click', handleClickAway, true)
+  }, [shouldBlockProfileExit])
 
   // Delete old profile picture from storage
   const deleteOldPhoto = async (photoUrl: string) => {
@@ -132,6 +192,7 @@ export default function Questionnaire() {
 
       setPhoto(file)
       setMessage('') // Clear any previous error messages
+      markUnsaved()
     }
   }
 
@@ -227,6 +288,8 @@ export default function Questionnaire() {
     )
     setHasProfile(true)
     setPhotoUrl(updatedPhotoUrl)
+    setHasUnsavedChanges(false)
+    setShowUpdateReminder(false)
     // Update the avatar URL in the header immediately
     updateAvatarUrl(updatedPhotoUrl)
     setPhoto(null) // Clear the file input
@@ -270,11 +333,16 @@ export default function Questionnaire() {
             <h1 className="mb-2 text-2xl font-bold text-gray-900 md:mb-4 md:text-4xl">
               {loading ? '' : hasProfile ? 'Update Profile' : 'Create Profile'}
             </h1>
-            <p className="text-lg text-gray-600 md:text-xl">
-              {loading
-                ? ''
-                : 'Please fill out your personal information below.'}
-            </p>
+            {!loading && (
+              <p className="text-lg text-gray-600 md:text-xl">
+                Please fill out and save your personal information below.
+              </p>
+            )}
+            {showUpdateReminder && (
+              <p className="mt-2 text-base font-semibold text-red-600 md:text-lg">
+                Don&apos;t forget to save your changes!
+              </p>
+            )}
           </div>
 
           {/* Form Container - Hidden on mobile, shown on desktop */}
@@ -300,7 +368,10 @@ export default function Questionnaire() {
                       <input
                         type="text"
                         value={firstname}
-                        onChange={(e) => setFirstName(e.target.value)}
+                        onChange={(e) => {
+                          setFirstName(e.target.value)
+                          markUnsaved()
+                        }}
                         className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                         placeholder="Enter your first name"
                         required
@@ -314,7 +385,10 @@ export default function Questionnaire() {
                       <input
                         type="text"
                         value={lastname}
-                        onChange={(e) => setLastName(e.target.value)}
+                        onChange={(e) => {
+                          setLastName(e.target.value)
+                          markUnsaved()
+                        }}
                         className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                         placeholder="Enter your last name"
                         required
@@ -328,7 +402,10 @@ export default function Questionnaire() {
                     </span>
                     <select
                       value={school}
-                      onChange={(e) => setSchool(e.target.value)}
+                      onChange={(e) => {
+                        setSchool(e.target.value)
+                        markUnsaved()
+                      }}
                       className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       required
                     >
@@ -352,7 +429,10 @@ export default function Questionnaire() {
                     <input
                       type="email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value)
+                        markUnsaved()
+                      }}
                       className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       placeholder="your.email@example.com"
                       required
@@ -366,7 +446,10 @@ export default function Questionnaire() {
                     <input
                       type="text"
                       value={phonenumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      onChange={(e) => {
+                        setPhoneNumber(e.target.value)
+                        markUnsaved()
+                      }}
                       className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       placeholder="(123) 456-7890"
                       required
@@ -377,7 +460,10 @@ export default function Questionnaire() {
                     <input
                       type="checkbox"
                       checked={smsOptIn}
-                      onChange={(e) => setSmsOptIn(e.target.checked)}
+                      onChange={(e) => {
+                        setSmsOptIn(e.target.checked)
+                        markUnsaved()
+                      }}
                       className="mt-1 h-5 w-5 rounded border-gray-300 text-teal-600 transition-all duration-200 focus:ring-2 focus:ring-teal-500/20"
                     />
                     <span className="text-sm font-medium text-gray-700">
@@ -441,7 +527,10 @@ export default function Questionnaire() {
                     <input
                       type="text"
                       value={instagram}
-                      onChange={(e) => setInstagram(e.target.value)}
+                      onChange={(e) => {
+                        setInstagram(e.target.value)
+                        markUnsaved()
+                      }}
                       className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                       placeholder="@yourusername"
                     />
@@ -510,7 +599,10 @@ export default function Questionnaire() {
                       <input
                         type="text"
                         value={firstname}
-                        onChange={(e) => setFirstName(e.target.value)}
+                        onChange={(e) => {
+                          setFirstName(e.target.value)
+                          markUnsaved()
+                        }}
                         className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                         placeholder="Enter your first name"
                         required
@@ -524,7 +616,10 @@ export default function Questionnaire() {
                       <input
                         type="text"
                         value={lastname}
-                        onChange={(e) => setLastName(e.target.value)}
+                        onChange={(e) => {
+                          setLastName(e.target.value)
+                          markUnsaved()
+                        }}
                         className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                         placeholder="Enter your last name"
                         required
@@ -537,7 +632,10 @@ export default function Questionnaire() {
                       </span>
                       <select
                         value={school}
-                        onChange={(e) => setSchool(e.target.value)}
+                        onChange={(e) => {
+                          setSchool(e.target.value)
+                          markUnsaved()
+                        }}
                         className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                         required
                       >
@@ -561,7 +659,10 @@ export default function Questionnaire() {
                       <input
                         type="email"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => {
+                          setEmail(e.target.value)
+                          markUnsaved()
+                        }}
                         className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                         placeholder="your.email@example.com"
                         required
@@ -575,7 +676,10 @@ export default function Questionnaire() {
                       <input
                         type="text"
                         value={phonenumber}
-                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        onChange={(e) => {
+                          setPhoneNumber(e.target.value)
+                          markUnsaved()
+                        }}
                         className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                         placeholder="(123) 456-7890"
                         required
@@ -586,7 +690,10 @@ export default function Questionnaire() {
                       <input
                         type="checkbox"
                         checked={smsOptIn}
-                        onChange={(e) => setSmsOptIn(e.target.checked)}
+                        onChange={(e) => {
+                          setSmsOptIn(e.target.checked)
+                          markUnsaved()
+                        }}
                         className="mt-1 h-5 w-5 rounded border-gray-300 text-teal-600 transition-all duration-200 focus:ring-2 focus:ring-teal-500/20"
                       />
                       <span className="text-sm font-medium text-gray-700">
@@ -652,7 +759,10 @@ export default function Questionnaire() {
                       <input
                         type="text"
                         value={instagram}
-                        onChange={(e) => setInstagram(e.target.value)}
+                        onChange={(e) => {
+                          setInstagram(e.target.value)
+                          markUnsaved()
+                        }}
                         className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                         placeholder="@yourusername"
                       />

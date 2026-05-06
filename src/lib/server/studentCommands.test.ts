@@ -170,13 +170,28 @@ describe('reportReadyStatus', () => {
 
 describe('createOwnFlight', () => {
   it('narrows the write payload before inserting a flight', async () => {
+    const profileMaybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        firstname: 'Taylor',
+        lastname: 'Student',
+        school: 'Pomona',
+        email: 'taylor@example.com',
+        phonenumber: '9095551234',
+      },
+      error: null,
+    })
+    const profileEq = jest.fn(() => ({ maybeSingle: profileMaybeSingle }))
+    const profileSelect = jest.fn(() => ({ eq: profileEq }))
     const single = jest.fn().mockResolvedValue({
       data: { flight_id: 321 },
       error: null,
     })
     const select = jest.fn(() => ({ single }))
     const insert = jest.fn(() => ({ select }))
-    const from = jest.fn(() => ({ insert }))
+    const from = jest
+      .fn()
+      .mockReturnValueOnce({ select: profileSelect })
+      .mockReturnValueOnce({ insert })
 
     await expect(
       createOwnFlight({
@@ -259,11 +274,24 @@ describe('updateOwnFlight', () => {
     })
     const selectEq = jest.fn(() => ({ maybeSingle }))
     const select = jest.fn(() => ({ eq: selectEq }))
+    const profileMaybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        firstname: 'Taylor',
+        lastname: 'Student',
+        school: 'Pomona',
+        email: 'taylor@example.com',
+        phonenumber: '9095551234',
+      },
+      error: null,
+    })
+    const profileEq = jest.fn(() => ({ maybeSingle: profileMaybeSingle }))
+    const profileSelect = jest.fn(() => ({ eq: profileEq }))
     const updateEq = jest.fn().mockResolvedValue({ error: null })
     const update = jest.fn(() => ({ eq: updateEq }))
     const from = jest
       .fn()
       .mockReturnValueOnce({ select })
+      .mockReturnValueOnce({ select: profileSelect })
       .mockReturnValueOnce({ update })
 
     await expect(
