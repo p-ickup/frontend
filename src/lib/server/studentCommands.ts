@@ -364,6 +364,14 @@ export async function createOwnFlight({
   payload: Record<string, unknown>
 }) {
   const normalizedPayload = normalizeFlightWritePayload(payload)
+
+  if (normalizedPayload.date && !canEditFlight(normalizedPayload.date)) {
+    throw createError(
+      'The submission deadline for this service period has passed.',
+      403,
+    )
+  }
+
   await assertCompleteProfileForFlight(supabase, userId)
 
   const { data, error } = await supabase
