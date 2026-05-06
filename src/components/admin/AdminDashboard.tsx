@@ -39,6 +39,26 @@ const formatDateTime = (dateString: string): string => {
   return `${dateStr} – ${timeStr} PT`
 }
 
+const formatDateForInput = (date: Date): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const getDefaultUnmatchedDateWindow = () => {
+  const start = new Date()
+  start.setDate(start.getDate() - 7)
+
+  const end = new Date()
+  end.setMonth(end.getMonth() + 1)
+
+  return {
+    start: formatDateForInput(start),
+    end: formatDateForInput(end),
+  }
+}
+
 export default function AdminDashboard({ user }: AdminDashboardProps) {
   const supabase = createBrowserClient()
   const { user: authUser } = useAuth()
@@ -54,9 +74,12 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
   const [nextScheduledRunTarget, setNextScheduledRunTarget] =
     useState<string>('')
   const [unmatchedFlightsCount, setUnmatchedFlightsCount] = useState<number>(0)
-  const [unmatchedDateStart, setUnmatchedDateStart] =
-    useState<string>('2026-01-14')
-  const [unmatchedDateEnd, setUnmatchedDateEnd] = useState<string>('')
+  const [unmatchedDateStart, setUnmatchedDateStart] = useState<string>(
+    () => getDefaultUnmatchedDateWindow().start,
+  )
+  const [unmatchedDateEnd, setUnmatchedDateEnd] = useState<string>(
+    () => getDefaultUnmatchedDateWindow().end,
+  )
   const [batchEmailLoading, setBatchEmailLoading] = useState(false)
   const [batchEmailResult, setBatchEmailResult] = useState<{
     sent: number
@@ -325,20 +348,19 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     fetchDashboardData()
   }, [authUser, user, supabase])
 
-  // Fetch unmatched flights count (where matched is NULL)
+  // Fetch unmatched flights count (where matched is false or NULL)
   useEffect(() => {
     const fetchUnmatchedFlights = async () => {
       try {
-        const startDate = unmatchedDateStart || '2026-01-14'
+        const defaultWindow = getDefaultUnmatchedDateWindow()
+        const startDate = unmatchedDateStart || defaultWindow.start
         let query = supabase
           .from('Flights')
           .select('flight_id', { count: 'exact', head: true })
-          .is('matched', null)
+          .or('matched.is.null,matched.eq.false')
           .gte('date', startDate)
 
-        if (unmatchedDateEnd) {
-          query = query.lte('date', unmatchedDateEnd)
-        }
+        query = query.lt('date', unmatchedDateEnd || defaultWindow.end)
 
         const { count, error: unmatchedError } = await query
 

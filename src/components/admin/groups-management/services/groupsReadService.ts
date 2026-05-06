@@ -59,6 +59,26 @@ const createError = (error: any, fallback: string) => {
   return new Error(details ? `${message} (${details})` : message)
 }
 
+const formatDateForInput = (date: Date): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const getDefaultDateWindow = () => {
+  const currentDate = new Date()
+  const dateRangeStartDate = new Date(currentDate)
+  dateRangeStartDate.setDate(dateRangeStartDate.getDate() - 7)
+  const dateRangeEndDate = new Date(currentDate)
+  dateRangeEndDate.setMonth(dateRangeEndDate.getMonth() + 1)
+
+  return {
+    dateRangeStart: formatDateForInput(dateRangeStartDate),
+    dateRangeEnd: formatDateForInput(dateRangeEndDate),
+  }
+}
+
 const fetchPagedRows = async <T>(
   fetchPage: (
     from: number,
@@ -300,19 +320,14 @@ export const fetchLastAlgorithmRunWindow = async (
     throw createError(error, 'Failed to fetch algorithm status')
   }
 
-  if (!data?.finished_at) {
-    return null
-  }
-
-  const runDate = new Date(data.finished_at)
-  const dateRangeStart = runDate.toISOString().split('T')[0]
-  const dateRangeEndDate = new Date(runDate)
-  dateRangeEndDate.setDate(dateRangeEndDate.getDate() + 15)
+  const { dateRangeStart, dateRangeEnd } = getDefaultDateWindow()
 
   return {
-    lastAlgorithmRunDate: dateRangeStart,
+    lastAlgorithmRunDate: data?.finished_at
+      ? formatDateForInput(new Date(data.finished_at))
+      : '',
     dateRangeStart,
-    dateRangeEnd: dateRangeEndDate.toISOString().split('T')[0],
+    dateRangeEnd,
   }
 }
 
