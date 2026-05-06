@@ -45,6 +45,19 @@ const preserveProfileValue = (
   return fallbackValue
 }
 
+const hasCompleteProfile = (profile: {
+  email?: string | null
+  firstname?: string | null
+  lastname?: string | null
+  school?: string | null
+  phonenumber?: string | null
+}) =>
+  hasProfileValue(profile.email) &&
+  hasProfileValue(profile.firstname) &&
+  hasProfileValue(profile.lastname) &&
+  hasProfileValue(profile.school) &&
+  hasProfileValue(profile.phonenumber)
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
   const requestOrigin = getRequestOrigin(request, requestUrl)
@@ -70,6 +83,8 @@ export async function GET(request: Request) {
     }
 
     const user = data.user
+    let shouldRedirectToProfile = false
+
     if (user) {
       try {
         const serviceRole = createServiceRoleClient()
@@ -98,7 +113,9 @@ export async function GET(request: Request) {
         const { data: existingProfile, error: existingProfileError } =
           await serviceRole
             .from('Users')
-            .select('firstname, lastname, school, photo_url')
+            .select(
+              'email, firstname, lastname, school, phonenumber, photo_url',
+            )
             .eq('user_id', user.id)
             .maybeSingle()
 
@@ -109,31 +126,40 @@ export async function GET(request: Request) {
           )
         }
 
-        const { error: upsertError } = await serviceRole.from('Users').upsert(
-          {
-            user_id: user.id,
-            email: user.email || null,
-            firstname: preserveProfileValue(
-              existingProfile?.firstname,
-              firstname,
-            ),
-            lastname: preserveProfileValue(existingProfile?.lastname, lastname),
-            school: preserveProfileValue(existingProfile?.school, school),
-            photo_url: existingProfile?.photo_url || photoUrl,
-          },
-          { onConflict: 'user_id' },
-        )
+        const nextProfile = {
+          user_id: user.id,
+          email: user.email || existingProfile?.email || null,
+          firstname: preserveProfileValue(
+            existingProfile?.firstname,
+            firstname,
+          ),
+          lastname: preserveProfileValue(existingProfile?.lastname, lastname),
+          school: preserveProfileValue(existingProfile?.school, school),
+          photo_url: existingProfile?.photo_url || photoUrl,
+        }
+
+        const { error: upsertError } = await serviceRole
+          .from('Users')
+          .upsert(nextProfile, { onConflict: 'user_id' })
 
         if (upsertError) {
           console.error('Failed to create/update user profile:', upsertError)
         }
+
+        shouldRedirectToProfile = !hasCompleteProfile({
+          ...nextProfile,
+          phonenumber: existingProfile?.phonenumber,
+        })
       } catch (profileError) {
         console.error('Profile bootstrap failed after login:', profileError)
+        shouldRedirectToProfile = true
       }
     }
 
     // Redirect user to intended page or homepage
-    return NextResponse.redirect(`${requestOrigin}${redirectTo}`)
+    return NextResponse.redirect(
+      `${requestOrigin}${shouldRedirectToProfile ? '/profile' : redirectTo}`,
+    )
   } catch (error) {
     console.error('Unexpected Error:', error)
     return errorRedirect('Unexpected error occurred')

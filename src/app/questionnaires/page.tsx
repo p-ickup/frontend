@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import RedirectButton from '@/components/buttons/RedirectButton'
 import { deleteJson } from '@/utils/api'
 import { createBrowserClient } from '@/utils/supabase'
@@ -10,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAuth } from '@/hooks/useAuth'
 import EmptyState from '@/components/results/EmptyState'
 import { canEditFlight } from '@/utils/flightValidation'
+import { validateUserProfile } from '@/utils/profileValidation'
 
 interface MatchForm {
   flight_id: string
@@ -27,6 +29,7 @@ interface MatchForm {
 export default function Questionnaires() {
   const supabase = createBrowserClient()
   const { user, isAuthenticated, signInWithGoogle } = useAuth()
+  const router = useRouter()
   const [matchForms, setMatchForms] = useState<MatchForm[]>([])
   const [message, setMessage] = useState('')
   const [modalFlightId, setModalFlightId] = useState<string | null>(null)
@@ -110,11 +113,26 @@ export default function Questionnaires() {
 
   useEffect(() => {
     if (user) {
-      void fetchMatchForms()
+      const loadPage = async () => {
+        try {
+          const profileValidation = await validateUserProfile()
+          if (!profileValidation.isValid) {
+            router.replace('/profile')
+            return
+          }
+
+          void fetchMatchForms()
+        } catch (error) {
+          console.error('Error checking profile status:', error)
+          router.replace('/profile')
+        }
+      }
+
+      void loadPage()
     } else {
       setLoading(false)
     }
-  }, [user, fetchMatchForms])
+  }, [user, fetchMatchForms, router])
 
   const handleDelete = (flightId: string) => {
     setModalFlightId(flightId) // ✅ Set the specific flight ID

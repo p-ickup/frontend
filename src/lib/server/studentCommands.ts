@@ -24,6 +24,60 @@ const getFirst = <T>(value: T | T[] | null | undefined): T | null => {
   return value ?? null
 }
 
+const hasRequiredProfileValue = (value: unknown) =>
+  typeof value === 'string' && value.trim() !== '' && value.trim() !== 'Unknown'
+
+const getMissingProfileFields = (profile: {
+  firstname?: unknown
+  lastname?: unknown
+  school?: unknown
+  email?: unknown
+  phonenumber?: unknown
+}) => {
+  const missingFields: string[] = []
+
+  if (!hasRequiredProfileValue(profile.firstname))
+    missingFields.push('first name')
+  if (!hasRequiredProfileValue(profile.lastname))
+    missingFields.push('last name')
+  if (!hasRequiredProfileValue(profile.school)) missingFields.push('school')
+  if (!hasRequiredProfileValue(profile.email)) missingFields.push('email')
+  if (!hasRequiredProfileValue(profile.phonenumber))
+    missingFields.push('phone number')
+
+  return missingFields
+}
+
+const assertCompleteProfileForFlight = async (
+  supabase: SupabaseClient,
+  userId: string,
+) => {
+  const { data: profile, error } = await supabase
+    .from('Users')
+    .select('firstname, lastname, school, email, phonenumber')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) {
+    throw createError(error.message, 400, error)
+  }
+
+  if (!profile) {
+    throw createError(
+      'Please complete your profile before submitting a flight.',
+      403,
+    )
+  }
+
+  const missingFields = getMissingProfileFields(profile)
+  if (missingFields.length > 0) {
+    throw createError(
+      `Please complete your profile before submitting a flight: ${missingFields.join(', ')}.`,
+      403,
+    )
+  }
+}
+
 const assertRideMembership = async ({
   supabase,
   userId,
@@ -310,6 +364,7 @@ export async function createOwnFlight({
   payload: Record<string, unknown>
 }) {
   const normalizedPayload = normalizeFlightWritePayload(payload)
+  await assertCompleteProfileForFlight(supabase, userId)
 
   const { data, error } = await supabase
     .from('Flights')
@@ -361,6 +416,8 @@ export async function updateOwnFlight({
   if (!canEditFlight(existingFlight.date)) {
     throw createError('This flight can no longer be edited.', 403)
   }
+
+  await assertCompleteProfileForFlight(supabase, userId)
 
   const normalizedPayload = normalizeFlightWritePayload(payload)
   if (Object.keys(normalizedPayload).length === 0) {
@@ -1041,6 +1098,14 @@ export async function saveOwnProfile({
     instagram: string | null
   }
 }) {
+  const missingFields = getMissingProfileFields(profile)
+  if (missingFields.length > 0) {
+    throw createError(
+      `Please complete your profile: ${missingFields.join(', ')}.`,
+      400,
+    )
+  }
+
   const payload = {
     user_id: userId,
     email: profile.email,
