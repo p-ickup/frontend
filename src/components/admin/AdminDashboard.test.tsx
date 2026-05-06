@@ -104,8 +104,16 @@ const createSupabaseMock = (
         state.ops.push({ type: 'lte', column, value })
         return builder
       },
+      lt: (column: string, value: unknown) => {
+        state.ops.push({ type: 'lt', column, value })
+        return builder
+      },
       is: (column: string, value: unknown) => {
         state.ops.push({ type: 'is', column, value })
+        return builder
+      },
+      or: (value: string) => {
+        state.ops.push({ type: 'or', value })
         return builder
       },
       range: (from: number, to: number) => {

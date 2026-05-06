@@ -31,6 +31,20 @@ const getRequestOrigin = (request: Request, requestUrl: URL) => {
   return requestUrl.origin
 }
 
+const hasProfileValue = (value: string | null | undefined) =>
+  typeof value === 'string' && value.trim() !== '' && value.trim() !== 'Unknown'
+
+const preserveProfileValue = (
+  existingValue: string | null | undefined,
+  fallbackValue: string | null,
+) => {
+  if (hasProfileValue(existingValue)) {
+    return existingValue!.trim()
+  }
+
+  return fallbackValue
+}
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
   const requestOrigin = getRequestOrigin(request, requestUrl)
@@ -81,14 +95,31 @@ export async function GET(request: Request) {
           identityData.picture ||
           null
 
+        const { data: existingProfile, error: existingProfileError } =
+          await serviceRole
+            .from('Users')
+            .select('firstname, lastname, school, photo_url')
+            .eq('user_id', user.id)
+            .maybeSingle()
+
+        if (existingProfileError) {
+          console.error(
+            'Failed to fetch existing user profile during auth bootstrap:',
+            existingProfileError,
+          )
+        }
+
         const { error: upsertError } = await serviceRole.from('Users').upsert(
           {
             user_id: user.id,
             email: user.email || null,
-            firstname,
-            lastname,
-            school,
-            photo_url: photoUrl,
+            firstname: preserveProfileValue(
+              existingProfile?.firstname,
+              firstname,
+            ),
+            lastname: preserveProfileValue(existingProfile?.lastname, lastname),
+            school: preserveProfileValue(existingProfile?.school, school),
+            photo_url: existingProfile?.photo_url || photoUrl,
           },
           { onConflict: 'user_id' },
         )

@@ -3119,9 +3119,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                               .select(
                                 'flight_id, date, earliest_time, latest_time, airport, to_airport, airline_iata, flight_no, bag_no_personal, bag_no, bag_no_large, user_id',
                               )
-                              .eq('matched', false)
+                              .or('matched.is.null,matched.eq.false')
                               .gte('date', rangeStart)
-                              .lte('date', rangeEnd)
+                              .lt('date', rangeEnd)
                               .order('date', { ascending: true })
                               .order('earliest_time', { ascending: true })
                               .order('flight_id', { ascending: true })
