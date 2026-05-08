@@ -3056,7 +3056,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             await supabase
                               .from('Matches')
                               .select(
-                                'ride_id, date, time, voucher, is_subsidized, flight_id, user_id',
+                                'ride_id, date, time, voucher, is_subsidized, uber_type, flight_id, user_id',
                               )
                               .gte('date', rangeStart)
                               .lte('date', rangeEnd)
@@ -3137,6 +3137,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                               checked_bag: flight?.bag_no_large || 0,
                               voucher: match.voucher || '',
                               is_subsidized: match.is_subsidized || false,
+                              uber_type: match.uber_type || '',
                               to_airport: flight?.to_airport || false,
                             }
                           })
@@ -3158,6 +3159,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                             'checked_bag',
                             'voucher',
                             'is_subsidized',
+                            'uber_type',
                             'to_airport',
                           ]
                           const csv = [
@@ -3179,6 +3181,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                               row.checked_bag,
                               row.voucher,
                               row.is_subsidized,
+                              row.uber_type,
                               row.to_airport,
                             ]),
                           ]
