@@ -136,6 +136,7 @@ export default function MatchedGroupsPanel() {
         group,
         onConfirm: async () => {
           await addDraggedRiderToGroup(true)
+          clearDragState()
           setTimeConflictModal(null)
         },
       })
@@ -143,6 +144,7 @@ export default function MatchedGroupsPanel() {
     }
 
     await addDraggedRiderToGroup()
+    clearDragState()
   }
 
   const handleGroupDragLeave = (

@@ -133,12 +133,18 @@ export async function POST(request: Request) {
             profile: auth.profile,
             userId: String(payload.userId),
           }),
+          assertAdminScopeForFlight({
+            supabase: adminSupabase,
+            profile: auth.profile,
+            flightId: Number(payload.flightId),
+          }),
         ])
 
         await removeGroupMatch({
           supabase: adminSupabase,
           groupId: payload.groupId,
           userId: payload.userId,
+          flightId: payload.flightId,
         })
         return NextResponse.json({ success: true })
       }

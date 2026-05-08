@@ -234,16 +234,19 @@ export const removeGroupMatch = async ({
   supabase,
   groupId,
   userId,
+  flightId,
 }: {
   supabase: GroupsSupabaseClient
   groupId: number
   userId: string
+  flightId: number
 }) => {
   const { error } = await supabase
     .from('Matches')
     .delete()
     .eq('ride_id', groupId)
     .eq('user_id', userId)
+    .eq('flight_id', flightId)
 
   if (error) {
     throw createError(error, 'Failed to remove rider from group')

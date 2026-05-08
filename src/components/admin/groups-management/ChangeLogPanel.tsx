@@ -34,6 +34,7 @@ export default function ChangeLogPanel() {
     changeLogFilterDateFrom,
     changeLogFilterDateTo,
     changeLogFilterName,
+    changeLogFilterRideId,
     changeLogFilterSubjectName,
     changeLogHeight,
     changeLogOptionsExpanded,
@@ -43,6 +44,7 @@ export default function ChangeLogPanel() {
     setChangeLogExpanded,
     setChangeLogFilterActions,
     setChangeLogFilterName,
+    setChangeLogFilterRideId,
     setChangeLogFilterSubjectName,
     setChangeLogOptionsExpanded,
     setChangeLogSortBy,
@@ -199,7 +201,7 @@ export default function ChangeLogPanel() {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-5">
                     <div>
                       <label className="mb-1 block text-xs font-medium text-gray-700">
                         Actor (who made change)
@@ -223,6 +225,20 @@ export default function ChangeLogPanel() {
                           setChangeLogFilterSubjectName(e.target.value)
                         }
                         placeholder="Rider / edited person..."
+                        className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-700">
+                        Group / Ride ID
+                      </label>
+                      <input
+                        type="text"
+                        value={changeLogFilterRideId}
+                        onChange={(e) =>
+                          setChangeLogFilterRideId(e.target.value)
+                        }
+                        placeholder="700 or #700"
                         className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                       />
                     </div>
