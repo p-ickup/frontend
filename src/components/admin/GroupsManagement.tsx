@@ -1860,6 +1860,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
         setSearchQuery(searchInput)
+        if (searchInput.trim().startsWith('#')) {
+          setActiveTab('matched')
+        }
         // Provide visual feedback
         setSearchFeedback(true)
         setTimeout(() => setSearchFeedback(false), 300)
@@ -1867,6 +1870,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     },
     [searchInput],
   )
+
+  const handleSearchInputChange = useCallback((value: string) => {
+    setSearchInput(value)
+    setSearchQuery(value)
+    if (value.trim().startsWith('#')) {
+      setActiveTab('matched')
+    }
+  }, [])
 
   const handleClearSearch = useCallback(() => {
     setSearchInput('')
@@ -1979,41 +1990,53 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         selectedRidersForNewGroup,
       )
 
-      if (newGroupTime) {
-        formattedTime =
-          newGroupTime.includes(':') && newGroupTime.split(':').length === 2
-            ? `${newGroupTime}:00`
-            : newGroupTime
-      } else {
-        const midpointTime = calculateTimeMidpoint(calculatedTimeRange)
-        formattedTime =
-          midpointTime.includes(':') && midpointTime.split(':').length === 2
-            ? `${midpointTime}:00`
-            : midpointTime
+      const toHhMmSs = (raw: string) => {
+        const t = raw.trim()
+        const segments = t.split(':')
+        if (segments.length >= 2) {
+          const hh = segments[0].padStart(2, '0')
+          const mm = segments[1].padStart(2, '0')
+          const ss =
+            segments.length >= 3
+              ? segments[2].replace(/\D/g, '').slice(0, 2).padStart(2, '0')
+              : '00'
+          return `${hh}:${mm}:${ss}`
+        }
+        return t
       }
 
-      const rideDate = new Date(newGroupDate).toISOString().split('T')[0]
+      if (newGroupTime) {
+        formattedTime = toHhMmSs(newGroupTime)
+      } else {
+        const midpointTime = calculateTimeMidpoint(calculatedTimeRange)
+        formattedTime = toHhMmSs(midpointTime)
+      }
+
+      // Use the date input string as-is (YYYY-MM-DD) to avoid UTC/local shifts from Date parsing.
+      const rideDate = newGroupDate.trim()
 
       const firstRider = selectedRidersForNewGroup[0]
       const groupAirport = firstRider?.airport || 'LAX'
       const groupToAirport = firstRider?.to_airport ?? true
-      const { subsidized: calculatedIsSubsidized, assignVoucher } =
-        computeGroupSubsidized({
-          date: rideDate,
-          toAirport: groupToAirport,
-          airport: groupAirport,
-          riderCount: selectedRidersForNewGroup.length,
-          riderSchools: selectedRidersForNewGroup.map((r) => r.school),
-          uberType: uberType ?? undefined,
-        })
+      const {
+        subsidized: calculatedIsSubsidized,
+        assignVoucher: assignVoucherFromRules,
+      } = computeGroupSubsidized({
+        date: rideDate,
+        toAirport: groupToAirport,
+        airport: groupAirport,
+        riderCount: selectedRidersForNewGroup.length,
+        riderSchools: selectedRidersForNewGroup.map((r) => r.school),
+        uberType: uberType ?? undefined,
+      })
 
-      const normalizedNewGroupVoucher = assignVoucher
-        ? normalizeVoucherInput(newGroupVoucher)
-        : ''
-      const hasVoucher = Boolean(normalizedNewGroupVoucher)
+      const normalizedNewGroupVoucher = normalizeVoucherInput(newGroupVoucher)
+      const hasVoucher = Boolean(normalizedNewGroupVoucher.trim())
+      // Persist manual voucher entry even when automatic subsidy rules would block assignment.
+      const assignVoucher = assignVoucherFromRules || hasVoucher
       const isConnectType = uberType?.toLowerCase() === 'connect'
       const effectiveNewGroupSubsidized =
-        calculatedIsSubsidized || hasVoucher || isConnectType
+        isSubsidized || calculatedIsSubsidized || hasVoucher || isConnectType
 
       const { rideId } = await createGroupRecords({
         supabase,
@@ -2060,7 +2083,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           date: rideDate,
           time: formattedTime,
           uber_type: uberType,
-          is_subsidized: calculatedIsSubsidized,
+          is_subsidized: effectiveNewGroupSubsidized,
         },
         rideId,
         undefined,
@@ -2093,6 +2116,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     clearDraftGroup,
     computeGroupSubsidized,
     fetchData,
+    isSubsidized,
     logToChangeLog,
     newGroupContingencyVoucher,
     newGroupDate,
@@ -2552,7 +2576,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   type="text"
                   placeholder="Search by ride ID (#Num), name, flight, or voucher..."
                   value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
+                  onChange={(e) => handleSearchInputChange(e.target.value)}
                   onKeyDown={handleSearchKeyDown}
                   className={`w-full rounded-lg border border-gray-300 bg-white px-4 py-2 pr-20 text-sm text-gray-900 placeholder-gray-500 transition-all focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 ${
                     searchFeedback ? 'bg-teal-50 ring-2 ring-teal-500' : ''
@@ -2742,7 +2766,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   type="text"
                   placeholder="Search by ride ID (#Num), name, flight, or voucher..."
                   value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
+                  onChange={(e) => handleSearchInputChange(e.target.value)}
                   onKeyDown={handleSearchKeyDown}
                   className={`w-full rounded-lg border border-gray-300 bg-white px-4 py-2 pr-20 text-sm text-gray-900 placeholder-gray-500 transition-all focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 ${
                     searchFeedback ? 'bg-teal-50 ring-2 ring-teal-500' : ''
