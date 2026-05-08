@@ -31,6 +31,7 @@ export interface UseGroupsDerivedDataParams {
   changeLogFilterDateFrom: string
   changeLogFilterDateTo: string
   changeLogFilterName: string
+  changeLogFilterRideId: string
   changeLogFilterSubjectName: string
   changeLogSortBy: ChangeLogSortBy
   changeLogSortDirection: ChangeLogSortDirection
@@ -135,6 +136,68 @@ const matchesRiderSearch = (rider: Rider, searchQuery: string) => {
   return nameMatch || flightIdMatch || flightNoMatch || airlineFlightMatch
 }
 
+const CHANGE_LOG_GROUP_ID_KEYS = [
+  'ride_id',
+  'ride_ids',
+  'group_id',
+  'group_ids',
+  'target_group',
+  'target_group_id',
+  'from_group',
+  'from_group_id',
+  'to_group',
+  'to_group_id',
+  'old_group',
+  'old_group_id',
+  'new_group',
+  'new_group_id',
+  'old_ride_id',
+  'new_ride_id',
+]
+
+const parseGroupIdTokens = (value: string) => value.match(/\d+/g) ?? []
+
+const addGroupIdValue = (ids: Set<string>, value: unknown) => {
+  if (Array.isArray(value)) {
+    value.forEach((item) => addGroupIdValue(ids, item))
+    return
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    ids.add(value.toString())
+    return
+  }
+
+  if (typeof value === 'string') {
+    parseGroupIdTokens(value).forEach((token) => ids.add(token))
+  }
+}
+
+const getChangeLogGroupIds = (entry: ChangeLogEntry) => {
+  const ids = new Set<string>()
+  addGroupIdValue(ids, entry.target_group_id)
+
+  const metadata = entry.metadata || {}
+  if (typeof metadata === 'object' && !Array.isArray(metadata)) {
+    CHANGE_LOG_GROUP_ID_KEYS.forEach((key) => {
+      addGroupIdValue(ids, metadata[key])
+    })
+  }
+
+  return ids
+}
+
+const matchesChangeLogGroupIdFilter = (
+  entry: ChangeLogEntry,
+  groupIdFilter: string,
+) => {
+  const filterIds = parseGroupIdTokens(groupIdFilter)
+  if (filterIds.length === 0) return true
+
+  const entryGroupIds = getChangeLogGroupIds(entry)
+  return filterIds.some((filterId) => entryGroupIds.has(filterId))
+}
+
 const sortRidersWithRules = (riders: Rider[], sortingRules: SortingRule[]) => {
   return [...riders].sort((left, right) => {
     for (const rule of sortingRules) {
@@ -183,6 +246,7 @@ export const useGroupsDerivedData = ({
   changeLogFilterDateFrom,
   changeLogFilterDateTo,
   changeLogFilterName,
+  changeLogFilterRideId,
   changeLogFilterSubjectName,
   changeLogSortBy,
   changeLogSortDirection,
@@ -529,6 +593,10 @@ export const useGroupsDerivedData = ({
           return false
         }
 
+        if (!matchesChangeLogGroupIdFilter(entry, changeLogFilterRideId)) {
+          return false
+        }
+
         if (changeLogFilterDateFrom || changeLogFilterDateTo) {
           const entryDate = new Date(entry.created_at)
 
@@ -555,6 +623,7 @@ export const useGroupsDerivedData = ({
       changeLogFilterDateFrom,
       changeLogFilterDateTo,
       changeLogFilterName,
+      changeLogFilterRideId,
       changeLogFilterSubjectName,
       riderNamesByUserId,
     ],

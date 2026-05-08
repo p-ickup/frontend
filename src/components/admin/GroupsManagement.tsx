@@ -113,6 +113,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   /** Filter changelog by the rider/person affected (metadata names), not the admin actor */
   const [changeLogFilterSubjectName, setChangeLogFilterSubjectName] =
     useState<string>('')
+  const [changeLogFilterRideId, setChangeLogFilterRideId] = useState<string>('')
   const [changeLogFilterActions, setChangeLogFilterActions] = useState<
     Set<string>
   >(new Set())
@@ -302,6 +303,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const clearChangeLogFilters = useCallback(() => {
     setChangeLogFilterName('')
     setChangeLogFilterSubjectName('')
+    setChangeLogFilterRideId('')
     setChangeLogFilterActions(new Set())
     setChangeLogDateRange('', '')
   }, [setChangeLogDateRange])
@@ -600,10 +602,38 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             return
           }
 
+          const riderWithOrigin: Rider = {
+            ...rider,
+            originType: 'group' as 'group' | 'unmatched',
+            originGroupId: fromGroupId,
+          }
+          setCorralRiders((prev) => [
+            ...prev.filter((r) => r.flight_id !== rider.flight_id),
+            riderWithOrigin,
+          ])
+          setGroups((prev) =>
+            prev
+              .map((g) =>
+                g.ride_id === fromGroupId
+                  ? {
+                      ...g,
+                      riders: g.riders.filter(
+                        (r) => r.flight_id !== rider.flight_id,
+                      ),
+                      time_range: calculateGroupTimeRange(
+                        g.riders.filter((r) => r.flight_id !== rider.flight_id),
+                      ),
+                    }
+                  : g,
+              )
+              .filter((g) => g.riders.length > 0),
+          )
+
           await removeGroupMatch({
             supabase,
             groupId: fromGroupId,
             userId: rider.user_id,
+            flightId: rider.flight_id,
           })
 
           // Do NOT set Flights.matched = false when moving to corral; only set unmatched when user explicitly clicks "Remove from group" (to unmatched).
@@ -679,12 +709,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           )
 
           // Only update local state after successful database operations
-          const riderWithOrigin: Rider = {
-            ...rider,
-            originType: 'group' as 'group' | 'unmatched',
-            originGroupId: fromGroupId,
-          }
-          setCorralRiders((prev) => [...prev, riderWithOrigin])
+          setCorralRiders((prev) => [
+            ...prev.filter((r) => r.flight_id !== rider.flight_id),
+            riderWithOrigin,
+          ])
 
           // Remove from group (local state) and track changes
           setGroups((prev) => {
@@ -757,6 +785,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         } catch (error) {
           console.error('Error in handleAddToCorral:', error)
           setErrorMessage('Failed to remove rider from group')
+          await fetchData()
           setTimeout(() => setErrorMessage(null), 3000)
         }
       } else {
@@ -766,13 +795,16 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           originType: 'unmatched' as 'group' | 'unmatched',
           originGroupId: undefined,
         }
-        setCorralRiders((prev) => [...prev, riderWithOrigin])
+        setCorralRiders((prev) => [
+          ...prev.filter((r) => r.flight_id !== rider.flight_id),
+          riderWithOrigin,
+        ])
         setUnmatchedRiders((prev) =>
           prev.filter((r) => r.flight_id !== rider.flight_id),
         )
       }
     },
-    [groups, supabase, logToChangeLog, computeGroupSubsidized],
+    [groups, supabase, logToChangeLog, computeGroupSubsidized, fetchData],
   )
 
   // Update individual rider fields
@@ -917,6 +949,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           supabase,
           groupId,
           userId: rider.user_id,
+          flightId: rider.flight_id,
         })
 
         await markFlightsMatchedState({
@@ -1229,6 +1262,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             supabase,
             groupId: rider.originGroupId,
             userId: rider.user_id,
+            flightId: rider.flight_id,
           }).catch((error) => {
             console.error('Error removing match from database:', error)
           })
@@ -1356,8 +1390,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             group,
             issue,
             onAcknowledge: async () => {
-              // Log IGNORE_ERROR to ChangeLog
-              await logToChangeLog(
+              setValidationErrorModal(null)
+
+              // Log IGNORE_ERROR to ChangeLog without keeping the warning open.
+              void logToChangeLog(
                 'IGNORE_ERROR',
                 {
                   ride_id: group.ride_id,
@@ -1373,9 +1409,13 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 group.ride_id,
                 rider.user_id,
                 false,
-              )
+              ).catch((error) => {
+                console.error(
+                  'Error logging ignored validation warning:',
+                  error,
+                )
+              })
 
-              setValidationErrorModal(null)
               // Recursively call handleSelectFromCorral to proceed with addition
               await handleSelectFromCorral(
                 rider,
@@ -1478,9 +1518,67 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         // uberType will always be a string now (defaults to 'XXL*' for invalid combinations)
         // No need to check for null/undefined
 
-        // Delete any existing matches for this rider (from any group)
-        // This ensures we don't have duplicates when moving between groups
-        // We delete by user_id and flight_id to catch all possible matches
+        const { subsidized: isSubsidized } = computeGroupSubsidized({
+          date: finalDate,
+          toAirport: group.to_airport,
+          airport: group.airport,
+          riderCount: updatedRiders.length,
+          riderSchools: updatedRiders.map((r) => r.school),
+          uberType: uberType ?? undefined,
+        })
+        const voucherValue = group.group_voucher || ''
+
+        // Respect manual overrides for the group when setting new/updated match
+        const effectiveUberType = group.uber_type_override
+          ? (group.uber_type ?? uberType)
+          : uberType
+        const hasVoucher = Boolean(group.group_voucher?.trim())
+        const isConnectType =
+          (effectiveUberType ?? group.uber_type)?.toLowerCase() === 'connect'
+        const effectiveIsSubsidized = group.subsidized_override
+          ? (group.is_subsidized ?? isSubsidized)
+          : isSubsidized || hasVoucher || isConnectType
+
+        setCorralRiders((prev) =>
+          prev.filter((r) => r.flight_id !== rider.flight_id),
+        )
+        setUnmatchedRiders((prev) =>
+          prev.filter((r) => r.flight_id !== rider.flight_id),
+        )
+        setGroups((prev) =>
+          prev
+            .map((g) => {
+              const ridersWithoutMoved = g.riders.filter(
+                (candidate) => candidate.flight_id !== rider.flight_id,
+              )
+
+              if (g.ride_id === group.ride_id) {
+                const nextRiders = [...ridersWithoutMoved, rider]
+                return {
+                  ...g,
+                  riders: nextRiders,
+                  time_range:
+                    newTimeRange || calculateGroupTimeRange(nextRiders),
+                  match_time: g.match_time,
+                  uber_type: effectiveUberType,
+                  is_subsidized: effectiveIsSubsidized,
+                }
+              }
+
+              if (ridersWithoutMoved.length !== g.riders.length) {
+                return {
+                  ...g,
+                  riders: ridersWithoutMoved,
+                  time_range: calculateGroupTimeRange(ridersWithoutMoved),
+                }
+              }
+
+              return g
+            })
+            .filter((g) => g.riders.length > 0),
+        )
+
+        // Delete any existing matches for this exact flight form.
         const deletedMatches = await deleteRiderMatches({
           supabase,
           userId: rider.user_id,
@@ -1501,28 +1599,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             console.error('Error updating flight to unmatched:', unmatchError)
           }
         }
-
-        const { subsidized: isSubsidized, assignVoucher } =
-          computeGroupSubsidized({
-            date: finalDate,
-            toAirport: group.to_airport,
-            airport: group.airport,
-            riderCount: updatedRiders.length,
-            riderSchools: updatedRiders.map((r) => r.school),
-            uberType: uberType ?? undefined,
-          })
-        const voucherValue = assignVoucher ? group.group_voucher || '' : ''
-
-        // Respect manual overrides for the group when setting new/updated match
-        const effectiveUberType = group.uber_type_override
-          ? (group.uber_type ?? uberType)
-          : uberType
-        const hasVoucher = Boolean(group.group_voucher?.trim())
-        const isConnectType =
-          (effectiveUberType ?? group.uber_type)?.toLowerCase() === 'connect'
-        const effectiveIsSubsidized = group.subsidized_override
-          ? (group.is_subsidized ?? isSubsidized)
-          : isSubsidized || hasVoucher || isConnectType
 
         await upsertManualGroupMatch({
           supabase,
@@ -1595,9 +1671,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           const updatedGroups = prev.map((g) => {
             // Update destination group
             if (g.ride_id === group.ride_id) {
+              const ridersWithoutMoved = g.riders.filter(
+                (existingRider) => existingRider.flight_id !== rider.flight_id,
+              )
               return {
                 ...g,
-                riders: [...g.riders, rider],
+                riders: [...ridersWithoutMoved, rider],
                 time_range: newTimeRange, // Update time range (for display)
                 match_time: g.match_time, // Keep existing group time — only the added rider's match was updated
                 uber_type: effectiveUberType, // Update uber_type in local state (respects override)
@@ -1610,6 +1689,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               const remainingRiders = g.riders.filter(
                 (r) => r.flight_id !== rider.flight_id,
               )
+              if (remainingRiders.length === 0) {
+                return {
+                  ...g,
+                  riders: [],
+                  time_range: '',
+                }
+              }
+
               if (remainingRiders.length > 0) {
                 const bagUnits = calculateBagUnits(remainingRiders)
                 const sourceIsConnect = g.uber_type?.toLowerCase() === 'connect'
@@ -1672,7 +1759,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             ? updatedGroups.find((g) => g.ride_id === sourceGroupId)
             : null
 
-          return updatedGroups
+          return updatedGroups.filter((g) => g.riders.length > 0)
         })
 
         // Track destination group as changed
@@ -1821,12 +1908,14 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         console.error('Error adding rider from corral to group:', error)
         setErrorMessage('Failed to add rider to group')
         setCorralSelectionMode(null)
+        await fetchData()
         setTimeout(() => setErrorMessage(null), 3000)
       }
     },
     [
       logToChangeLog,
       loadUnconfirmedChanges,
+      fetchData,
       supabase,
       corralRiders,
       computeGroupSubsidized,
@@ -2208,6 +2297,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     changeLogFilterDateFrom,
     changeLogFilterDateTo,
     changeLogFilterName,
+    changeLogFilterRideId,
     changeLogFilterSubjectName,
     changeLogSortBy,
     changeLogSortDirection,
@@ -2443,6 +2533,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         changeLogFilterDateFrom,
         changeLogFilterDateTo,
         changeLogFilterName,
+        changeLogFilterRideId,
         changeLogFilterSubjectName,
         changeLogHeight,
         changeLogOptionsExpanded,
@@ -2500,6 +2591,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         setChangeLogExpanded,
         setChangeLogFilterActions,
         setChangeLogFilterName,
+        setChangeLogFilterRideId,
         setChangeLogFilterSubjectName,
         setChangeLogOptionsExpanded,
         setChangeLogSortBy,

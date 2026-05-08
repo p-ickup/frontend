@@ -153,12 +153,18 @@ export const updateFlightRecord = async ({
 export const removeGroupMatch = async ({
   groupId,
   userId,
+  flightId,
 }: {
   supabase: GroupsSupabaseClient
   groupId: number
   userId: string
+  flightId: number
 }) => {
-  await runAdminGroupCommand('remove_group_match', { groupId, userId })
+  await runAdminGroupCommand('remove_group_match', {
+    groupId,
+    userId,
+    flightId,
+  })
 }
 
 export const deleteRiderMatches = async ({

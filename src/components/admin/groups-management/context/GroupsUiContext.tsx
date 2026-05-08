@@ -24,6 +24,7 @@ export interface GroupsUiContextValue {
   changeLogFilterDateFrom: string
   changeLogFilterDateTo: string
   changeLogFilterName: string
+  changeLogFilterRideId: string
   changeLogFilterSubjectName: string
   changeLogHeight: number
   changeLogOptionsExpanded: boolean
@@ -85,6 +86,7 @@ export interface GroupsUiContextValue {
   setChangeLogExpanded: SetState<boolean>
   setChangeLogFilterActions: SetState<Set<string>>
   setChangeLogFilterName: SetState<string>
+  setChangeLogFilterRideId: SetState<string>
   setChangeLogFilterSubjectName: SetState<string>
   setChangeLogOptionsExpanded: SetState<boolean>
   setChangeLogSortBy: SetState<ChangeLogSortBy>

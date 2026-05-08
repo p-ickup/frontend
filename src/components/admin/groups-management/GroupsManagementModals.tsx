@@ -449,8 +449,11 @@ export default function GroupsManagementModals() {
               </button>
               <button
                 onClick={async () => {
-                  if (timeConflictModal.onConfirm) {
-                    await timeConflictModal.onConfirm()
+                  const confirmTimeConflict = timeConflictModal.onConfirm
+                  setTimeConflictModal(null)
+
+                  if (confirmTimeConflict) {
+                    await confirmTimeConflict()
                   }
                 }}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
