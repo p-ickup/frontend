@@ -207,6 +207,14 @@ export const useGroupsDerivedData = ({
   const filteredGroups = useMemo(
     () =>
       groups.filter((group) => {
+        const trimmedSearchQuery = searchQuery.trim()
+        if (
+          trimmedSearchQuery.startsWith('#') &&
+          matchesGroupSearch(group, trimmedSearchQuery)
+        ) {
+          return true
+        }
+
         const airportMatch =
           selectedAirports.length === 0 ||
           selectedAirports.includes(group.airport)
