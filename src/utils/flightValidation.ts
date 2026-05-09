@@ -175,7 +175,7 @@ const SERVICE_PERIODS: ServicePeriod[] = [
   {
     start: '2026-05-07', // 5 days before 5/12
     end: '2026-05-21', // 2 days after 5/19
-    deadline: '2026-05-06T23:59:59-08:00',
+    deadline: '2026-05-06T23:59:59-07:00', // it's 7:00 due to daylight savings in the spring
     name: 'Summer Break',
   },
 ]

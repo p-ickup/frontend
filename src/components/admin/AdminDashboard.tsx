@@ -1172,11 +1172,13 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
                           <td className="px-4 py-2">{c.airport}</td>
                           <td className="px-4 py-2">
                             {c.cancelled_after_deadline ? (
-                              <span className="rounded bg-amber-100 px-2 py-0.5 text-amber-800">
+                              <span className="rounded bg-red-100 px-2 py-0.5 text-red-800">
                                 Yes
                               </span>
                             ) : (
-                              <span className="text-gray-500">No</span>
+                              <span className="rounded bg-green-100 px-2 py-0.5 text-green-800">
+                                No
+                              </span>
                             )}
                           </td>
                           <td className="px-4 py-2">

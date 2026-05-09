@@ -218,7 +218,7 @@ const MatchCard = ({
             </p>
             <p className="mt-1 text-xl font-semibold text-gray-800">
               {isConnect
-                ? `You are matched with ${matches.length} ${matches.length === 1 ? 'person' : 'people'}`
+                ? `You are matched with ${otherRiders.length} ${otherRiders.length === 1 ? 'person' : 'people'}`
                 : otherRiders.length === 0
                   ? "You're the only rider in this group right now."
                   : otherRiders.length === 1
@@ -455,35 +455,41 @@ const MatchCard = ({
 
         {(otherRiders.length > 0 || upcoming) && (
           <div className="flex flex-col items-center gap-3 lg:items-end">
-            {!isConnect && otherRiders.length > 0 && (
+            {otherRiders.length > 0 && (
               <>
                 <p className="text-sm font-medium text-indigo-600">
-                  Other Riders Contact Information
+                  {isConnect
+                    ? 'Other Riders'
+                    : 'Other Riders Contact Information'}
                 </p>
                 <div className="flex flex-wrap justify-center gap-3 lg:justify-end">
                   {otherRiders.map((match) => (
                     <div
                       key={match.Users.user_id}
-                      className="relative flex flex-col items-center gap-1 rounded-xl p-1 transition-all duration-300 hover:scale-105 hover:cursor-pointer hover:shadow-md hover:shadow-gray-600"
+                      className="relative flex flex-col items-center gap-1 rounded-xl p-1"
                     >
                       <p className="text-center text-sm font-medium text-gray-700">
-                        {match.Users.firstname}
+                        {match.Users.firstname} {match.Users.lastname}
                       </p>
-                      <div className="relative overflow-hidden rounded-full">
-                        <Image
-                          src={getProfileUrl(match.Users.photo_url)}
-                          alt={`${match.Users.firstname}'s profile`}
-                          width={60}
-                          height={60}
-                          className="rounded-full"
-                        />
-                      </div>
-                      <p className="text-center text-xs text-gray-500">
-                        {match.Users.email || 'No email provided'}
-                      </p>
-                      <p className="text-center text-xs text-gray-500">
-                        {match.Users.phonenumber || 'No phone provided'}
-                      </p>
+                      {!isConnect && (
+                        <>
+                          <div className="relative overflow-hidden rounded-full">
+                            <Image
+                              src={getProfileUrl(match.Users.photo_url)}
+                              alt={`${match.Users.firstname}'s profile`}
+                              width={60}
+                              height={60}
+                              className="rounded-full"
+                            />
+                          </div>
+                          <p className="text-center text-xs text-gray-500">
+                            {match.Users.email || 'No email provided'}
+                          </p>
+                          <p className="text-center text-xs text-gray-500">
+                            {match.Users.phonenumber || 'No phone provided'}
+                          </p>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
