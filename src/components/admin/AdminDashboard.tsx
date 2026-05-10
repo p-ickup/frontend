@@ -1275,10 +1275,9 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         </div>
 
         {/* Match Emails Section */}
-        <div className="pointer-events-none mb-8 rounded-lg bg-white opacity-50 shadow-md">
-          <div className="border-b border-gray-200 bg-gradient-to-r from-gray-400 to-gray-500 px-6 py-4">
+        <div className="mb-8 rounded-lg bg-white shadow-md">
+          <div className="border-b border-gray-200 bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-4">
             <h2 className="text-xl font-bold text-white">Send Match Emails</h2>
-            <p className="mt-1 text-sm text-white/90">Temporarily disabled</p>
           </div>
 
           <div className="p-6">
@@ -1479,12 +1478,11 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         </div>
 
         {/* Unmatched Emails Section */}
-        <div className="pointer-events-none mb-8 rounded-lg bg-white opacity-50 shadow-md">
-          <div className="border-b border-gray-200 bg-gradient-to-r from-gray-400 to-gray-500 px-6 py-4">
+        <div className="mb-8 rounded-lg bg-white shadow-md">
+          <div className="border-b border-gray-200 bg-gradient-to-r from-orange-500 to-orange-600 px-6 py-4">
             <h2 className="text-xl font-bold text-white">
               Send Unmatched Rider Emails
             </h2>
-            <p className="mt-1 text-sm text-white/90">Temporarily disabled</p>
           </div>
 
           <div className="p-6">
