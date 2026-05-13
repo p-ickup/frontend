@@ -619,6 +619,28 @@ export const fetchGroupsManagementSnapshot = async ({
     })
   })
 
+  // group_voucher was seeded from whichever match was processed first; if that
+  // rider had no voucher yet, the group looked voucher-less even when others
+  // had the shared group voucher. Resolve from any member match (stable order).
+  const groupVoucherByRideId = new Map<number, string>()
+  const matchesSortedForVoucher = [...matchesData].sort((a, b) => {
+    if (a.ride_id !== b.ride_id) return a.ride_id - b.ride_id
+    return (a.flight_id ?? 0) - (b.flight_id ?? 0)
+  })
+  for (const match of matchesSortedForVoucher) {
+    const trimmed = (match.voucher ?? '').trim()
+    if (!trimmed) continue
+    if (!groupVoucherByRideId.has(match.ride_id)) {
+      groupVoucherByRideId.set(match.ride_id, trimmed)
+    }
+  }
+  for (const group of groupsMap.values()) {
+    const resolved = groupVoucherByRideId.get(group.ride_id)
+    if (resolved) {
+      group.group_voucher = resolved
+    }
+  }
+
   let groups = Array.from(groupsMap.values()).map((group) => ({
     ...group,
     time_range: calculateGroupTimeRange(group.riders),

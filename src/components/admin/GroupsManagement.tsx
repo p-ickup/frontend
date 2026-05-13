@@ -1526,7 +1526,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           riderSchools: updatedRiders.map((r) => r.school),
           uberType: uberType ?? undefined,
         })
-        const voucherValue = group.group_voucher || ''
+        const rawGroupVoucher = (group.group_voucher ?? '').trim()
+        const voucherValue = rawGroupVoucher
+          ? normalizeVoucherInput(rawGroupVoucher)
+          : ''
 
         // Respect manual overrides for the group when setting new/updated match
         const effectiveUberType = group.uber_type_override
