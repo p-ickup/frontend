@@ -634,7 +634,7 @@ export const fetchGroupsManagementSnapshot = async ({
       groupVoucherByRideId.set(match.ride_id, trimmed)
     }
   }
-  for (const group of groupsMap.values()) {
+  for (const group of Array.from(groupsMap.values())) {
     const resolved = groupVoucherByRideId.get(group.ride_id)
     if (resolved) {
       group.group_voucher = resolved
