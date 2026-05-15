@@ -1,6 +1,10 @@
 /** @jest-environment node */
 
 jest.mock('server-only', () => ({}))
+jest.mock('@/utils/flightValidation', () => ({
+  ...jest.requireActual('@/utils/flightValidation'),
+  canEditFlight: jest.fn().mockReturnValue(true),
+}))
 
 import {
   acceptMatchRequest,
