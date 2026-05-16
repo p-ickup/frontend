@@ -317,7 +317,10 @@ export default function Results() {
       }
 
       // 5. Delete matches
-      if (allRideMatches && allRideMatches.length <= 2) {
+      // Only dissolve the entire ride if the canceller is the sole member.
+      // Groups of 1 are valid (subsidized), so a 2-person group dropping to 1
+      // should leave the remaining person's match and voucher intact.
+      if (allRideMatches && allRideMatches.length <= 1) {
         const { error: deleteAllError } = await supabase
           .from('Matches')
           .delete()
@@ -341,10 +344,10 @@ export default function Results() {
       }
 
       // 6. Set Flights.matched = false for all affected users
-      // When we deleted all matches (<=2), every user in the ride is now unmatched.
-      // When we deleted only one match (>2), only the cancelling user is unmatched.
+      // When the canceller was the only member (<=1), mark their flight unmatched.
+      // Otherwise, only the cancelling user's flight is affected; remaining members stay matched.
       const flightIdsToUpdate =
-        allRideMatches && allRideMatches.length <= 2
+        allRideMatches && allRideMatches.length <= 1
           ? allRideMatches.map((m) => m.flight_id)
           : [userMatch.flight_id]
 
