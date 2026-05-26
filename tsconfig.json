@@ -21,11 +21,9 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "**/*.test.ts",
-    "**/*.test.tsx",
     "types.d.ts",
     "next-env.d.ts",
     ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next", "out", "jest.setup.ts", "jest.config.ts"]
+  "exclude": ["node_modules", ".next", "out", "jest.setup.ts", "jest.config.ts", "src/mocks", "src/test", "**/*.test.ts", "**/*.test.tsx"]
 }
