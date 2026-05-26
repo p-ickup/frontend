@@ -4,6 +4,7 @@ import RedirectButton from '@/components/buttons/RedirectButton'
 import { useAuth } from '@/hooks/useAuth'
 import { validateUserProfile } from '@/utils/profileValidation'
 import Image from 'next/image'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 export default function Index() {
@@ -205,6 +206,30 @@ export default function Index() {
                   </svg>
                 </div>
               </div>
+
+              {!user && (
+                <p className="mt-4 text-sm font-medium text-gray-600">
+                  By clicking Sign in with Google, you agree to PICKUP&apos;s{' '}
+                  <Link
+                    href="https://docs.google.com/document/d/e/2PACX-1vSnd4UeEvul3M6_L5rPr3z1Shzlccuqa0aP-O5eifF7p_BIzfc-lKrNwAG95lCb4LnOWDeZ-Zz2YRa9/pub"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-blue-600 underline hover:text-blue-800"
+                  >
+                    Terms &amp; Conditions
+                  </Link>{' '}
+                  and{' '}
+                  <Link
+                    href="https://docs.google.com/document/d/e/2PACX-1vTUgsgoxR1HOkfnW4QYfki4DXLUSB-ELyyMqFNFfOSgxyshPE9ykZyBODVxTCip10ULXgeaqrBXGddA/pub"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-blue-600 underline hover:text-blue-800"
+                  >
+                    Privacy Policy
+                  </Link>
+                  .
+                </p>
+              )}
             </div>
 
             {/* Scroll Indicator - Desktop only */}
