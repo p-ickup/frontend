@@ -16,7 +16,7 @@
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": { "@/*": ["./src/*"] },
-    "types": ["@testing-library/jest-dom"]
+    "types": []
   },
   "include": [
     "**/*.ts",
