@@ -23,12 +23,7 @@ interface GroupedMatch {
 }
 
 export default function UnmatchedPage() {
-  const {
-    user,
-    isAuthenticated,
-    isLoading: authLoading,
-    signInWithGoogle,
-  } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [flights, setFlights] = useState<FlightWithUser[]>([])
   const [groups, setGroups] = useState<GroupedMatch[]>([])
   const [loading, setLoading] = useState(true)
@@ -195,7 +190,7 @@ export default function UnmatchedPage() {
               Sign in to find other travelers who need rides
             </p>
             <div className="rounded-2xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
-              <EmptyState type="login" onLogin={signInWithGoogle} />
+              <EmptyState type="login" />
               <div className="mt-6">
                 <RedirectButton label="Back to Home" route="/" />
               </div>

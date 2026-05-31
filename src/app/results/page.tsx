@@ -51,7 +51,7 @@ export default function Results() {
   >({})
   const [showPrevious, setShowPrevious] = useState(false)
   const [loading, setLoading] = useState(true)
-  const { user, isAuthenticated, signInWithGoogle } = useAuth()
+  const { user, isAuthenticated } = useAuth()
 
   const fetchMatches = useCallback(async () => {
     try {
@@ -231,7 +231,7 @@ export default function Results() {
               Sign in to view your travel matches and companions
             </p>
             <div className="rounded-2xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
-              <EmptyState type="login" onLogin={signInWithGoogle} />
+              <EmptyState type="login" />
               <div className="mt-6">
                 <RedirectButton label="Back to Home" route="/" />
               </div>

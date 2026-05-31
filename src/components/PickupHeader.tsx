@@ -4,6 +4,7 @@ import Image from 'next/image'
 import { useEffect, useState } from 'react'
 
 import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
+import SignInModal from '@/components/SignInModal'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/utils/supabase'
@@ -14,6 +15,7 @@ export default function PickupHeader() {
   const router = useRouter()
   const [avatarKey, setAvatarKey] = useState(0)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isSignInModalOpen, setIsSignInModalOpen] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
 
   // Fetch admin status from Users table
@@ -59,7 +61,7 @@ export default function PickupHeader() {
     if (user) {
       router.push('/profile')
     } else {
-      signInWithGoogle()
+      setIsSignInModalOpen(true)
     }
   }
 
@@ -264,6 +266,12 @@ export default function PickupHeader() {
           </div>
         </div>
       )}
+
+      <SignInModal
+        isOpen={isSignInModalOpen}
+        onClose={() => setIsSignInModalOpen(false)}
+        onSignIn={signInWithGoogle}
+      />
     </>
   )
 }
