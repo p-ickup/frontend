@@ -7,6 +7,7 @@ Quick path from clone to a safe first change.
 - Node 20+, **pnpm** 9.15+ (`corepack use pnpm@9.15.2`)
 - Supabase project access (URL, anon key, service role secret)
 - Google OAuth configured in Supabase (for local sign-in)
+- Netlify access if you need to check production env vars or deploy settings
 
 ## Local setup
 
