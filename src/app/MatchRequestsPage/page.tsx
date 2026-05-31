@@ -23,7 +23,7 @@ type IncomingMatchRequest = {
 }
 
 export default function MatchRequestsPage() {
-  const { user, isAuthenticated, isLoading, signInWithGoogle } = useAuth()
+  const { user, isAuthenticated, isLoading } = useAuth()
   const [requests, setRequests] = useState<IncomingMatchRequest[]>([])
 
   const load = useCallback(async () => {
@@ -86,7 +86,7 @@ export default function MatchRequestsPage() {
     return (
       <div className="min-h-screen bg-gray-50 p-6 text-black">
         <h1 className="mb-6 text-2xl font-bold">Incoming Match Requests</h1>
-        <EmptyState type="login" onLogin={signInWithGoogle} />
+        <EmptyState type="login" />
       </div>
     )
   }
