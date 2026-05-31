@@ -1,6 +1,6 @@
 # Platform overview
 
-PICKUP helps students coordinate airport rides (often ASPC-subsidized). This repo is the **Next.js web app**; matching logic and bulk email sending live partly in **Supabase** (Postgres + edge functions) and partly in a **separate ML/backend** service.
+PICKUP helps students coordinate airport rides (often ASPC-subsidized). This repo is the **Next.js web app**, hosted on **Netlify**; matching logic and bulk email sending live partly in **Supabase** (Postgres + edge functions) and partly in a **separate ML/backend** service.
 
 ## High-level architecture
 
@@ -9,7 +9,7 @@ flowchart LR
   subgraph browser [Browser]
     UI[Next.js pages]
   end
-  subgraph vercel [Vercel]
+  subgraph netlify [Netlify]
     API["/api/* routes"]
     MW[middleware session refresh]
   end
@@ -31,6 +31,7 @@ flowchart LR
 
 | Layer | Role |
 |-------|------|
+| **Netlify** | Hosts the Next.js app (build + server/API routes) |
 | **Pages** (`src/app/**/page.tsx`) | UI: questionnaires, results, unmatched, admin, ASPC flows |
 | **API routes** (`src/app/api/**/route.ts`) | Server-side mutations and reads; auth checks; calls RPCs or service role |
 | **`src/lib/server/*`** | Business logic shared by API routes (not imported by client components) |
@@ -74,7 +75,7 @@ Admin roles (`Users.role`):
 | `AlgorithmStatus` | Matching run metadata (admin dashboard) |
 | `match_cancellations` | Cancellation records (admin reporting) |
 
-Exact columns and RLS live in Supabase and in [documentation/SCHEMA.md](./documentation/SCHEMA.md); this repo’s SQL under `supabase-migrations/` only contains **RPC definitions** the app depends on (not the full schema).
+Exact columns and RLS live in Supabase; see [SCHEMA.md](./SCHEMA.md). This repo’s SQL under `supabase-migrations/` only contains **RPC definitions** the app depends on (not the full schema).
 
 ## API routes (index)
 

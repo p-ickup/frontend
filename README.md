@@ -4,7 +4,7 @@ Next.js app for managing pickup workflows, matching requests, and admin operatio
 
 ## Stack
 
-- Next.js
+- Next.js (hosted on Netlify)
 - Supabase (Auth + Database)
 - Tailwind CSS
 - React Query
