@@ -31,3 +31,15 @@ Next.js app for managing pickup workflows, matching requests, and admin operatio
 - `pnpm dev` - start local dev server
 - `pnpm build` - build for production
 - `pnpm start` - run production build
+- `pnpm test` - run Jest tests
+- `pnpm type-check` - TypeScript check
+
+## Documentation
+
+Start at [documentation/README.md](./documentation/README.md):
+
+- [Codebase onboarding](./documentation/CODEBASE_ONBOARDING.md) — env, layout, first changes
+- [Platform overview](./documentation/PLATFORM_OVERVIEW.md) — student/admin flows and architecture
+- [Database schema](./documentation/SCHEMA.md) — tables and column definitions
+- [Supabase](./documentation/SUPABASE.md) — RPCs, edge functions, syncing from Supabase
+- [Operations runbook](./documentation/OPERATIONS.md) — break prep, types sync, emails, delay cron
