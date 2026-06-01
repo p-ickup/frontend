@@ -4,15 +4,6 @@ This app treats Supabase as **Auth + Postgres + Edge Functions**. The frontend r
 
 For table and column definitions, see [SCHEMA.md](./SCHEMA.md). Machine-readable types: [`src/lib/database.types.ts`](../src/lib/database.types.ts). To regenerate types, send batch emails, or enable delay cron, see [OPERATIONS.md](./OPERATIONS.md).
 
-## Do you need to copy all functions into this repo?
-
-| Approach | When to use |
-|----------|-------------|
-| **Document + migrations only (current)** | Fine for frontend onboarding if edge/DB code rarely changes and lives in Supabase dashboard or another repo. |
-| **Full Supabase CLI project in repo (recommended long-term)** | One place for schema, RPCs, and edge functions; reviewable PRs; `supabase db push` / `functions deploy`. |
-
-You do **not** need a byte-for-byte copy of every DB object for docs to be useful. You **do** need either migrations in git or a linked CLI project so RPC definitions cannot drift from production.
-
 ## Edge functions (invoked from this repo)
 
 These are called by HTTP from admin API routes (anon key in `Authorization` header):
@@ -26,7 +17,7 @@ URL shape: `{NEXT_PUBLIC_SUPABASE_URL}/functions/v1/<name>`
 
 Email **content rules** (variants: subsidized × direction) are described in [BATCH_EMAIL_LOGIC.md](./BATCH_EMAIL_LOGIC.md). Implementation is in the edge function codebase (not in this frontend tree).
 
-Other edge functions may exist in your Supabase project (cron, webhooks, etc.) but are **not referenced** in this frontend repo — list them in the Supabase dashboard or after `supabase functions list`.
+Other **edge functions** and **database functions** may exist in Supabase project (cron, webhooks, etc.) but are **not referenced** in this frontend repo.
 
 ## Postgres RPCs used by the app
 

@@ -50,7 +50,8 @@ Use the **Admin Dashboard** ([`/admin`](../src/app/admin/page.tsx), [`AdminDashb
 - Separate buttons for **matched** vs **unmatched** emails.
 - Routes call edge functions `send-all-match-emails-batch` and `send-unmatched-emails-batch` (see [SUPABASE.md](./SUPABASE.md)).
 
-**Selective matched sends:** Set `Matches.is_verified = true` only for groups you want emailed. The batch match edge function should filter on `is_verified = true` and `email_sent = false` — that filter may be commented out in the edge function source; look for the labeled block and enable it when doing staged sends. See [BATCH_EMAIL_LOGIC.md](./BATCH_EMAIL_LOGIC.md).
+You can change the edge functions to only send emails when the matches are manually verified. Right now, this functionality is turned off. Its purpose is for testing or if you only want to send a specific subset of emails.
+**Selective matched sends:** Set `Matches.is_verified = true` only for groups you want emailed. The batch match edge function should filter on `is_verified = true` and `email_sent = false` — that filter may be commented out in the edge function source; look for the labeled block and enable it when doing testing email sends. See [BATCH_EMAIL_LOGIC.md](./BATCH_EMAIL_LOGIC.md).
 
 **Note:** Admin group edits (voucher, subsidy, vehicle type) reset `is_verified` to `false` in [`GroupsManagement.tsx`](../src/components/admin/GroupsManagement.tsx), so re-verify groups before sending.
 
@@ -60,6 +61,4 @@ Use the **Admin Dashboard** ([`/admin`](../src/app/admin/page.tsx), [`AdminDashb
 
 Supabase Dashboard → **Integrations** → **Cron** → enable job **`delays-sweep-20`**.
 
-Example (your project): [Cron jobs](https://supabase.com/dashboard/project/zgunhxopkgbksfoxthpn/integrations/cron/jobs)
-
-Replace the project ref in the URL with yours if different.
+[Cron jobs](https://supabase.com/dashboard/project/zgunhxopkgbksfoxthpn/integrations/cron/jobs)
