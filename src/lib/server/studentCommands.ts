@@ -432,16 +432,34 @@ export async function updateOwnFlight({
     throw createError('At least one editable flight field is required.', 400)
   }
 
-  const { error } = await supabase
-    .from('Flights')
-    .update({
-      ...normalizedPayload,
-      matched: null,
-    })
-    .eq('flight_id', flightId)
+  const { data, error } = await supabase.rpc('update_own_flight_tx', {
+    p_flight_id: flightId,
+    p_fields: normalizedPayload,
+  })
 
   if (error) {
-    throw createError(error.message, error.code === '23505' ? 409 : 400, error)
+    const message = error.message || 'Failed to update flight.'
+    const normalizedMessage = message.toLowerCase()
+    const status = normalizedMessage.includes('not found')
+      ? 404
+      : normalizedMessage.includes('not allowed') ||
+          normalizedMessage.includes('authentication')
+        ? 403
+        : normalizedMessage.includes('match') ||
+            normalizedMessage.includes('stale')
+          ? 409
+          : 400
+
+    throw createError(message, status, error)
+  }
+
+  if (!data || data.success !== true) {
+    const status = Number(data?.status)
+    throw createError(
+      data?.error || 'Failed to update flight.',
+      Number.isFinite(status) ? status : 400,
+      data,
+    )
   }
 
   return { success: true }
@@ -474,13 +492,33 @@ export async function deleteOwnFlight({
     throw createError('This flight can no longer be deleted.', 403)
   }
 
-  const { error } = await supabase
-    .from('Flights')
-    .delete()
-    .eq('flight_id', flightId)
+  const { data, error } = await supabase.rpc('delete_own_flight_tx', {
+    p_flight_id: flightId,
+  })
 
   if (error) {
-    throw createError(error.message, 400, error)
+    const message = error.message || 'Failed to delete flight.'
+    const normalizedMessage = message.toLowerCase()
+    const status = normalizedMessage.includes('not found')
+      ? 404
+      : normalizedMessage.includes('not allowed') ||
+          normalizedMessage.includes('authentication')
+        ? 403
+        : normalizedMessage.includes('match') ||
+            normalizedMessage.includes('stale')
+          ? 409
+          : 400
+
+    throw createError(message, status, error)
+  }
+
+  if (!data || data.success !== true) {
+    const status = Number(data?.status)
+    throw createError(
+      data?.error || 'Failed to delete flight.',
+      Number.isFinite(status) ? status : 400,
+      data,
+    )
   }
 
   return { success: true }

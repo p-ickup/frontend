@@ -10,6 +10,7 @@ import {
   acceptMatchRequest,
   cancelOwnMatch,
   createOwnFlight,
+  deleteOwnFlight,
   reportReadyStatus,
   updateOwnFlight,
 } from '@/lib/server/studentCommands'
@@ -267,7 +268,7 @@ describe('createOwnFlight', () => {
 })
 
 describe('updateOwnFlight', () => {
-  it('narrows the update payload before mutating a flight', async () => {
+  it('narrows the update payload before calling the transactional RPC', async () => {
     const maybeSingle = jest.fn().mockResolvedValue({
       data: {
         flight_id: 77,
@@ -290,17 +291,18 @@ describe('updateOwnFlight', () => {
     })
     const profileEq = jest.fn(() => ({ maybeSingle: profileMaybeSingle }))
     const profileSelect = jest.fn(() => ({ eq: profileEq }))
-    const updateEq = jest.fn().mockResolvedValue({ error: null })
-    const update = jest.fn(() => ({ eq: updateEq }))
+    const rpc = jest.fn().mockResolvedValue({
+      data: { success: true },
+      error: null,
+    })
     const from = jest
       .fn()
       .mockReturnValueOnce({ select })
       .mockReturnValueOnce({ select: profileSelect })
-      .mockReturnValueOnce({ update })
 
     await expect(
       updateOwnFlight({
-        supabase: { from },
+        supabase: { from, rpc },
         userId: 'student-1',
         flightId: 77,
         payload: {
@@ -316,14 +318,134 @@ describe('updateOwnFlight', () => {
       }),
     ).resolves.toEqual({ success: true })
 
-    expect(update).toHaveBeenCalledWith({
-      flight_no: 456,
-      airport: 'ONT',
-      opt_in: true,
-      bag_no_large: 2,
-      latest_time: '17:30',
-      matched: null,
+    expect(rpc).toHaveBeenCalledWith('update_own_flight_tx', {
+      p_flight_id: 77,
+      p_fields: {
+        flight_no: 456,
+        airport: 'ONT',
+        opt_in: true,
+        bag_no_large: 2,
+        latest_time: '17:30',
+      },
     })
-    expect(updateEq).toHaveBeenCalledWith('flight_id', 77)
+    expect(rpc.mock.calls[0][1].p_fields).not.toHaveProperty('matched')
+  })
+
+  it('surfaces structured matched-flight failures with status 409', async () => {
+    const maybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        flight_id: 77,
+        user_id: 'student-1',
+        date: '2099-01-20',
+      },
+      error: null,
+    })
+    const selectEq = jest.fn(() => ({ maybeSingle }))
+    const select = jest.fn(() => ({ eq: selectEq }))
+    const profileMaybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        firstname: 'Taylor',
+        lastname: 'Student',
+        school: 'Pomona',
+        email: 'taylor@example.com',
+        phonenumber: '9095551234',
+      },
+      error: null,
+    })
+    const profileEq = jest.fn(() => ({ maybeSingle: profileMaybeSingle }))
+    const profileSelect = jest.fn(() => ({ eq: profileEq }))
+    const rpc = jest.fn().mockResolvedValue({
+      data: {
+        success: false,
+        status: 409,
+        error:
+          'This flight is part of a match. Cancel your match from the Results page before deleting.',
+      },
+      error: null,
+    })
+    const from = jest
+      .fn()
+      .mockReturnValueOnce({ select })
+      .mockReturnValueOnce({ select: profileSelect })
+
+    await expect(
+      updateOwnFlight({
+        supabase: { from, rpc },
+        userId: 'student-1',
+        flightId: 77,
+        payload: { airport: 'LAX' },
+      }),
+    ).rejects.toMatchObject({
+      message:
+        'This flight is part of a match. Cancel your match from the Results page before deleting.',
+      status: 409,
+    })
+  })
+})
+
+describe('deleteOwnFlight', () => {
+  it('calls the transactional RPC for flight deletion', async () => {
+    const maybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        flight_id: 88,
+        user_id: 'student-1',
+        date: '2099-01-20',
+      },
+      error: null,
+    })
+    const selectEq = jest.fn(() => ({ maybeSingle }))
+    const select = jest.fn(() => ({ eq: selectEq }))
+    const rpc = jest.fn().mockResolvedValue({
+      data: { success: true },
+      error: null,
+    })
+    const from = jest.fn().mockReturnValueOnce({ select })
+
+    await expect(
+      deleteOwnFlight({
+        supabase: { from, rpc },
+        userId: 'student-1',
+        flightId: 88,
+      }),
+    ).resolves.toEqual({ success: true })
+
+    expect(rpc).toHaveBeenCalledWith('delete_own_flight_tx', {
+      p_flight_id: 88,
+    })
+  })
+
+  it('surfaces structured matched-flight failures with status 409', async () => {
+    const maybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        flight_id: 88,
+        user_id: 'student-1',
+        date: '2099-01-20',
+      },
+      error: null,
+    })
+    const selectEq = jest.fn(() => ({ maybeSingle }))
+    const select = jest.fn(() => ({ eq: selectEq }))
+    const rpc = jest.fn().mockResolvedValue({
+      data: {
+        success: false,
+        status: 409,
+        error:
+          'This flight is part of a match. Cancel your match from the Results page before deleting.',
+      },
+      error: null,
+    })
+    const from = jest.fn().mockReturnValueOnce({ select })
+
+    await expect(
+      deleteOwnFlight({
+        supabase: { from, rpc },
+        userId: 'student-1',
+        flightId: 88,
+      }),
+    ).rejects.toMatchObject({
+      message:
+        'This flight is part of a match. Cancel your match from the Results page before deleting.',
+      status: 409,
+    })
   })
 })
