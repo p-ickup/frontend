@@ -3,7 +3,6 @@ import {
   requireAuthenticatedRoute,
   routeErrorJson,
 } from '@/lib/server/auth'
-import { createServiceRoleClient } from '@/lib/server/serviceRole'
 import { deleteOwnFlight, updateOwnFlight } from '@/lib/server/studentCommands'
 import { NextResponse } from 'next/server'
 
@@ -29,7 +28,7 @@ export async function PATCH(
     }
 
     const result = await updateOwnFlight({
-      supabase: createServiceRoleClient(),
+      supabase: auth.supabase,
       userId: auth.user.id,
       flightId,
       payload,
@@ -57,7 +56,7 @@ export async function DELETE(
     }
 
     const result = await deleteOwnFlight({
-      supabase: createServiceRoleClient(),
+      supabase: auth.supabase,
       userId: auth.user.id,
       flightId,
     })
