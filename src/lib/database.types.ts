@@ -59,6 +59,7 @@ export type Database = {
           actor_role: string
           actor_user_id: string
           algorithm_run_id: string | null
+          change_batch_id: string | null
           confirmed: boolean | null
           created_at: string | null
           id: string
@@ -72,6 +73,7 @@ export type Database = {
           actor_role: string
           actor_user_id: string
           algorithm_run_id?: string | null
+          change_batch_id?: string | null
           confirmed?: boolean | null
           created_at?: string | null
           id?: string
@@ -85,6 +87,7 @@ export type Database = {
           actor_role?: string
           actor_user_id?: string
           algorithm_run_id?: string | null
+          change_batch_id?: string | null
           confirmed?: boolean | null
           created_at?: string | null
           id?: string
@@ -202,6 +205,7 @@ export type Database = {
           latest_date: string | null
           latest_time: string | null
           matched: boolean | null
+          matching_status: string
           max_dropoff: number | null
           max_price: number | null
           opt_in: boolean | null
@@ -230,6 +234,7 @@ export type Database = {
           latest_date?: string | null
           latest_time?: string | null
           matched?: boolean | null
+          matching_status?: string
           max_dropoff?: number | null
           max_price?: number | null
           opt_in?: boolean | null
@@ -258,6 +263,7 @@ export type Database = {
           latest_date?: string | null
           latest_time?: string | null
           matched?: boolean | null
+          matching_status?: string
           max_dropoff?: number | null
           max_price?: number | null
           opt_in?: boolean | null
@@ -430,6 +436,20 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: 'matches_flight_id_fk'
+            columns: ['flight_id']
+            isOneToOne: false
+            referencedRelation: 'Flights'
+            referencedColumns: ['flight_id']
+          },
+          {
+            foreignKeyName: 'matches_ride_id_fk'
+            columns: ['ride_id']
+            isOneToOne: false
+            referencedRelation: 'Rides'
+            referencedColumns: ['ride_id']
+          },
+          {
             foreignKeyName: 'Rides_flight_id_fkey'
             columns: ['flight_id']
             isOneToOne: false
@@ -444,6 +464,39 @@ export type Database = {
             referencedColumns: ['user_id']
           },
         ]
+      }
+      MatchingRuns: {
+        Row: {
+          commit_result: Json | null
+          committed_at: string | null
+          created_at: string
+          payload_hash: string
+          run_id: string
+          started_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          commit_result?: Json | null
+          committed_at?: string | null
+          created_at?: string
+          payload_hash: string
+          run_id: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          commit_result?: Json | null
+          committed_at?: string | null
+          created_at?: string
+          payload_hash?: string
+          run_id?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       MatchRequests: {
         Row: {
@@ -487,35 +540,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'Flights'
             referencedColumns: ['flight_id']
-          },
-        ]
-      }
-      Messages: {
-        Row: {
-          created_at: string
-          id: number
-          message: string | null
-          ride_id: number | null
-        }
-        Insert: {
-          created_at?: string
-          id?: number
-          message?: string | null
-          ride_id?: number | null
-        }
-        Update: {
-          created_at?: string
-          id?: number
-          message?: string | null
-          ride_id?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: 'Messages_ride_id_fkey'
-            columns: ['ride_id']
-            isOneToOne: false
-            referencedRelation: 'Rides'
-            referencedColumns: ['ride_id']
           },
         ]
       }
@@ -591,11 +615,239 @@ export type Database = {
         }
         Relationships: []
       }
+      Vouchers: {
+        Row: {
+          airport: string
+          assigned_flight_id: number | null
+          assigned_ride_id: number | null
+          contingency: boolean
+          created_at: string
+          date_end_label: string
+          date_start_label: string
+          end_date: string
+          import_batch_id: string | null
+          start_date: string
+          to_airport: boolean
+          updated_at: string
+          used: boolean
+          used_at: string | null
+          used_by_run_id: string | null
+          voucher_id: string
+          voucher_link: string
+        }
+        Insert: {
+          airport: string
+          assigned_flight_id?: number | null
+          assigned_ride_id?: number | null
+          contingency?: boolean
+          created_at?: string
+          date_end_label: string
+          date_start_label: string
+          end_date: string
+          import_batch_id?: string | null
+          start_date: string
+          to_airport: boolean
+          updated_at?: string
+          used?: boolean
+          used_at?: string | null
+          used_by_run_id?: string | null
+          voucher_id?: string
+          voucher_link: string
+        }
+        Update: {
+          airport?: string
+          assigned_flight_id?: number | null
+          assigned_ride_id?: number | null
+          contingency?: boolean
+          created_at?: string
+          date_end_label?: string
+          date_start_label?: string
+          end_date?: string
+          import_batch_id?: string | null
+          start_date?: string
+          to_airport?: boolean
+          updated_at?: string
+          used?: boolean
+          used_at?: string | null
+          used_by_run_id?: string | null
+          voucher_id?: string
+          voucher_link?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'vouchers_assigned_flight_fk'
+            columns: ['assigned_flight_id']
+            isOneToOne: false
+            referencedRelation: 'Flights'
+            referencedColumns: ['flight_id']
+          },
+          {
+            foreignKeyName: 'vouchers_assigned_ride_fk'
+            columns: ['assigned_ride_id']
+            isOneToOne: false
+            referencedRelation: 'Rides'
+            referencedColumns: ['ride_id']
+          },
+          {
+            foreignKeyName: 'vouchers_used_by_run_fk'
+            columns: ['used_by_run_id']
+            isOneToOne: false
+            referencedRelation: 'MatchingRuns'
+            referencedColumns: ['run_id']
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      accept_match_request: { Args: { p_request_id: string }; Returns: Json }
+      aspc_delay_create_solo_ride: {
+        Args: {
+          p_contingency_voucher?: string
+          p_flight_id: number
+          p_is_subsidized?: boolean
+          p_new_eta_date: string
+          p_new_eta_time: string
+          p_new_eta_time_earliest?: string
+          p_new_eta_time_latest?: string
+          p_new_flight?: Json
+          p_old_flight_date: string
+          p_old_match_date: string
+          p_old_match_time: string
+          p_reason_for_delay: string
+          p_ride_id: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      aspc_delay_decline_groups: {
+        Args: { p_current_ride_id: number; p_user_id: string }
+        Returns: Json
+      }
+      aspc_delay_join_group: {
+        Args: {
+          p_current_ride_id: number
+          p_selected_ride_id: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      aspc_delay_keep_original_group: {
+        Args: {
+          p_flight_id: number
+          p_new_eta_date: string
+          p_new_eta_time: string
+          p_new_eta_time_earliest?: string
+          p_new_eta_time_latest?: string
+          p_new_flight?: Json
+          p_old_flight_date: string
+          p_old_match_date: string
+          p_old_match_time: string
+          p_reason_for_delay: string
+          p_ride_id: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      aspc_delay_move_to_unmatched: {
+        Args: {
+          p_flight_id: number
+          p_new_eta_date: string
+          p_new_eta_time: string
+          p_new_eta_time_earliest?: string
+          p_new_eta_time_latest?: string
+          p_new_flight?: Json
+          p_old_flight_date: string
+          p_old_match_date: string
+          p_old_match_time: string
+          p_reason_for_delay: string
+          p_ride_id: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      cancel_own_match: { Args: { p_ride_id: number }; Returns: Json }
+      commit_matching_run: {
+        Args: { p_payload: Json; p_run_id: string }
+        Returns: Json
+      }
+      confirm_change_log_entries: { Args: { p_ids: string[] }; Returns: Json }
+      create_group: { Args: { p_payload: Json }; Returns: Json }
+      create_group_records: {
+        Args: {
+          p_assign_voucher: boolean
+          p_contingency_voucher: string
+          p_formatted_time: string
+          p_is_subsidized: boolean
+          p_normalized_voucher: string
+          p_ride_date: string
+          p_riders: Json
+          p_uber_type: string
+        }
+        Returns: Json
+      }
+      current_admin_scope: { Args: never; Returns: string }
+      delete_group_records: {
+        Args: {
+          p_flight_ids?: number[]
+          p_group_id: number
+          p_mark_flights_unmatched?: boolean
+        }
+        Returns: Json
+      }
+      delete_own_flight: { Args: { p_flight_id: number }; Returns: Json }
+      delete_own_flight_tx: { Args: { p_flight_id: number }; Returns: Json }
+      insert_aspc_delay_change_log: {
+        Args: {
+          p_assigned_contingency_voucher?: string
+          p_contingency_voucher_assigned?: boolean
+          p_flight_id: number
+          p_new_eta_date: string
+          p_new_eta_time: string
+          p_new_eta_time_earliest?: string
+          p_new_eta_time_latest?: string
+          p_new_flight?: Json
+          p_new_ride_id?: number
+          p_old_flight_date: string
+          p_old_match_date: string
+          p_old_match_time: string
+          p_outcome: string
+          p_reason_for_delay: string
+          p_ride_id: number
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      is_admin: { Args: never; Returns: boolean }
+      is_admin_for_flight: {
+        Args: { target_flight_id: number }
+        Returns: boolean
+      }
+      is_admin_for_ride: { Args: { target_ride_id: number }; Returns: boolean }
+      is_admin_for_user: { Args: { target_user_id: string }; Returns: boolean }
+      is_ride_member: { Args: { target_ride_id: number }; Returns: boolean }
+      is_super_admin: { Args: never; Returns: boolean }
+      move_rider: { Args: { p_payload: Json }; Returns: Json }
+      reject_match_request: { Args: { p_request_id: string }; Returns: Json }
+      report_delay: {
+        Args: {
+          p_new_eta_date: string
+          p_new_eta_time: string
+          p_reason_for_delay: string
+          p_ride_id: number
+        }
+        Returns: Json
+      }
+      report_ready_status: {
+        Args: {
+          p_missing_user_ids: string[]
+          p_ride_id: number
+          p_status: string
+        }
+        Returns: Json
+      }
       restore_deleted_match: {
         Args: { log_id_to_restore: number }
         Returns: {
@@ -603,6 +855,30 @@ export type Database = {
           restored_match_id: number
           success: boolean
         }[]
+      }
+      shares_ride_with_user: {
+        Args: { target_user_id: string }
+        Returns: boolean
+      }
+      update_group_overrides: {
+        Args: { p_payload: Json; p_ride_id: number }
+        Returns: Json
+      }
+      update_group_time: {
+        Args: { p_date: string; p_ride_id: number; p_time: string }
+        Returns: Json
+      }
+      update_group_voucher: {
+        Args: { p_ride_id: number; p_voucher: string }
+        Returns: Json
+      }
+      update_own_flight: {
+        Args: { p_flight_id: number; p_payload: Json }
+        Returns: Json
+      }
+      update_own_flight_tx: {
+        Args: { p_fields: Json; p_flight_id: number }
+        Returns: Json
       }
     }
     Enums: {

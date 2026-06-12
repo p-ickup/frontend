@@ -66,7 +66,7 @@ jest.mock(
     deleteRiderMatches: jest.fn(),
     fetchRiderByFlightId: jest.fn(),
     logChangeLogEntry: (...args: unknown[]) => logChangeLogEntryMock(...args),
-    markFlightsMatchedState: jest.fn(),
+    setMatchingStatus: jest.fn(),
     normalizeVoucherInput: (voucher: string) => {
       const trimmed = voucher.trim()
       if (!trimmed) return ''

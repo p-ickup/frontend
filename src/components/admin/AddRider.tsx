@@ -310,7 +310,7 @@ export default function AddRider({
           bag_no: checkedBags,
           bag_no_large: checkedBags,
           bag_no_personal: carryOnBags,
-          matched: false,
+          matching_status: 'unmatched',
           opt_in: true,
         },
       })

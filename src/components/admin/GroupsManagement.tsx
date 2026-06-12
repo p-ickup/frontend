@@ -26,7 +26,7 @@ import {
   deleteRiderMatches,
   fetchRiderByFlightId,
   logChangeLogEntry,
-  markFlightsMatchedState,
+  setMatchingStatus,
   normalizeVoucherInput,
   removeGroupMatch,
   saveGroupOverrideRecords,
@@ -952,10 +952,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           flightId: rider.flight_id,
         })
 
-        await markFlightsMatchedState({
+        await setMatchingStatus({
           supabase,
           flightIds: rider.flight_id,
-          matched: false,
+          matchingStatus: 'unmatched',
         }).catch((error) => {
           console.error('Error updating flight:', error)
         })
@@ -1267,10 +1267,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             console.error('Error removing match from database:', error)
           })
 
-          await markFlightsMatchedState({
+          await setMatchingStatus({
             supabase,
             flightIds: rider.flight_id,
-            matched: false,
+            matchingStatus: 'unmatched',
           }).catch((error) => {
             console.error('Error updating flight:', error)
           })
@@ -1593,10 +1593,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             `[handleSelectFromCorral] Deleted ${deletedMatches.length} existing match(es) for rider ${rider.name} (flight_id: ${rider.flight_id})`,
           )
           // Mark flight as unmatched when removing from previous group (so if insert below fails, DB stays consistent)
-          const unmatchError = await markFlightsMatchedState({
+          const unmatchError = await setMatchingStatus({
             supabase,
             flightIds: rider.flight_id,
-            matched: false,
+            matchingStatus: 'unmatched',
           }).catch((error) => error)
           if (unmatchError) {
             console.error('Error updating flight to unmatched:', unmatchError)
@@ -1637,10 +1637,10 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           console.error('Error updating existing matches:', error)
         })
 
-        await markFlightsMatchedState({
+        await setMatchingStatus({
           supabase,
           flightIds: rider.flight_id,
-          matched: true,
+          matchingStatus: 'matched',
         }).catch((error) => {
           console.error('Error updating flight:', error)
         })
@@ -3241,7 +3241,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                               .select(
                                 'flight_id, date, earliest_time, latest_time, airport, to_airport, airline_iata, flight_no, bag_no_personal, bag_no, bag_no_large, user_id',
                               )
-                              .or('matched.is.null,matched.eq.false')
+                              .in('matching_status', ['submitted', 'unmatched'])
                               .gte('date', rangeStart)
                               .lt('date', rangeEnd)
                               .order('date', { ascending: true })
