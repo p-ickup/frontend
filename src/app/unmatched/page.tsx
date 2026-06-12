@@ -3,7 +3,6 @@
 import RedirectButton from '@/components/buttons/RedirectButton'
 import { postJson, requestJson } from '@/utils/api'
 import type { Database } from '@/lib/database.types'
-import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import EmptyState from '@/components/results/EmptyState'
@@ -22,20 +21,20 @@ interface GroupedMatch {
   time: string | null
 }
 
+const matchRequestsEnabled =
+  process.env.NEXT_PUBLIC_ENABLE_MATCH_REQUESTS === 'true'
+
 export default function UnmatchedPage() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [flights, setFlights] = useState<FlightWithUser[]>([])
   const [groups, setGroups] = useState<GroupedMatch[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [userId, setUserId] = useState('')
   const [selectedFlight, setSelectedFlight] = useState<FlightWithUser | null>(
     null,
   )
-  const [selectedGroup, setSelectedGroup] = useState<GroupedMatch | null>(null)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [userEligible, setUserEligible] = useState(false)
-  const [pendingRequests, setPendingRequests] = useState<number[]>([])
   const [myFlights, setMyFlights] = useState<Flight[]>([])
   const [selectedMyFlightId, setSelectedMyFlightId] = useState<number | null>(
     null,
@@ -62,22 +61,18 @@ export default function UnmatchedPage() {
       return
     }
 
-    setUserId(user.id)
-
     try {
       const result = await requestJson<{
         success: boolean
         flights: FlightWithUser[]
         groups: GroupedMatch[]
         myFlights: Flight[]
-        pendingRequests: number[]
         userEligible: boolean
       }>('/api/unmatched/options')
 
       setFlights(result.flights)
       setGroups(result.groups)
       setMyFlights(result.myFlights)
-      setPendingRequests(result.pendingRequests)
       setUserEligible(result.userEligible)
       setLoading(false)
       return
@@ -130,7 +125,6 @@ export default function UnmatchedPage() {
 
     setShowConfirmation(false)
     setSelectedFlight(null)
-    setSelectedGroup(null)
     setSelectedMyFlightId(null)
   }
 
@@ -414,111 +408,6 @@ export default function UnmatchedPage() {
 
             {/* Individual Flights Section */}
             <div className="mb-8">
-              {/* OLD GROUPS CODE - COMMENTED OUT
-              <h2 className="mb-6 text-2xl font-bold text-gray-900">
-                Groups Available to Join
-              </h2>
-
-              <div className="space-y-4">
-                {groups.map((group) => {
-                  const firstFlight = group.flights[0]
-                  const direction = firstFlight?.to_airport
-                    ? `School → ${firstFlight.airport}`
-                    : `${firstFlight.airport} → School`
-
-                  const isPending = pendingRequests.includes(
-                    firstFlight.flight_id,
-                  )
-                  const isUserInGroup = group.flights.some(
-                    (flight) => flight.user_id === userId,
-                  )
-
-                  return (
-                    <div
-                      key={group.ride_id}
-                      className="group relative rounded-2xl border border-gray-200 bg-white/80 p-6 shadow-lg backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="mb-4 flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-blue-100 to-blue-200">
-                              <svg
-                                className="h-5 w-5 text-blue-600"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                                />
-                              </svg>
-                            </div>
-                            <div>
-                              <h3 className="text-xl font-bold text-gray-900">
-                                {direction}
-                              </h3>
-                              <p className="text-gray-600">
-                                {firstFlight?.date}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <h4 className="font-semibold text-gray-800">
-                              Group Members:
-                            </h4>
-                            <ul className="space-y-1">
-                              {group.flights.map((flight, index) => (
-                                <li
-                                  key={index}
-                                  className="flex items-center gap-2 text-sm text-gray-700"
-                                >
-                                  <div className="h-2 w-2 rounded-full bg-teal-500"></div>
-                                  {flight.Users?.firstname}{' '}
-                                  {flight.Users?.lastname} —{' '}
-                                  {flight.earliest_time} - {flight.latest_time}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
-                        <div className="ml-4">
-                          <button
-                            className={`rounded-xl px-6 py-3 font-semibold text-white transition-all duration-200 ${
-                              userEligible && !isPending && !isUserInGroup
-                                ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:scale-105 hover:from-blue-600 hover:to-blue-700'
-                                : 'cursor-not-allowed bg-gray-300'
-                            }`}
-                            disabled={
-                              !userEligible || isPending || isUserInGroup
-                            }
-                            onClick={() => {
-                              if (
-                                userEligible &&
-                                !isPending &&
-                                !isUserInGroup
-                              ) {
-                                setSelectedGroup(group)
-                                setShowConfirmation(true)
-                              }
-                            }}
-                          >
-                            {isUserInGroup
-                              ? 'Already in Group'
-                              : userEligible && !isPending
-                                ? 'Request to Join'
-                                : 'Request Pending'}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-              END OLD GROUPS CODE */}
-
               <button
                 onClick={() => setShowIndividuals(!showIndividuals)}
                 className="mb-4 flex w-full items-center justify-between rounded-xl bg-white/80 p-4 shadow-lg transition-all hover:shadow-xl"
@@ -634,26 +523,26 @@ export default function UnmatchedPage() {
                               </p>
                             </div>
                           </div>
-                          {/* <div className="ml-4">
-                          <button
-                            className={`rounded-xl px-6 py-3 font-semibold text-white transition-all duration-200 ${
-                              userEligible
-                                ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:scale-105 hover:from-orange-600 hover:to-orange-700'
-                                : 'cursor-not-allowed bg-gray-300'
-                            }`}
-                            disabled={!userEligible}
-                            onClick={() => {
-                              if (userEligible) {
-                                setSelectedFlight(flight)
-                                setShowConfirmation(true)
-                              }
-                            }}
-                          >
-                            {userEligible
-                              ? 'Send Request'
-                              : 'All Your Flights Are Matched'}
-                          </button>
-                        </div> */}
+                          {matchRequestsEnabled && (
+                            <div className="ml-4">
+                              <button
+                                className={`rounded-xl px-6 py-3 font-semibold text-white transition-all duration-200 ${
+                                  userEligible
+                                    ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:scale-105 hover:from-orange-600 hover:to-orange-700'
+                                    : 'cursor-not-allowed bg-gray-300'
+                                }`}
+                                disabled={!userEligible}
+                                onClick={() => {
+                                  setSelectedFlight(flight)
+                                  setShowConfirmation(true)
+                                }}
+                              >
+                                {userEligible
+                                  ? 'Send Request'
+                                  : 'All Your Flights Are Matched'}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -666,35 +555,19 @@ export default function UnmatchedPage() {
         {/* end relative flex-1 */}
       </div>{' '}
       {/* end outer container */}
-      {showConfirmation && (selectedFlight || selectedGroup) && (
+      {matchRequestsEnabled && showConfirmation && selectedFlight && (
         <ConfirmationModal
-          title={
-            selectedGroup
-              ? `Send a match request to the group (via ${selectedGroup.flights[0].Users?.firstname} ${selectedGroup.flights[0].Users?.lastname})? Choose one of your flights.`
-              : selectedFlight
-                ? `Send a match request to ${selectedFlight.Users ? `${selectedFlight.Users.firstname} ${selectedFlight.Users.lastname}` : 'this user'}? Choose one of your flights.`
-                : ''
-          }
+          title={`Send a match request to ${selectedFlight.Users ? `${selectedFlight.Users.firstname} ${selectedFlight.Users.lastname}` : 'this user'}? Choose one of your flights.`}
           onConfirm={() => {
-            if (selectedGroup) {
-              const receiverId = selectedGroup.flights[0].user_id
-              if (!receiverId) {
-                alert('Could not determine the rider for this group.')
-                return
-              }
-              sendMatchRequest(receiverId, selectedGroup.flights[0].flight_id)
-            } else if (selectedFlight) {
-              if (!selectedFlight.user_id) {
-                alert('Could not determine the rider for this flight.')
-                return
-              }
-              sendMatchRequest(selectedFlight.user_id, selectedFlight.flight_id)
+            if (!selectedFlight.user_id) {
+              alert('Could not determine the rider for this flight.')
+              return
             }
+            sendMatchRequest(selectedFlight.user_id, selectedFlight.flight_id)
           }}
           onCancel={() => {
             setShowConfirmation(false)
             setSelectedFlight(null)
-            setSelectedGroup(null)
             setSelectedMyFlightId(null)
           }}
           myFlights={myFlights}
@@ -704,59 +577,6 @@ export default function UnmatchedPage() {
       )}
     </div>
   )
-}
-
-// Original 3-day function (commented out for easy switch back)
-// function isWithinNext3Days(flightDateStr: string) {
-//   const today = new Date()
-//   const flightDate = new Date(flightDateStr)
-
-//   // Normalize both to start of day (ignore time)
-//   const startOfToday = new Date(
-//     today.getFullYear(),
-//     today.getMonth(),
-//     today.getDate(),
-//   )
-//   const startOfFlightDay = new Date(
-//     flightDate.getFullYear(),
-//     flightDate.getMonth(),
-//     flightDate.getDate(),
-//   )
-
-//   const diffTime = startOfFlightDay.getTime() - startOfToday.getTime()
-//   const diffDays = diffTime / (1000 * 60 * 60 * 24)
-
-//   console.log(`DEBUG: Flight on ${flightDateStr}: ${diffDays} days away`)
-//   console.log(
-//     `DEBUG: Today: ${startOfToday.toISOString()}, Flight: ${startOfFlightDay.toISOString()}`,
-//   )
-//   console.log(`DEBUG: Within 3 days? ${diffDays >= 0 && diffDays <= 3}`)
-
-//   return diffDays >= 0 && diffDays <= 3
-// }
-
-// New 7-day function
-function isWithinNext7Days(flightDateStr: string) {
-  const today = new Date()
-  const flightDate = new Date(flightDateStr)
-
-  // Normalize both to start of day (ignore time)
-  const startOfToday = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate(),
-  )
-  const startOfFlightDay = new Date(
-    flightDate.getFullYear(),
-    flightDate.getMonth(),
-    flightDate.getDate(),
-  )
-
-  const diffTime = startOfFlightDay.getTime() - startOfToday.getTime()
-  const diffDays = diffTime / (1000 * 60 * 60 * 24)
-
-  // return diffDays >= 0 && diffDays <= 3
-  return diffDays >= 0 && diffDays <= 7
 }
 
 function ConfirmationModal({

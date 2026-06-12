@@ -47,7 +47,7 @@ const runAdminGroupsRpc = async <T extends Record<string, any>>({
   return data as T
 }
 
-export const normalizeVoucherInput = (voucher: string): string => {
+const normalizeVoucherInput = (voucher: string): string => {
   const trimmed = voucher.trim()
   if (!trimmed) return ''
 
@@ -276,7 +276,7 @@ export const deleteRiderMatches = async ({
   return data || []
 }
 
-export const findExistingGroupMatch = async ({
+const findExistingGroupMatch = async ({
   supabase,
   rideId,
   userId,

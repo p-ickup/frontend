@@ -11,14 +11,14 @@ export function calculateBagUnits(
   return checkedBags * 2 + carryOnBags
 }
 
-export function getMaxBagUnits(riderCount: number): number {
+function getMaxBagUnits(riderCount: number): number {
   return riderCount >= 3 ? 10 : 12
 }
 
 /**
  * Returns Uber type string; 'XXL*' means invalid (over capacity).
  */
-export function determineUberType(groupSize: number, bagUnits: number): string {
+function determineUberType(groupSize: number, bagUnits: number): string {
   const maxBagUnits = getMaxBagUnits(groupSize)
   if (bagUnits > maxBagUnits) return 'XXL*'
 

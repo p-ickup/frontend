@@ -2,8 +2,6 @@ import { GeistSans } from 'geist/font/sans'
 import ThemeProvider from '@/providers/ThemeProvider'
 import NextTopLoader from 'nextjs-toploader'
 import './globals.css'
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import ReactQueryProvider from '@/providers/ReactQueryProvider'
 import PickupHeader from '@/components/PickupHeader'
 import PickupFooter from '@/components/PickupFooter'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -32,16 +30,13 @@ export default function RootLayout({
       <body className="min-h-screen bg-background text-foreground">
         <NextTopLoader showSpinner={false} height={2} color="#2acf80" />
         <ThemeProvider attribute="class" enableSystem disableTransitionOnChange>
-          <ReactQueryProvider>
-            <TooltipProvider>
-              <div className="flex min-h-screen flex-col">
-                <PickupHeader />
-                <div className="flex-1">{children}</div>
-                <PickupFooter />
-              </div>
-              <ReactQueryDevtools initialIsOpen={false} />
-            </TooltipProvider>
-          </ReactQueryProvider>
+          <TooltipProvider>
+            <div className="flex min-h-screen flex-col">
+              <PickupHeader />
+              <div className="flex-1">{children}</div>
+              <PickupFooter />
+            </div>
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>

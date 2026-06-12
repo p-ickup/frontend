@@ -38,7 +38,6 @@ import {
 
 export default function MatchedGroupsPanel() {
   const {
-    addRiderToNewGroup,
     handleAddFromCorral,
     handleAddToCorral,
     handleRemoveFromGroupToUnmatched,

@@ -1,12 +1,7 @@
 'use client'
-import React from 'react'
 import Image from 'next/image'
 
 export default function About() {
-  const [activeStep, setActiveStep] = React.useState(0)
-  const [isLastStep, setIsLastStep] = React.useState(false)
-  const [isFirstStep, setIsFirstStep] = React.useState(false)
-
   return (
     <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
       {/* Background decoration */}

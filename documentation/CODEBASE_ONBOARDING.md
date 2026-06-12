@@ -67,23 +67,23 @@ Server routes use `requireAuthenticatedRoute()` or `requireAdminRoute()` which r
 
 ## Where to implement common tasks
 
-| Task | Where to look |
-|------|----------------|
-| New student-facing API | `src/app/api/<name>/route.ts` + `src/lib/server/studentCommands.ts` |
-| New admin mutation | `src/app/api/admin/groups/command/route.ts` switch + `adminGroupsCommands.ts` |
-| Admin UI for groups | `src/components/admin/groups-management/` (newer) and `GroupsManagement.tsx` (legacy paths) |
-| Flight form / validation | `src/components/forms/FlightForm.tsx`, `src/utils/flightValidation.ts` |
-| Subsidy rules | `src/config/subsidyConfig.ts`, `src/hooks/useSubsidyLogic.ts` |
-| Admin scope enforcement | `src/lib/server/adminScope.ts` |
-| Batch emails from UI | `src/components/admin/AdminDashboard.tsx` → `/api/admin/send-*-emails` |
-| Database schema | `src/lib/database.types.ts` |
+| Task                     | Where to look                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| New student-facing API   | `src/app/api/<name>/route.ts` + `src/lib/server/studentCommands.ts`                         |
+| New admin mutation       | `src/app/api/admin/groups/command/route.ts` switch + `adminGroupsCommands.ts`               |
+| Admin UI for groups      | `src/components/admin/groups-management/` (newer) and `GroupsManagement.tsx` (legacy paths) |
+| Flight form / validation | `src/components/forms/FlightForm.tsx`, `src/utils/flightValidation.ts`                      |
+| Subsidy rules            | `src/config/subsidyConfig.ts`, `src/hooks/useSubsidyLogic.ts`                               |
+| Admin scope enforcement  | `src/lib/server/adminScope.ts`                                                              |
+| Batch emails from UI     | `src/components/admin/AdminDashboard.tsx` → `/api/admin/send-*-emails`                      |
+| Database schema          | `src/lib/database.types.ts`                                                                 |
 
 ## Admin groups command API
 
 `POST /api/admin/groups/command` body:
 
 ```json
-{ "action": "<snake_case>", "payload": { } }
+{ "action": "<snake_case>", "payload": {} }
 ```
 
 Actions implemented today:
@@ -117,7 +117,7 @@ When changing an RPC, add a new dated SQL file here and apply it to the linked S
 
 1. **Service role** bypasses RLS — only use in API routes after auth + admin scope (or tightly validated student flows).
 2. **Do not** import `src/lib/server/*` from client components (`server-only`).
-3. **Match request send UI** may be commented out on `unmatched/page.tsx`; see [ENABLE_MATCH_REQUESTS.md](./ENABLE_MATCH_REQUESTS.md).
+3. **Outgoing match requests** are disabled by default through `NEXT_PUBLIC_ENABLE_MATCH_REQUESTS`; see [ENABLE_MATCH_REQUESTS.md](./ENABLE_MATCH_REQUESTS.md).
 4. **Edge functions for emails** — Admin triggers batch send; implementation is in Supabase edge functions, not this repo (see [SUPABASE.md](./SUPABASE.md)).
 5. **PascalCase table names** — e.g. `Users`, `Flights`, `Matches`; match exactly in queries.
 6. **Time zones** — Admin groups UI uses PST helpers (`groups-management/utils/datePst.ts`); be consistent when editing dates/times.

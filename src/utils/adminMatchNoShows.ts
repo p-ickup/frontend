@@ -32,7 +32,7 @@ type ChangeLogDelayRow = {
 }
 
 /** For each (ride_id, missing_user_id), set of reporter user_ids on that ride. */
-export function aggregateMissingReports(
+function aggregateMissingReports(
   matches: MatchRowForNoShow[],
 ): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>()

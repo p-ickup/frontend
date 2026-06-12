@@ -71,9 +71,6 @@ export interface ChangeLogEntry {
   actor_name?: string
 }
 
-export type ActiveTab = 'matched' | 'unmatched'
-export type CorralTab = 'riders' | 'changes'
-export type LeftSidebarTab = 'filters' | 'createGroup'
 export type ChangeLogSortBy = 'date' | 'actor' | 'action'
 export type ChangeLogSortDirection = 'asc' | 'desc'
 export type OverrideSubsidized = 'auto' | 'yes' | 'no'

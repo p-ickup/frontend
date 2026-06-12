@@ -98,7 +98,6 @@ export default function ASPCPolicy() {
                     </p>
                     <ul className="ml-5 list-disc space-y-1 text-gray-700">
                       <li>Departures: May 12-19</li>
-                      {/* <li>Returns: March 20-22</li> */}
                     </ul>
                   </div>
                 </div>

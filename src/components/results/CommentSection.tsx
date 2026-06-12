@@ -112,7 +112,6 @@ export default function CommentSection({ rideId }: { rideId: number }) {
           onChange={(e) => setNewComment(e.target.value)}
           placeholder="Type your message..."
           className="flex-1 rounded-md border border-gray-300 bg-white text-sm focus:border-indigo-500 focus:outline-none"
-          // className="flex-1 rounded-md border border-gray-300 bg-white text-sm focus:border-indigo-500 focus:outline-none dark:bg-gray-700 dark:text-white dark:border-gray-600"
         />
         <button
           onClick={handleAddComment}

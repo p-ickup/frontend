@@ -21,7 +21,6 @@ import type {
   AspcDelayFormState,
   DelayFormCurrentFlight,
   DelayFormNewFlight,
-  DelayReasonKey,
 } from '@/components/aspc-delay/types'
 import { REASON_FOR_DELAY_LABELS } from '@/components/aspc-delay/types'
 
@@ -113,7 +112,6 @@ export default function AspcDelayPage() {
     else setLoading(false)
   }, [user, rideId, fetchRideAndFlight])
 
-  const goToStep2 = () => setFormState((s) => ({ ...s, step: 2 }))
   const goToStep3 = () => setFormState((s) => ({ ...s, step: 3 }))
   const goBack = () =>
     setFormState((s) => {

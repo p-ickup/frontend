@@ -72,9 +72,7 @@ export default function EditForm() {
             <FlightForm
               mode="edit"
               flightId={flight_id}
-              // title="Edit Flight Information"
               submitButtonText="Update"
-              successMessage="✅ Flight details updated successfully!"
               successRedirectRoute="/questionnaires"
             />
           </div>

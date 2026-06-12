@@ -56,15 +56,12 @@ import {
   determineUberType,
   formatVoucher,
   getChangeDescription,
-  getMaxBagUnits,
   getOverrideSelections,
   getTotalBags,
   getUberType,
-  isDatePassed,
   isGroupSubsidized,
   matchDatetimeFromEarliest,
   normalizeDateToYYYYMMDD,
-  roundToNearest5Minutes,
   timeToMinutes,
   validateTimeCompatibility,
 } from './groups-management/utils'
@@ -74,7 +71,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const supabase = useMemo(() => createBrowserClient(), [])
   const { user: authUser } = useAuth()
   const { computeGroupSubsidized } = useSubsidyLogic()
-  const [adminScope, setAdminScope] = useState<string | null>(null)
+  const [, setAdminScope] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'matched' | 'unmatched'>('matched')
   const [selectedAirports, setSelectedAirports] = useState<string[]>([])
   const [filterDirectionTo, setFilterDirectionTo] = useState<boolean>(true)
@@ -203,9 +200,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   const [autoCalculateError, setAutoCalculateError] = useState<string | null>(
     null,
   )
-  const [corralCardErrors, setCorralCardErrors] = useState<Map<string, string>>(
-    new Map(),
-  )
+  const [corralCardErrors] = useState<Map<string, string>>(new Map())
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [searchInput, setSearchInput] = useState<string>('')
   const [searchFeedback, setSearchFeedback] = useState(false)
@@ -728,10 +723,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   }
                 : g,
             )
-            const updatedGroup = updatedGroups.find(
-              (g) => g.ride_id === fromGroupId,
-            )
-
             return updatedGroups
           })
 
@@ -1130,8 +1121,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             }
             return g
           })
-          const updatedGroup = updatedGroups.find((g) => g.ride_id === groupId)
-
           return updatedGroups
         })
 
@@ -1463,8 +1452,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         let formattedTime: string
         let finalDate: string
         let newTimeRange: string
-        let shouldUpdateGroupTime = false
-
         if (customTime && customDate) {
           // Use custom time/date provided by user
           formattedTime =
@@ -1475,7 +1462,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           // For custom time, we still need a time range - use the custom time as both start and end
           // Or calculate from the group's existing time range
           newTimeRange = calculateGroupTimeRange(updatedRiders)
-          shouldUpdateGroupTime = true // Custom time should update the group
         } else {
           // Calculate new time range overlap for the group
           newTimeRange = calculateGroupTimeRange(updatedRiders)
@@ -1490,7 +1476,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               midpointTime.includes(':') && midpointTime.split(':').length === 2
                 ? `${midpointTime}:00`
                 : midpointTime
-            shouldUpdateGroupTime = true
           } else {
             // No overlap - keep existing group time (don't update existing matches)
             if (group.match_time) {
@@ -1510,7 +1495,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   ? `${midpointTime}:00`
                   : midpointTime
             }
-            shouldUpdateGroupTime = false
           }
           finalDate = group.date
         }
@@ -1755,13 +1739,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             }
             return g
           })
-          const updatedGroup = updatedGroups.find(
-            (g) => g.ride_id === group.ride_id,
-          )
-          const updatedSourceGroup = sourceGroupId
-            ? updatedGroups.find((g) => g.ride_id === sourceGroupId)
-            : null
-
           return updatedGroups.filter((g) => g.riders.length > 0)
         })
 

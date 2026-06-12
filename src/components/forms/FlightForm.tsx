@@ -8,7 +8,6 @@ import SubmitSuccess, {
   type SubmitSuccessVariant,
 } from '@/components/questionnaires/SubmitSuccess'
 import ManyBagsNotice from '@/components/questionnaires/ManyBagsNotice'
-import TripToggle from '@/components/questionnaires/ToWhereToggle'
 import { ApiRouteError, patchJson, postJson } from '@/utils/api'
 import { createBrowserClient } from '@/utils/supabase'
 import { validateUserProfile } from '@/utils/profileValidation'
@@ -32,36 +31,15 @@ import {
 export interface FlightFormProps {
   mode: 'create' | 'edit'
   flightId?: string // Required for edit mode
-  // title: string
   submitButtonText: string
-  successMessage: string
   successRedirectRoute: string
   onSuccess?: () => void
-}
-
-export interface FlightData {
-  tripType: boolean | null
-  airport: string
-  airline_iata: string
-  flight_no: string
-  dateOfFlight: string
-  bag_no_personal: number
-  bag_no: number
-  bag_no_large: number
-  earliestArrival: string
-  latestArrival: string
-  // dropoff: number
-  // budget: number
-  optInUnmatched: boolean
-  terminal: string
 }
 
 export default function FlightForm({
   mode,
   flightId,
-  // title,
   submitButtonText,
-  successMessage,
   successRedirectRoute,
   onSuccess,
 }: FlightFormProps) {
@@ -80,8 +58,6 @@ export default function FlightForm({
   const [bag_no_large, setBagNoLarge] = useState(0)
   const [earliestArrival, setEarliestArrival] = useState('')
   const [latestArrival, setLatestArrival] = useState('')
-  // const [dropoff, setDropoff] = useState(0.5)
-  // const [budget, setBudget] = useState(50)
   const [optInUnmatched, setOptInUnmatched] = useState(false)
   const [terminal, setTerminal] = useState('')
   const [message, setMessage] = useState('')
@@ -114,7 +90,6 @@ export default function FlightForm({
   const carryOnBagsTooltip = useClickTooltip()
   const checkedLuggageTooltip = useClickTooltip()
   const timeRangeTooltip = useClickTooltip()
-  // const dropoffRadiusTooltip = useClickTooltip()
 
   // Mobile info modal state
   const [showMobileInfo, setShowMobileInfo] = useState(false)
@@ -123,7 +98,6 @@ export default function FlightForm({
   // ASPC warning state
   const [showASPCWarning, setShowASPCWarning] = useState(false)
   const [aspcWarningMessage, setAspcWarningMessage] = useState('')
-  const [isASPCGuaranteed, setIsASPCGuaranteed] = useState(false)
   const [userSchool, setUserSchool] = useState('')
 
   // Handle mobile info display
@@ -306,14 +280,11 @@ export default function FlightForm({
     // Check if date is within any operational period
     const flightDate = new Date(dateOfFlight)
     let isWithinOperationalPeriod = false
-    let currentPeriod = null
-
     for (const period of operationalPeriods) {
       const startDate = new Date(period.start)
       const endDate = new Date(period.end)
       if (flightDate >= startDate && flightDate <= endDate) {
         isWithinOperationalPeriod = true
-        currentPeriod = period
         break
       }
     }
@@ -322,7 +293,6 @@ export default function FlightForm({
       setAspcWarningMessage(
         'Your flight date is not within ASPC RideLink operational periods. You can still use P-ICKUP to coordinate non-subsidized rides.',
       )
-      setIsASPCGuaranteed(false)
       setShowASPCWarning(true)
       return
     }
@@ -348,7 +318,6 @@ export default function FlightForm({
         '✅ Your flight is within an ASPC operational period. RideLink covers rides when groups can be formed (2+ to ONT, 3+ to LAX). Check the policy page for more details.'
     }
 
-    setIsASPCGuaranteed(false) // No more guaranteed rides under new policy
     setAspcWarningMessage(warningMessage)
     setShowASPCWarning(true)
   }, [airport, dateOfFlight, earliestArrival, latestArrival, userSchool])
@@ -381,7 +350,6 @@ export default function FlightForm({
           .single()
 
         if (error) {
-          // console.error('Error fetching flight data:', error)
           setMessage(
             'Unable to load flight data. Please refresh the page or contact support if the problem persists.',
           )
@@ -400,8 +368,6 @@ export default function FlightForm({
           setBagNoLarge(data.bag_no_large || 0)
           setEarliestArrival(data.earliest_time)
           setLatestArrival(data.latest_time)
-          // setDropoff(data.max_dropoff)
-          // setBudget(data.max_price)
           setOptInUnmatched(
             shouldDefaultOptInUnmatched(data.matching_status as MatchingStatus),
           )
@@ -530,14 +496,6 @@ export default function FlightForm({
     await actuallySubmitForm()
   }
 
-  // Handle keyboard events to prevent Enter key from submitting form on steps 1-3
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
-    if (e.key === 'Enter' && currentStep !== totalSteps) {
-      e.preventDefault()
-      return false
-    }
-  }
-
   const actuallySubmitForm = async () => {
     // Prevent double-submit using ref (immediate, no React batching delay)
     if (isSubmittingRef.current) {
@@ -603,8 +561,6 @@ export default function FlightForm({
         bag_no_large: bag_no_large,
         earliest_time: earliestArrival,
         latest_time: latestArrival,
-        // max_dropoff: dropoff,
-        // max_price: budget,
         opt_in: optInUnmatched,
         terminal,
       }
@@ -922,31 +878,6 @@ export default function FlightForm({
 
   return (
     <div className="flex w-full flex-col items-center text-black">
-      {/* <h1 className="mb-4 text-3xl font-bold">{title}</h1> */}
-
-      {/* Deadline Information Banner - Commented out to save space */}
-      {/* 
-      <div className="mb-4 w-full max-w-6xl rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm">
-        <h3 className="mb-2 font-semibold text-blue-900">
-          📅 Service Period Deadlines
-        </h3>
-        <div className="space-y-1 text-blue-800">
-          <p>
-            <strong>Thanksgiving Break</strong>:{' '}
-            <span className="font-medium">Deadline Nov 14 @ 11:59 PM PT</span>
-          </p>
-          <p>
-            <strong>Winter Break Outbound</strong>:{' '}
-            <span className="font-medium">Deadline Dec 3 @ 11:59 PM PT</span>
-          </p>
-          <p>
-            <strong>Winter Break Return</strong>:{' '}
-            <span className="font-medium">Deadline Jan 9 @ 11:59 PM PT</span>
-          </p>
-        </div>
-      </div>
-      */}
-
       <div className="mb-4 flex items-center gap-2">
         <p>All fields are required.</p>
         {userSchool === 'Pomona' && (
@@ -1068,30 +999,16 @@ export default function FlightForm({
                       </button>
                       <button
                         type="button"
-                        // onClick={() => setTripType(false)}
-                        // className={`rounded-xl border-2 p-6 text-center transition-all ${
-                        //   tripType === false
-                        //     ? 'border-teal-500 bg-teal-50'
-                        //     : 'border-gray-300 bg-white hover:border-gray-400'
-                        // }`}
                         disabled
                         aria-disabled="true"
                         className="cursor-not-allowed rounded-xl border-2 border-gray-200 bg-gray-100 p-6 text-center opacity-60"
                       >
                         <div className="mb-2 text-3xl">🏫</div>
-                        {/* <div
-                          className={`text-lg font-bold ${
-                            tripType === false
-                              ? 'text-teal-700'
-                              : 'text-gray-700'
-                          }`}
-                        > */}
                         <div className="text-lg font-bold text-gray-600">
                           To Campus
                         </div>
                         <div className="mt-1 text-sm text-gray-500">
                           (Unavailable for Summer Break departures)
-                          {/* Returning to Claremont */}
                         </div>
                       </button>
                     </div>
@@ -1899,88 +1816,6 @@ export default function FlightForm({
                 </div>
               </div>
             )}
-
-            {/* Dropoff and Budget sliders - commented out for now */}
-            {/* 
-            <div className="mb-2 flex flex-col gap-4 md:grid md:grid-cols-2">
-              <label className="flex flex-col">
-                <div className="flex items-center gap-1">
-                  <span>Furthest pickup/dropoff radius:</span>
-                  <div className="hidden md:block">
-                    <Tooltip {...dropoffRadiusTooltip}>
-                      <TooltipTrigger asChild>
-                        <div className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-blue-100 p-1 transition-colors hover:bg-blue-200">
-                          <svg
-                            className="h-3 w-3 text-blue-600"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-xs">
-                        <p>Only applies to pickup/dropoff at campus</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-            <div className="block md:hidden">
-                <button
-                      type="button"
-                      className="flex h-5 w-5 cursor-pointer touch-manipulation items-center justify-center rounded-full bg-blue-100 p-1 transition-colors active:bg-blue-300"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        showMobileInfoModal(
-                          'Pickup/Dropoff Radius: Only applies to pickup/dropoff at campus',
-                        )
-                      }}
-                    >
-                      <svg
-                        className="h-3 w-3 text-blue-600"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                </button>
-                </div>
-              </div>
-                <strong>{dropoff} mi</strong>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.25"
-                  value={dropoff}
-                  onChange={(e) => setDropoff(Number(e.target.value))}
-                  className="mt-1 w-full"
-                />
-              </label>
-
-              <label className="flex flex-col">
-                <span>
-                  Budget: <strong>${budget}</strong>
-                </span>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
-                  value={budget}
-                  onChange={(e) => setBudget(Number(e.target.value))}
-                  className="mt-1 w-full"
-                />
-              </label>
-            </div>
-            */}
 
             {/* Message display */}
             {message && (

@@ -78,9 +78,6 @@ export async function requireAdminRoute() {
   }
 }
 
-export const forbiddenJson = (message = 'Forbidden') =>
-  NextResponse.json({ error: message }, { status: 403 })
-
 export const badRequestJson = (message: string, details?: unknown) =>
   NextResponse.json({ error: message, details }, { status: 400 })
 
