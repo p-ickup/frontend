@@ -11,6 +11,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAuth } from '@/hooks/useAuth'
 import EmptyState from '@/components/results/EmptyState'
 import { canEditFlight } from '@/utils/flightValidation'
+import {
+  isSubmitted,
+  isUnmatched,
+  type MatchingStatus,
+} from '@/utils/matchingStatus'
 import { validateUserProfile } from '@/utils/profileValidation'
 
 interface MatchForm {
@@ -18,7 +23,7 @@ interface MatchForm {
   flight_no: string
   airline_iata: string
   date: string
-  matched: boolean | null
+  matching_status: MatchingStatus
   opt_in: boolean
   earliest_time: string
   latest_time: string
@@ -88,7 +93,7 @@ export default function Questionnaires() {
       const { data: matchForms, error } = await supabase
         .from('Flights')
         .select(
-          'flight_id, flight_no, airline_iata, date, matched, earliest_time, latest_time, to_airport, airport',
+          'flight_id, flight_no, airline_iata, date, matching_status, earliest_time, latest_time, to_airport, airport',
         )
         .eq('user_id', userId)
         .order('date', { ascending: true })
@@ -167,16 +172,15 @@ export default function Questionnaires() {
     return formDate >= today
   })
 
-  // Upcoming forms: all flights where matching hasn't been calculated yet (matched === null)
-  // Show all of them, but disable edit/delete buttons if past deadline
-  const upcomingUnmatchedForms = upcomingForms.filter((form) => {
-    return form.matched === null
-  })
+  // Upcoming forms: submitted — batch matcher has not run yet
+  const upcomingUnmatchedForms = upcomingForms.filter((form) =>
+    isSubmitted(form.matching_status),
+  )
 
-  // Unmatched forms: upcoming flights where matching was calculated but no match was found (matched === false)
-  const unmatchedForms = upcomingForms.filter((form) => {
-    return form.matched === false
-  })
+  // Unmatched forms: matcher ran but no group was found
+  const unmatchedForms = upcomingForms.filter((form) =>
+    isUnmatched(form.matching_status),
+  )
 
   if (!isAuthenticated) {
     return (

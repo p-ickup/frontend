@@ -354,7 +354,7 @@ export const fetchGroupsManagementSnapshot = async ({
         bag_no_large,
         bag_no_personal,
         user_id,
-        matched,
+        matching_status,
         flight_no,
         airline_iata,
         opt_in,
@@ -416,7 +416,7 @@ export const fetchGroupsManagementSnapshot = async ({
 
   if (matchesData.length === 0) {
     let unmatchedRiders = flightsWithUsers
-      .filter((flight) => flight.matched !== true)
+      .filter((flight) => flight.matching_status !== 'matched')
       .map((flight) => {
         const userData = Array.isArray(flight.Users)
           ? flight.Users[0]
@@ -483,7 +483,7 @@ export const fetchGroupsManagementSnapshot = async ({
         bag_no_large,
         bag_no_personal,
         user_id,
-        matched,
+        matching_status,
         flight_no,
         airline_iata,
         original_unmatched
@@ -664,7 +664,8 @@ export const fetchGroupsManagementSnapshot = async ({
   const unmatchedRiders = flightsWithUsers
     .filter(
       (flight) =>
-        !matchedFlightIds.has(flight.flight_id) && flight.matched !== true,
+        !matchedFlightIds.has(flight.flight_id) &&
+        flight.matching_status !== 'matched',
     )
     .map((flight) => {
       const userData = Array.isArray(flight.Users)

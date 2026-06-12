@@ -239,17 +239,17 @@ export const updateGroupMatchesMetadata = async ({
   })
 }
 
-export const markFlightsMatchedState = async ({
+export const setMatchingStatus = async ({
   flightIds,
-  matched,
+  matchingStatus,
 }: {
   supabase: GroupsSupabaseClient
   flightIds: number[] | number
-  matched: boolean
+  matchingStatus: 'matched' | 'unmatched'
 }) => {
   await runAdminGroupCommand('mark_flights_matched_state', {
     flightIds,
-    matched,
+    matchingStatus,
   })
 }
 

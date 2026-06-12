@@ -215,7 +215,7 @@ export async function reportDelay({
       voucher,
       uber_type,
       contingency_voucher,
-      Flights (
+      Flights!matches_flight_id_fk (
         airport,
         to_airport,
         date,
@@ -337,7 +337,7 @@ export async function reportDelay({
     const { data, error: matchesError } = await supabase
       .from('Matches')
       .select(
-        'ride_id, date, time, uber_type, voucher, is_subsidized, flight_id, Flights(flight_id, bag_no, bag_no_large)',
+        'ride_id, date, time, uber_type, voucher, is_subsidized, flight_id, Flights!matches_flight_id_fk(flight_id, bag_no, bag_no_large)',
       )
       .in('flight_id', flightIds)
       .neq('ride_id', rid)

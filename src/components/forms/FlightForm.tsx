@@ -24,6 +24,10 @@ import {
   useClickTooltip,
 } from '@/components/ui/tooltip'
 import { LEGAL_VERSION, PRIVACY_URL, TERMS_URL } from '@/config/legalDocuments'
+import {
+  shouldDefaultOptInUnmatched,
+  type MatchingStatus,
+} from '@/utils/matchingStatus'
 
 export interface FlightFormProps {
   mode: 'create' | 'edit'
@@ -371,7 +375,7 @@ export default function FlightForm({
         const { data, error } = await supabase
           .from('Flights')
           .select(
-            'flight_id, flight_no, airline_iata, date, matched, to_airport, airport, bag_no_personal, bag_no, bag_no_large, earliest_time, latest_time, terminal',
+            'flight_id, flight_no, airline_iata, date, matching_status, to_airport, airport, bag_no_personal, bag_no, bag_no_large, earliest_time, latest_time, terminal',
           )
           .eq('flight_id', flightId)
           .single()
@@ -398,7 +402,9 @@ export default function FlightForm({
           setLatestArrival(data.latest_time)
           // setDropoff(data.max_dropoff)
           // setBudget(data.max_price)
-          setOptInUnmatched(!data.matched)
+          setOptInUnmatched(
+            shouldDefaultOptInUnmatched(data.matching_status as MatchingStatus),
+          )
           setTerminal(data.terminal)
         }
         setIsLoading(false)

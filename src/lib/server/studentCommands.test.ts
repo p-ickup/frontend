@@ -11,9 +11,45 @@ import {
   cancelOwnMatch,
   createOwnFlight,
   deleteOwnFlight,
+  getUnmatchedOptions,
   reportReadyStatus,
+  sendMatchRequest,
   updateOwnFlight,
 } from '@/lib/server/studentCommands'
+
+const createThenableEqChain = <T>(data: T, error: unknown = null) => {
+  const eqCalls: Array<[string, unknown]> = []
+  const chain: {
+    eq: jest.Mock
+    neq: jest.Mock
+    select: jest.Mock
+    then: Promise<{ data: T; error: unknown }>['then']
+    catch: Promise<{ data: T; error: unknown }>['catch']
+  } = {
+    eq: jest.fn((column: string, value: unknown) => {
+      eqCalls.push([column, value])
+      return chain
+    }),
+    neq: jest.fn(() => chain),
+    select: jest.fn(() => chain),
+    then: (onFulfilled, onRejected) =>
+      Promise.resolve({ data, error }).then(onFulfilled, onRejected),
+    catch: (onRejected) => Promise.resolve({ data, error }).catch(onRejected),
+  }
+
+  return { chain, eqCalls }
+}
+
+const buildFlightLookupChain = (flight: {
+  flight_id: number
+  user_id: string
+  matching_status: 'submitted' | 'unmatched' | 'matched'
+}) => {
+  const maybeSingle = jest.fn().mockResolvedValue({ data: flight, error: null })
+  const eqFlightId = jest.fn(() => ({ maybeSingle }))
+  const select = jest.fn(() => ({ eq: eqFlightId }))
+  return { select, eqFlightId, maybeSingle }
+}
 
 describe('acceptMatchRequest', () => {
   it('calls the transactional RPC and returns the ride id', async () => {
@@ -173,6 +209,269 @@ describe('reportReadyStatus', () => {
   })
 })
 
+describe('sendMatchRequest', () => {
+  it('allows peer requests when both flights are submitted', async () => {
+    const senderChain = buildFlightLookupChain({
+      flight_id: 1,
+      user_id: 'sender-1',
+      matching_status: 'submitted',
+    })
+    const receiverChain = buildFlightLookupChain({
+      flight_id: 2,
+      user_id: 'receiver-1',
+      matching_status: 'submitted',
+    })
+    const requestMaybeSingle = jest
+      .fn()
+      .mockResolvedValue({ data: null, error: null })
+    const requestEqStatus = jest.fn(() => ({ maybeSingle: requestMaybeSingle }))
+    const requestEqReceiverFlight = jest.fn(() => ({ eq: requestEqStatus }))
+    const requestEqSenderFlight = jest.fn(() => ({
+      eq: requestEqReceiverFlight,
+    }))
+    const requestEqReceiver = jest.fn(() => ({ eq: requestEqSenderFlight }))
+    const requestEqSender = jest.fn(() => ({ eq: requestEqReceiver }))
+    const requestSelect = jest.fn(() => ({ eq: requestEqSender }))
+    const insert = jest.fn().mockResolvedValue({ error: null })
+
+    let flightReads = 0
+    let matchRequestReads = 0
+    const from = jest.fn((table: string) => {
+      if (table === 'Flights') {
+        flightReads += 1
+        return flightReads === 1 ? senderChain : receiverChain
+      }
+      if (table === 'MatchRequests') {
+        matchRequestReads += 1
+        return matchRequestReads === 1 ? { select: requestSelect } : { insert }
+      }
+      return {}
+    })
+
+    await expect(
+      sendMatchRequest({
+        supabase: { from },
+        userId: 'sender-1',
+        receiverId: 'receiver-1',
+        senderFlightId: 1,
+        receiverFlightId: 2,
+      }),
+    ).resolves.toEqual({ success: true })
+
+    expect(insert).toHaveBeenCalledWith([
+      {
+        sender_id: 'sender-1',
+        receiver_id: 'receiver-1',
+        sender_flight_id: 1,
+        receiver_flight_id: 2,
+        status: 'pending',
+      },
+    ])
+  })
+
+  it('allows peer requests when both flights are unmatched', async () => {
+    const senderChain = buildFlightLookupChain({
+      flight_id: 1,
+      user_id: 'sender-1',
+      matching_status: 'unmatched',
+    })
+    const receiverChain = buildFlightLookupChain({
+      flight_id: 2,
+      user_id: 'receiver-1',
+      matching_status: 'unmatched',
+    })
+    const requestMaybeSingle = jest
+      .fn()
+      .mockResolvedValue({ data: null, error: null })
+    const requestEqStatus = jest.fn(() => ({ maybeSingle: requestMaybeSingle }))
+    const requestEqReceiverFlight = jest.fn(() => ({ eq: requestEqStatus }))
+    const requestEqSenderFlight = jest.fn(() => ({
+      eq: requestEqReceiverFlight,
+    }))
+    const requestEqReceiver = jest.fn(() => ({ eq: requestEqSenderFlight }))
+    const requestEqSender = jest.fn(() => ({ eq: requestEqReceiver }))
+    const requestSelect = jest.fn(() => ({ eq: requestEqSender }))
+    const insert = jest.fn().mockResolvedValue({ error: null })
+
+    let flightReads = 0
+    let matchRequestReads = 0
+    const from = jest.fn((table: string) => {
+      if (table === 'Flights') {
+        flightReads += 1
+        return flightReads === 1 ? senderChain : receiverChain
+      }
+      if (table === 'MatchRequests') {
+        matchRequestReads += 1
+        return matchRequestReads === 1 ? { select: requestSelect } : { insert }
+      }
+      return {}
+    })
+
+    await expect(
+      sendMatchRequest({
+        supabase: { from },
+        userId: 'sender-1',
+        receiverId: 'receiver-1',
+        senderFlightId: 1,
+        receiverFlightId: 2,
+      }),
+    ).resolves.toEqual({ success: true })
+
+    expect(insert).toHaveBeenCalled()
+  })
+
+  it('rejects when the sender flight is already matched', async () => {
+    const senderChain = buildFlightLookupChain({
+      flight_id: 1,
+      user_id: 'sender-1',
+      matching_status: 'matched',
+    })
+    const receiverChain = buildFlightLookupChain({
+      flight_id: 2,
+      user_id: 'receiver-1',
+      matching_status: 'unmatched',
+    })
+    const requestMaybeSingle = jest
+      .fn()
+      .mockResolvedValue({ data: null, error: null })
+    const requestEqStatus = jest.fn(() => ({ maybeSingle: requestMaybeSingle }))
+    const requestEqReceiverFlight = jest.fn(() => ({ eq: requestEqStatus }))
+    const requestEqSenderFlight = jest.fn(() => ({
+      eq: requestEqReceiverFlight,
+    }))
+    const requestEqReceiver = jest.fn(() => ({ eq: requestEqSenderFlight }))
+    const requestEqSender = jest.fn(() => ({ eq: requestEqReceiver }))
+    const requestSelect = jest.fn(() => ({ eq: requestEqSender }))
+    const insert = jest.fn()
+
+    let flightReads = 0
+    const from = jest.fn((table: string) => {
+      if (table === 'Flights') {
+        flightReads += 1
+        return flightReads === 1 ? senderChain : receiverChain
+      }
+      if (table === 'MatchRequests') {
+        return { select: requestSelect }
+      }
+      return {}
+    })
+
+    await expect(
+      sendMatchRequest({
+        supabase: { from },
+        userId: 'sender-1',
+        receiverId: 'receiver-1',
+        senderFlightId: 1,
+        receiverFlightId: 2,
+      }),
+    ).rejects.toMatchObject({
+      message: 'One of these flights is already matched.',
+      status: 409,
+    })
+
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it('rejects when the receiver flight is already matched', async () => {
+    const senderChain = buildFlightLookupChain({
+      flight_id: 1,
+      user_id: 'sender-1',
+      matching_status: 'submitted',
+    })
+    const receiverChain = buildFlightLookupChain({
+      flight_id: 2,
+      user_id: 'receiver-1',
+      matching_status: 'matched',
+    })
+    const requestMaybeSingle = jest
+      .fn()
+      .mockResolvedValue({ data: null, error: null })
+    const requestEqStatus = jest.fn(() => ({ maybeSingle: requestMaybeSingle }))
+    const requestEqReceiverFlight = jest.fn(() => ({ eq: requestEqStatus }))
+    const requestEqSenderFlight = jest.fn(() => ({
+      eq: requestEqReceiverFlight,
+    }))
+    const requestEqReceiver = jest.fn(() => ({ eq: requestEqSenderFlight }))
+    const requestEqSender = jest.fn(() => ({ eq: requestEqReceiver }))
+    const requestSelect = jest.fn(() => ({ eq: requestEqSender }))
+    const insert = jest.fn()
+
+    let flightReads = 0
+    const from = jest.fn((table: string) => {
+      if (table === 'Flights') {
+        flightReads += 1
+        return flightReads === 1 ? senderChain : receiverChain
+      }
+      if (table === 'MatchRequests') {
+        return { select: requestSelect }
+      }
+      return {}
+    })
+
+    await expect(
+      sendMatchRequest({
+        supabase: { from },
+        userId: 'sender-1',
+        receiverId: 'receiver-1',
+        senderFlightId: 1,
+        receiverFlightId: 2,
+      }),
+    ).rejects.toMatchObject({
+      message: 'One of these flights is already matched.',
+      status: 409,
+    })
+
+    expect(insert).not.toHaveBeenCalled()
+  })
+})
+
+describe('getUnmatchedOptions', () => {
+  it('queries only post-algorithm unmatched flights, not submitted', async () => {
+    const myFlights = createThenableEqChain([])
+    const pendingRequests = createThenableEqChain([])
+    const peerFlights = createThenableEqChain([])
+    const partialGroups = createThenableEqChain([])
+
+    let flightReads = 0
+    const from = jest.fn((table: string) => {
+      if (table === 'Flights') {
+        flightReads += 1
+        return {
+          select: () => (flightReads === 1 ? myFlights : peerFlights).chain,
+        }
+      }
+      if (table === 'MatchRequests') {
+        return { select: () => pendingRequests.chain }
+      }
+      if (table === 'Matches') {
+        return { select: () => partialGroups.chain }
+      }
+      return {}
+    })
+
+    await expect(
+      getUnmatchedOptions({
+        supabase: { from },
+        userId: 'student-1',
+      }),
+    ).resolves.toMatchObject({
+      success: true,
+      userEligible: false,
+    })
+
+    expect(myFlights.eqCalls).toContainEqual(['matching_status', 'unmatched'])
+    expect(peerFlights.eqCalls).toContainEqual(['matching_status', 'unmatched'])
+    expect(myFlights.eqCalls).not.toContainEqual([
+      'matching_status',
+      'submitted',
+    ])
+    expect(peerFlights.eqCalls).not.toContainEqual([
+      'matching_status',
+      'submitted',
+    ])
+  })
+})
+
 describe('createOwnFlight', () => {
   it('narrows the write payload before inserting a flight', async () => {
     const profileMaybeSingle = jest.fn().mockResolvedValue({
@@ -241,7 +540,7 @@ describe('createOwnFlight', () => {
         opt_in: false,
         terminal: '4',
         user_id: 'student-1',
-        matched: null,
+        matching_status: 'submitted',
       },
     ])
   })
@@ -329,6 +628,7 @@ describe('updateOwnFlight', () => {
       },
     })
     expect(rpc.mock.calls[0][1].p_fields).not.toHaveProperty('matched')
+    expect(rpc.mock.calls[0][1].p_fields).not.toHaveProperty('matching_status')
   })
 
   it('surfaces structured matched-flight failures with status 409', async () => {

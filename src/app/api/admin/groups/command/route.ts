@@ -21,7 +21,7 @@ import {
   deleteGroupRecords,
   deleteRiderMatches,
   logChangeLogEntry,
-  markFlightsMatchedState,
+  setMatchingStatus,
   removeGroupMatch,
   saveGroupOverrideRecords,
   updateFlightRecord,
@@ -218,10 +218,10 @@ export async function POST(request: Request) {
             : [Number(payload.flightIds)],
         })
 
-        await markFlightsMatchedState({
+        await setMatchingStatus({
           supabase: adminSupabase,
           flightIds: payload.flightIds,
-          matched: payload.matched,
+          status: payload.matchingStatus,
         })
         return NextResponse.json({ success: true })
       }

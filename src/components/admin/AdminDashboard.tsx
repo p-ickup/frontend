@@ -291,7 +291,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
               flight_id,
               user_id,
               date,
-              matched,
               Users:Users!Flights_user_id_fkey(school)
             `,
             )
@@ -348,7 +347,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     fetchDashboardData()
   }, [authUser, user, supabase])
 
-  // Fetch unmatched flights count (where matched is false or NULL)
+  // Fetch unmatched flights count (submitted + post-algorithm unmatched)
   useEffect(() => {
     const fetchUnmatchedFlights = async () => {
       try {
@@ -357,7 +356,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
         let query = supabase
           .from('Flights')
           .select('flight_id', { count: 'exact', head: true })
-          .or('matched.is.null,matched.eq.false')
+          .in('matching_status', ['submitted', 'unmatched'])
           .gte('date', startDate)
 
         query = query.lt('date', unmatchedDateEnd || defaultWindow.end)

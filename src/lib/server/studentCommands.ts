@@ -3,6 +3,11 @@ import 'server-only'
 import { normalizeFlightWritePayload } from '@/lib/server/flightWritePayload'
 import { canEditFlight } from '@/utils/flightValidation'
 import { isGroupReady } from '@/utils/groupReadiness'
+import {
+  isMatched,
+  MATCHING_STATUS,
+  type MatchingStatus,
+} from '@/utils/matchingStatus'
 
 type SupabaseClient = any
 
@@ -216,12 +221,12 @@ export async function sendMatchRequest({
     await Promise.all([
       supabase
         .from('Flights')
-        .select('flight_id, user_id, matched')
+        .select('flight_id, user_id, matching_status')
         .eq('flight_id', senderFlightId)
         .maybeSingle(),
       supabase
         .from('Flights')
-        .select('flight_id, user_id, matched')
+        .select('flight_id, user_id, matching_status')
         .eq('flight_id', receiverFlightId)
         .maybeSingle(),
       supabase
@@ -262,7 +267,10 @@ export async function sendMatchRequest({
   if (!receiverFlight || receiverFlight.user_id !== receiverId) {
     throw createError('Receiver flight not found.', 404)
   }
-  if (senderFlight.matched || receiverFlight.matched) {
+  if (
+    isMatched(senderFlight.matching_status as MatchingStatus) ||
+    isMatched(receiverFlight.matching_status as MatchingStatus)
+  ) {
     throw createError('One of these flights is already matched.', 409)
   }
   if (existingRequestRes.data) {
@@ -380,7 +388,7 @@ export async function createOwnFlight({
       {
         ...normalizedPayload,
         user_id: userId,
-        matched: null,
+        matching_status: MATCHING_STATUS.submitted,
       },
     ])
     .select('flight_id')
@@ -589,7 +597,7 @@ export async function getUnmatchedOptions({
       .from('Flights')
       .select('*')
       .eq('user_id', userId)
-      .eq('matched', false)
+      .eq('matching_status', MATCHING_STATUS.unmatched)
       .eq('opt_in', true),
     supabase
       .from('MatchRequests')
@@ -600,12 +608,12 @@ export async function getUnmatchedOptions({
       .from('Flights')
       .select('*, Users:Users!Flights_user_id_fkey(firstname, lastname, email)')
       .eq('opt_in', true)
-      .eq('matched', false)
+      .eq('matching_status', MATCHING_STATUS.unmatched)
       .neq('user_id', userId),
     supabase
       .from('Matches')
       .select(
-        'ride_id, time, is_subsidized, flight:Flights(flight_id, airport, earliest_time, latest_time, date, user_id, matched, to_airport, opt_in, Users(firstname, lastname, email))',
+        'ride_id, time, is_subsidized, flight:Flights!matches_flight_id_fk(flight_id, airport, earliest_time, latest_time, date, user_id, matching_status, to_airport, opt_in, Users!Flights_user_id_fkey(firstname, lastname, email))',
       )
       .eq('is_subsidized', false),
   ])
@@ -780,7 +788,7 @@ export async function getResultsMatches({
     .select(
       `
       *,
-      Flights (*),
+      Flights!matches_flight_id_fk (*),
       Users (
         user_id,
         firstname,
@@ -828,7 +836,7 @@ export async function getAspcReadyData({
         uber_type,
         voucher,
         contingency_voucher,
-        Flights (airport, to_airport, date),
+        Flights!matches_flight_id_fk (airport, to_airport, date),
         Users (user_id, firstname)
       `,
       )
@@ -859,7 +867,7 @@ export async function getAspcReadyData({
       date,
       time,
       group_ready_at,
-      Flights (airport, to_airport, date)
+      Flights!matches_flight_id_fk (airport, to_airport, date)
     `,
     )
     .eq('user_id', userId)
@@ -893,7 +901,7 @@ export async function getAspcDelayData({
         user_id,
         date,
         time,
-        Flights (
+        Flights!matches_flight_id_fk (
           airport,
           to_airport,
           date,
@@ -952,7 +960,7 @@ export async function getAspcDelayData({
       ride_id,
       date,
       time,
-      Flights (airport, to_airport, date)
+      Flights!matches_flight_id_fk (airport, to_airport, date)
     `,
     )
     .eq('user_id', userId)
@@ -1055,7 +1063,9 @@ export async function getFeedbackRides({
 }) {
   const { data, error } = await supabase
     .from('Matches')
-    .select('flight_id, Flights(date, to_airport, airport)')
+    .select(
+      'flight_id, Flights!matches_flight_id_fk(date, to_airport, airport)',
+    )
     .eq('user_id', userId)
 
   if (error) {

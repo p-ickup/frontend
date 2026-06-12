@@ -391,21 +391,21 @@ export const updateGroupMatchesMetadata = async ({
   }
 }
 
-export const markFlightsMatchedState = async ({
+export const setMatchingStatus = async ({
   supabase,
   flightIds,
-  matched,
+  status,
 }: {
   supabase: GroupsSupabaseClient
   flightIds: number[] | number
-  matched: boolean
+  status: 'matched' | 'unmatched'
 }) => {
   const ids = Array.isArray(flightIds) ? flightIds : [flightIds]
   if (ids.length === 0) return
 
   const { error } = await supabase
     .from('Flights')
-    .update({ matched })
+    .update({ matching_status: status })
     .in('flight_id', ids)
 
   if (error) {
@@ -563,7 +563,7 @@ export const addUnmatchedFlight = async ({
     .insert({
       ...normalizedPayload,
       user_id: userId,
-      matched: false,
+      matching_status: 'unmatched',
     })
     .select('flight_id')
     .single()
