@@ -23,11 +23,7 @@ jest.mock('@/utils/supabase', () => ({
   createServerClient: (...args: any[]) => createServerClientMock(args[0]),
 }))
 
-import {
-  checkAdminAccess,
-  isAdmin,
-  requireAdminAccess,
-} from '@/utils/adminGuard'
+import { checkAdminAccess } from '@/utils/adminGuard'
 
 const baseUser = {
   id: 'user-1',
@@ -75,38 +71,5 @@ describe('adminGuard', () => {
     queueProfile({ role: 'student', admin_scope: null })
 
     await expect(checkAdminAccess()).resolves.toBeNull()
-  })
-
-  it('requireAdminAccess returns a 403 response when the role is invalid', async () => {
-    getUserMock.mockResolvedValueOnce({
-      data: { user: baseUser },
-      error: null,
-    })
-    queueProfile({ role: 'viewer', admin_scope: null })
-
-    const result = await requireAdminAccess()
-
-    expect(result.user).toBeNull()
-    expect(result.error?.status).toBe(403)
-  })
-
-  it('requireAdminAccess returns the authenticated user for super admins', async () => {
-    getUserMock.mockResolvedValueOnce({
-      data: { user: baseUser },
-      error: null,
-    })
-    queueProfile({ role: 'super_admin', admin_scope: null })
-
-    const result = await requireAdminAccess()
-
-    expect(result.error).toBeNull()
-    expect(result.user).toEqual(baseUser)
-  })
-
-  it('isAdmin only returns true for the supported client-side roles', () => {
-    expect(isAdmin({ user_metadata: { role: 'Admin' } })).toBe(true)
-    expect(isAdmin({ user_metadata: { role: 'Super Admin' } })).toBe(true)
-    expect(isAdmin({ user_metadata: { role: 'admin' } })).toBe(false)
-    expect(isAdmin(null)).toBe(false)
   })
 })

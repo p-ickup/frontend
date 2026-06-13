@@ -137,10 +137,6 @@ export function useAuth() {
       : process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL ||
         `${callbackOrigin}/auth/callback`
 
-    // console.log('useAuth: signInWithGoogle called from:', window.location.origin)
-    // console.log('useAuth: callbackUrl will be:', callbackUrl)
-    // console.log('useAuth: NEXT_PUBLIC_AUTH_CALLBACK_URL:', process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL)
-
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -153,7 +149,6 @@ export function useAuth() {
       return { error }
     }
 
-    // console.log('useAuth: OAuth redirect initiated successfully')
     return { success: true }
   }
 

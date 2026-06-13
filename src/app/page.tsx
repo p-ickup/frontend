@@ -1,6 +1,5 @@
 'use client'
 
-import RedirectButton from '@/components/buttons/RedirectButton'
 import { useAuth } from '@/hooks/useAuth'
 import { validateUserProfile } from '@/utils/profileValidation'
 import Image from 'next/image'

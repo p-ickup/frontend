@@ -2,16 +2,8 @@
 
 import { postJson } from '@/utils/api'
 import { createBrowserClient } from '@/utils/supabase'
-import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  validateImage,
-  compressImage,
-  ALLOWED_IMAGE_TYPES,
-  MAX_FILE_SIZE,
-} from '@/utils/imageUtils'
 import { useAuth } from '@/hooks/useAuth'
-import { FileUploadInfo } from '@/components/ui/file-upload-info'
 
 export default function Questionnaire() {
   const supabase = useMemo(() => createBrowserClient(), [])
@@ -23,13 +15,11 @@ export default function Questionnaire() {
   const [email, setEmail] = useState('')
   const [phonenumber, setPhoneNumber] = useState('')
   const [smsOptIn, setSmsOptIn] = useState(false)
-  const [photo, setPhoto] = useState<File | null>(null)
   const [photoUrl, setPhotoUrl] = useState('')
   const [instagram, setInstagram] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(true)
   const [hasProfile, setHasProfile] = useState(false)
-  const [hasGooglePhoto, setHasGooglePhoto] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [showUpdateReminder, setShowUpdateReminder] = useState(false)
 
@@ -68,13 +58,6 @@ export default function Questionnaire() {
         setLoading(false)
         return
       }
-
-      // Check if user has a Google profile picture
-      const googlePhotoUrl =
-        user.user_metadata?.avatar_url ||
-        user.identities?.[0]?.identity_data?.avatar_url ||
-        user.user_metadata?.picture
-      setHasGooglePhoto(!!googlePhotoUrl)
 
       const { data, error } = await supabase
         .from('Users')
@@ -140,62 +123,6 @@ export default function Questionnaire() {
     return () => document.removeEventListener('click', handleClickAway, true)
   }, [shouldBlockProfileExit])
 
-  // Delete old profile picture from storage
-  const deleteOldPhoto = async (photoUrl: string) => {
-    if (!photoUrl || !photoUrl.includes('supabase.co')) return
-
-    try {
-      // Extract filename from URL - handle Supabase storage URL format
-      let fileName = ''
-
-      // Handle URL format: https://.../storage/v1/object/public/profile_picture/filename
-      if (photoUrl.includes('/storage/v1/object/public/profile_picture/')) {
-        fileName = photoUrl.split(
-          '/storage/v1/object/public/profile_picture/',
-        )[1]
-      } else if (photoUrl.includes('/profile_picture/')) {
-        // Alternative format: https://.../profile_picture/filename
-        fileName = photoUrl.split('/profile_picture/')[1]
-      } else {
-        // Fallback: extract last part of URL
-        const urlParts = photoUrl.split('/')
-        fileName = urlParts[urlParts.length - 1]
-      }
-
-      // Remove query parameters if present
-      fileName = fileName.split('?')[0]
-
-      if (fileName) {
-        const { error } = await supabase.storage
-          .from('profile_picture')
-          .remove([fileName])
-
-        if (error) {
-          console.error('Storage deletion error:', error)
-        }
-      }
-    } catch (error) {
-      console.error('Error deleting old photo:', error)
-      // Don't fail the upload if deletion fails
-    }
-  }
-
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0]
-      const validation = validateImage(file)
-
-      if (!validation.isValid) {
-        setMessage(validation.error || 'Invalid image file')
-        return
-      }
-
-      setPhoto(file)
-      setMessage('') // Clear any previous error messages
-      markUnsaved()
-    }
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -216,50 +143,7 @@ export default function Questionnaire() {
       return
     }
 
-    // Check if profile picture is required (only if no Google photo and no custom photo) - COMMENTED OUT TO FIX CRITICAL ISSUE
-    // if (!photo && !photoUrl && !hasGooglePhoto) {
-    //   setMessage(
-    //     'Profile picture is required. Please upload an image or use your Google profile picture.',
-    //   )
-    //   return
-    // }
-
-    let updatedPhotoUrl = photoUrl
-
-    if (photo) {
-      try {
-        // Always delete old photo if it exists (replace functionality)
-        if (photoUrl) {
-          await deleteOldPhoto(photoUrl)
-        }
-
-        // Compress and upload new photo
-        const compressedPhoto = await compressImage(photo)
-        const fileName = `${Date.now()}-${compressedPhoto.name}`
-
-        const { data, error } = await supabase.storage
-          .from('profile_picture')
-          .upload(fileName, compressedPhoto)
-
-        if (error) {
-          setMessage('Failed to upload your photo. Please try again.')
-          console.error('Storage Upload Error:', error)
-          return
-        }
-
-        const { data: urlData } = supabase.storage
-          .from('profile_picture')
-          .getPublicUrl(fileName)
-        updatedPhotoUrl = urlData.publicUrl || ''
-
-        // Force a cache-busting parameter to ensure immediate update
-        updatedPhotoUrl = `${updatedPhotoUrl}?t=${Date.now()}`
-      } catch (error) {
-        setMessage('Failed to process your image. Please try again.')
-        console.error('Image processing error:', error)
-        return
-      }
-    }
+    const updatedPhotoUrl = photoUrl
 
     try {
       await postJson('/api/profile', {
@@ -292,7 +176,6 @@ export default function Questionnaire() {
     setShowUpdateReminder(false)
     // Update the avatar URL in the header immediately
     updateAvatarUrl(updatedPhotoUrl)
-    setPhoto(null) // Clear the file input
   }
 
   return (
@@ -471,71 +354,6 @@ export default function Questionnaire() {
                     </span>
                   </label>
 
-                  {/* <label className="block">
-                    <span
-                      className={`mb-2 block text-sm font-semibold text-gray-700 ${
-                        !hasGooglePhoto
-                          ? "after:ml-1 after:text-red-500 after:content-['*']"
-                          : ''
-                      }`}
-                    >
-                      Profile Picture
-                    </span>
-                    <div className="space-y-3">
-                      <input
-                        type="file"
-                        accept={ALLOWED_IMAGE_TYPES.join(',')}
-                        onChange={handlePhotoChange}
-                        className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                        required={!hasGooglePhoto}
-                      />
-                      <FileUploadInfo
-                        acceptedFormats={['PNG', 'JPG', 'HEIC']}
-                        maxSize="5MB"
-                        className="text-xs text-gray-500"
-                      />
-                      {(photoUrl || photo) && (
-                        <div className="flex items-center gap-3 rounded-xl bg-gray-50 p-3">
-                          <Image
-                            src={photo ? URL.createObjectURL(photo) : photoUrl}
-                            alt="Profile"
-                            width={60}
-                            height={60}
-                            className="rounded-full border-2 border-white shadow-md"
-                          />
-                          <div className="flex flex-col">
-                            {photo && (
-                              <span className="text-sm font-medium text-green-600">
-                                ✓ New image selected
-                              </span>
-                            )}
-                            {photoUrl && !photo && (
-                              <span className="text-sm text-gray-600">
-                                Current photo will be replaced
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </label> */}
-
-                  {/* <label className="block">
-                    <span className="mb-2 block text-sm font-semibold text-gray-700">
-                      Instagram (Optional)
-                    </span>
-                    <input
-                      type="text"
-                      value={instagram}
-                      onChange={(e) => {
-                        setInstagram(e.target.value)
-                        markUnsaved()
-                      }}
-                      className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                      placeholder="@yourusername"
-                    />
-                  </label> */}
-
                   <div className="pt-4">
                     <button
                       type="submit"
@@ -700,73 +518,6 @@ export default function Questionnaire() {
                         OPT-IN to text messaging with ASPC?
                       </span>
                     </label>
-
-                    {/* <label className="block">
-                      <span
-                        className={`mb-2 block text-sm font-semibold text-gray-700 ${
-                          !hasGooglePhoto
-                            ? "after:ml-1 after:text-red-500 after:content-['*']"
-                            : ''
-                        }`}
-                      >
-                        Profile Picture
-                      </span>
-                      <div className="space-y-3">
-                        <input
-                          type="file"
-                          accept={ALLOWED_IMAGE_TYPES.join(',')}
-                          onChange={handlePhotoChange}
-                          className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                          required={!hasGooglePhoto}
-                        />
-                        <FileUploadInfo
-                          acceptedFormats={['PNG', 'JPG', 'HEIC']}
-                          maxSize="5MB"
-                          className="text-xs text-gray-500"
-                        />
-                        {(photoUrl || photo) && (
-                          <div className="flex items-center gap-3 rounded-xl bg-gray-50 p-3">
-                            <Image
-                              src={
-                                photo ? URL.createObjectURL(photo) : photoUrl
-                              }
-                              alt="Profile"
-                              width={60}
-                              height={60}
-                              className="rounded-full border-2 border-white shadow-md"
-                            />
-                            <div className="flex flex-col">
-                              {photo && (
-                                <span className="text-sm font-medium text-green-600">
-                                  ✓ New image selected
-                                </span>
-                              )}
-                              {photoUrl && !photo && (
-                                <span className="text-sm text-gray-600">
-                                  Current photo will be replaced
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </label> */}
-
-                    {/* <label className="block">
-                      <span className="mb-2 block text-sm font-semibold text-gray-700">
-                        Instagram (Optional)
-                      </span>
-                      <input
-                        type="text"
-                        value={instagram}
-                        onChange={(e) => {
-                          setInstagram(e.target.value)
-                          markUnsaved()
-                        }}
-                        className="w-full rounded-xl border border-gray-300 bg-white/50 p-3 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:border-teal-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20"
-                        placeholder="@yourusername"
-                      />
-                    </label> */}
 
                     <div className="pt-4">
                       <button

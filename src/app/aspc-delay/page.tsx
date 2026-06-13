@@ -7,12 +7,6 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import RedirectButton from '@/components/buttons/RedirectButton'
 
-type RideEntry = {
-  ride_id: number
-  label: string
-  sortKey: number
-}
-
 function AspcDelayListContent() {
   const { user, isAuthenticated, signInWithGoogle } = useAuth()
 

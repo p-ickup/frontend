@@ -10,7 +10,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 
 type Tables = Database['public']['Tables']
-type User = Tables['Users']['Row']
 type Match = Tables['Matches']['Row']
 
 export interface MatchWithDetails extends Match {
@@ -172,7 +171,6 @@ export default function Results() {
 
   useEffect(() => {
     if (user) {
-      // console.log('Current User ID:', user.id);
       void fetchMatches()
     } else {
       setLoading(false)
@@ -444,16 +442,6 @@ export default function Results() {
               </div>
             )}
           </div>
-
-          {/* Back to Home Button
-          <div className="flex justify-center">
-            <RedirectButton 
-              label="Back to Home" 
-              route="/"
-              color="bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700"
-              size="px-6 py-3 text-lg font-medium"
-            />
-          </div> */}
         </div>
       </div>
     </div>

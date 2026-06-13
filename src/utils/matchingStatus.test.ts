@@ -1,28 +1,11 @@
 /** @jest-environment node */
 
 import {
-  countsTowardAdminUnmatchedCount,
-  fromLegacyMatched,
-  isEligibleForUnmatchedPool,
   isMatched,
   isSubmitted,
   isUnmatched,
   shouldDefaultOptInUnmatched,
 } from '@/utils/matchingStatus'
-
-describe('fromLegacyMatched', () => {
-  it('maps null to submitted', () => {
-    expect(fromLegacyMatched(null)).toBe('submitted')
-  })
-
-  it('maps false to unmatched', () => {
-    expect(fromLegacyMatched(false)).toBe('unmatched')
-  })
-
-  it('maps true to matched', () => {
-    expect(fromLegacyMatched(true)).toBe('matched')
-  })
-})
 
 describe('isSubmitted', () => {
   it('is true only for submitted', () => {
@@ -45,22 +28,6 @@ describe('isMatched', () => {
     expect(isMatched('matched')).toBe(true)
     expect(isMatched('submitted')).toBe(false)
     expect(isMatched('unmatched')).toBe(false)
-  })
-})
-
-describe('isEligibleForUnmatchedPool', () => {
-  it('includes only post-algorithm unmatched riders', () => {
-    expect(isEligibleForUnmatchedPool('unmatched')).toBe(true)
-    expect(isEligibleForUnmatchedPool('submitted')).toBe(false)
-    expect(isEligibleForUnmatchedPool('matched')).toBe(false)
-  })
-})
-
-describe('countsTowardAdminUnmatchedCount', () => {
-  it('includes submitted and unmatched but not matched', () => {
-    expect(countsTowardAdminUnmatchedCount('submitted')).toBe(true)
-    expect(countsTowardAdminUnmatchedCount('unmatched')).toBe(true)
-    expect(countsTowardAdminUnmatchedCount('matched')).toBe(false)
   })
 })
 

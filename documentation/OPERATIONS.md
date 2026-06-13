@@ -29,13 +29,13 @@ If the project is not linked, use `--project-id <ref>` instead of `--linked`. Se
 
 Run this checklist before each break (Thanksgiving, winter, spring, summer, etc.).
 
-| Step | File | What to change |
-|------|------|----------------|
-| Subsidized travel dates | [`src/config/subsidyConfig.ts`](../src/config/subsidyConfig.ts) | Add `MM-DD` entries to `COVERED_DATES_OUTBOUND` and/or `COVERED_DATES_INBOUND` |
-| Deadlines + edit windows | [`src/utils/flightValidation.ts`](../src/utils/flightValidation.ts) | Extend `SERVICE_PERIODS`: buffered `start`/`end` (~3 days beyond subsidized dates), PST `deadline` (`YYYY-MM-DDTHH:MM:SS-08:00`), human-readable `name` (e.g. “Summer Break”). Powers `isFlightPastDeadline` / `canEditFlight` |
-| In-form ASPC messaging | [`src/components/forms/FlightForm.tsx`](../src/components/forms/FlightForm.tsx) | In `checkASPCSubsidyEligibility`, append windows to `operationalPeriods` with `type: 'departure'` (campus → airport) or `'return'` (airport → campus) |
-| Optional deadline banner | `FlightForm.tsx` | Re-enable the “Service Period Deadlines” banner and add a bullet matching the new `SERVICE_PERIODS` entry |
-| Optional public copy | [`src/app/aspc-policy/page.tsx`](../src/app/aspc-policy/page.tsx) and other ASPC info pages | Align published dates with what you coded |
+| Step                      | File                                                                                        | What to change                                                                                                                                                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Subsidized travel dates   | [`src/config/subsidyConfig.ts`](../src/config/subsidyConfig.ts)                             | Add `MM-DD` entries to `COVERED_DATES_OUTBOUND` and/or `COVERED_DATES_INBOUND`                                                                                                                                                 |
+| Deadlines + edit windows  | [`src/utils/flightValidation.ts`](../src/utils/flightValidation.ts)                         | Extend `SERVICE_PERIODS`: buffered `start`/`end` (~3 days beyond subsidized dates), PST `deadline` (`YYYY-MM-DDTHH:MM:SS-08:00`), human-readable `name` (e.g. “Summer Break”). Powers `isFlightPastDeadline` / `canEditFlight` |
+| In-form ASPC messaging    | [`src/components/forms/FlightForm.tsx`](../src/components/forms/FlightForm.tsx)             | In `checkASPCSubsidyEligibility`, append windows to `operationalPeriods` with `type: 'departure'` (campus → airport) or `'return'` (airport → campus)                                                                          |
+| Optional deadline summary | [`FEATURE_STATUS.md`](./FEATURE_STATUS.md)                                                  | The old hard-coded banner was removed. Any future summary must derive its dates from `SERVICE_PERIODS`                                                                                                                         |
+| Optional public copy      | [`src/app/aspc-policy/page.tsx`](../src/app/aspc-policy/page.tsx) and other ASPC info pages | Align published dates with what you coded                                                                                                                                                                                      |
 
 **Buffer rationale:** Service periods use a buffer beyond subsidized dates so riders who submit slightly outside covered dates still fall in the correct period and share the same request deadline / edit eligibility.
 

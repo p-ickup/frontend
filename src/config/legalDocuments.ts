@@ -8,6 +8,3 @@ export const PRIVACY_URL =
 
 /** Bump when material terms change; must match what users accept in the UI */
 export const LEGAL_VERSION = '1'
-
-/** Human-readable “as of” date for the published legal pack (align with counsel when updating) */
-export const LEGAL_LAST_UPDATED = 'April 19, 2026'

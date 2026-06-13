@@ -3,13 +3,11 @@
 import { useState } from 'react'
 import {
   ExternalLink,
-  ArrowLeft,
   Info,
   HelpCircle,
   FileText,
   MessageSquare,
 } from 'lucide-react'
-import RedirectButton from '@/components/buttons/RedirectButton'
 
 interface ASPCLink {
   title: string

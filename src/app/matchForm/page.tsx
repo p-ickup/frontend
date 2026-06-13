@@ -48,7 +48,6 @@ export default function MatchForm() {
             <FlightForm
               mode="create"
               submitButtonText="Request Match"
-              successMessage="✅ Flight details submitted successfully!"
               successRedirectRoute="/questionnaires"
             />
           </div>

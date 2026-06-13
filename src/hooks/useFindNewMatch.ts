@@ -19,7 +19,7 @@ export interface FindNewMatchParams {
   } | null
 }
 
-export interface AvailableGroup {
+interface AvailableGroup {
   rideId: number
   date: string
   time: string

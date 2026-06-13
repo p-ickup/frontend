@@ -89,41 +89,6 @@ export function validateFlightNumber(
 }
 
 /**
- * Convenience function to check if airline code is valid
- */
-export function isValidAirlineCode(airlineCode: string): boolean {
-  return validateAirlineCode(airlineCode).isValid
-}
-
-/**
- * Convenience function to check if flight number is valid
- */
-export function isValidFlightNumber(flightNumber: string): boolean {
-  return validateFlightNumber(flightNumber).isValid
-}
-
-/**
- * Validates both airline code and flight number together
- */
-export function validateFlightInfo(
-  airlineCode: string,
-  flightNumber: string,
-): {
-  isValid: boolean
-  airlineError?: string
-  flightNumberError?: string
-} {
-  const airlineResult = validateAirlineCode(airlineCode)
-  const flightResult = validateFlightNumber(flightNumber)
-
-  return {
-    isValid: airlineResult.isValid && flightResult.isValid,
-    airlineError: airlineResult.errorMessage,
-    flightNumberError: flightResult.errorMessage,
-  }
-}
-
-/**
  * Service periods with their corresponding request deadlines
  */
 interface ServicePeriod {

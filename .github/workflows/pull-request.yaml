@@ -30,8 +30,20 @@ jobs:
       - name: Run type check
         run: pnpm type-check
 
+      - name: Check for unused code
+        run: pnpm knip
+
+      - name: Check production graph for unused code
+        run: pnpm knip:production
+
       - name: Check linting
         run: pnpm lint
 
       - name: Run tests
         run: pnpm test:ci --passWithNoTests
+
+      - name: Build production application
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://ci-build.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-build-placeholder

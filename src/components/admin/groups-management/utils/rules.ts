@@ -30,18 +30,6 @@ export const getMaxBagUnits = (riderCount: number): number => {
   return riderCount >= 3 ? 10 : 12
 }
 
-export const validateBagConstraints = (
-  group: Pick<Group, 'riders'>,
-  rider: Pick<Rider, 'checked_bags' | 'carry_on_bags'>,
-): boolean => {
-  const currentBags = getTotalBags(group.riders)
-  const riderBags = rider.checked_bags + rider.carry_on_bags
-  const totalBags = currentBags + riderBags
-  const newRiderCount = group.riders.length + 1
-
-  return totalBags <= getMaxBagUnits(newRiderCount)
-}
-
 export const determineUberType = (
   groupSize: number,
   bagUnits: number,

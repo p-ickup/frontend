@@ -428,7 +428,6 @@ describe('sendMatchRequest', () => {
 describe('getUnmatchedOptions', () => {
   it('queries only post-algorithm unmatched flights, not submitted', async () => {
     const myFlights = createThenableEqChain([])
-    const pendingRequests = createThenableEqChain([])
     const peerFlights = createThenableEqChain([])
     const partialGroups = createThenableEqChain([])
 
@@ -439,9 +438,6 @@ describe('getUnmatchedOptions', () => {
         return {
           select: () => (flightReads === 1 ? myFlights : peerFlights).chain,
         }
-      }
-      if (table === 'MatchRequests') {
-        return { select: () => pendingRequests.chain }
       }
       if (table === 'Matches') {
         return { select: () => partialGroups.chain }

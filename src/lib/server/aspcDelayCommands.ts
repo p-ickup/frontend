@@ -410,7 +410,6 @@ export async function reportDelay({
     }
   }
 
-  const userBagUnits = calculateBagUnits(bagNoLarge, bagNo)
   const availableGroups: Array<{
     rideId: number
     date: string

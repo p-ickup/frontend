@@ -587,23 +587,13 @@ export async function getUnmatchedOptions({
   supabase: SupabaseClient
   userId: string
 }) {
-  const [
-    { data: myFlightsData },
-    { data: pendingMatchData },
-    flightRes,
-    matchRes,
-  ] = await Promise.all([
+  const [{ data: myFlightsData }, flightRes, matchRes] = await Promise.all([
     supabase
       .from('Flights')
       .select('*')
       .eq('user_id', userId)
       .eq('matching_status', MATCHING_STATUS.unmatched)
       .eq('opt_in', true),
-    supabase
-      .from('MatchRequests')
-      .select('receiver_flight_id')
-      .eq('sender_id', userId)
-      .eq('status', 'pending'),
     supabase
       .from('Flights')
       .select('*, Users:Users!Flights_user_id_fkey(firstname, lastname, email)')
@@ -695,9 +685,6 @@ export async function getUnmatchedOptions({
     flights,
     groups,
     myFlights: myFlightsData || [],
-    pendingRequests: (pendingMatchData || []).map(
-      (request: { receiver_flight_id: number }) => request.receiver_flight_id,
-    ),
     userEligible: (myFlightsData || []).length > 0,
   }
 }
