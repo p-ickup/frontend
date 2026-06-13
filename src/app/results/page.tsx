@@ -4,8 +4,9 @@ import RedirectButton from '@/components/buttons/RedirectButton'
 import EmptyState from '@/components/results/EmptyState'
 import MatchCard from '@/components/results/MatchCard'
 import { postJson, requestJson } from '@/utils/api'
+import { useResultsInitialData } from '@/providers/InitialPageDataProvider'
 import { isGroupReady } from '@/utils/groupReadiness'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import type {
   MarkGroupsReadyResponseDto,
@@ -37,6 +38,8 @@ const groupMatchesByRideId = (matches: ResultMatchDto[]) => {
 }
 
 export default function Results() {
+  const initialData = useResultsInitialData()
+  const initialDataRef = useRef(initialData)
   const [matches, setMatches] = useState<GroupedMatches>({
     upcoming: {},
     previous: {},
@@ -58,7 +61,10 @@ export default function Results() {
         return
       }
 
-      const result = await requestJson<ResultsResponseDto>('/api/results')
+      const result =
+        initialDataRef.current ??
+        (await requestJson<ResultsResponseDto>('/api/results'))
+      initialDataRef.current = null
 
       if (!result.matches || result.matches.length === 0) {
         setMatches({ upcoming: {}, previous: {} })

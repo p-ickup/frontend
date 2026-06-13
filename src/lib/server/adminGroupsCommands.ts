@@ -62,6 +62,7 @@ const normalizeVoucherInput = (voucher: string): string => {
 export const logChangeLogEntry = async ({
   supabase,
   actorUserId,
+  actorRole,
   action,
   metadata,
   targetGroupId,
@@ -71,6 +72,7 @@ export const logChangeLogEntry = async ({
 }: {
   supabase: GroupsSupabaseClient
   actorUserId: string
+  actorRole?: string | null
   action: ChangeLogEntry['action']
   metadata?: any
   targetGroupId?: number
@@ -78,14 +80,18 @@ export const logChangeLogEntry = async ({
   changeBatchId?: string
   confirmed?: boolean
 }) => {
-  const { data: userProfile, error: roleError } = await supabase
-    .from('Users')
-    .select('role')
-    .eq('user_id', actorUserId)
-    .single()
+  let resolvedActorRole = actorRole
+  if (!resolvedActorRole) {
+    const { data: userProfile, error: roleError } = await supabase
+      .from('Users')
+      .select('role')
+      .eq('user_id', actorUserId)
+      .single()
 
-  if (roleError) {
-    throw createError(roleError, 'Failed to fetch actor role for change log')
+    if (roleError) {
+      throw createError(roleError, 'Failed to fetch actor role for change log')
+    }
+    resolvedActorRole = userProfile?.role
   }
 
   let serializedMetadata = null
@@ -102,7 +108,7 @@ export const logChangeLogEntry = async ({
 
   const payload: any = {
     actor_user_id: actorUserId,
-    actor_role: userProfile?.role || 'Admin',
+    actor_role: resolvedActorRole || 'Admin',
     action,
     change_batch_id: changeBatchId || null,
     target_group_id: targetGroupId || null,
@@ -116,6 +122,208 @@ export const logChangeLogEntry = async ({
   if (error) {
     throw createError(error, 'Failed to write change log entry')
   }
+}
+
+export const removeRiderToUnmatched = async ({
+  supabase,
+  actorUserId,
+  actorRole,
+  groupId,
+  userId,
+  flightId,
+  remainingGroupUpdates,
+  changeMetadata,
+}: {
+  supabase: GroupsSupabaseClient
+  actorUserId: string
+  actorRole?: string | null
+  groupId: number
+  userId: string
+  flightId: number
+  remainingGroupUpdates?: {
+    uber_type?: string | null
+    is_subsidized?: boolean | null
+    is_verified?: boolean
+  }
+  changeMetadata: Record<string, unknown>
+}) => {
+  await Promise.all([
+    removeGroupMatch({ supabase, groupId, userId, flightId }),
+    setMatchingStatus({
+      supabase,
+      flightIds: flightId,
+      status: 'unmatched',
+    }),
+    remainingGroupUpdates
+      ? updateGroupMatchesMetadata({
+          supabase,
+          groupId,
+          updates: remainingGroupUpdates,
+        })
+      : Promise.resolve(),
+  ])
+
+  await logChangeLogEntry({
+    supabase,
+    actorUserId,
+    actorRole,
+    action: 'REMOVE_FROM_GROUP',
+    metadata: changeMetadata,
+    targetGroupId: groupId,
+    targetUserId: userId,
+  })
+}
+
+export const moveRiderToCorral = async ({
+  supabase,
+  actorUserId,
+  actorRole,
+  groupId,
+  userId,
+  flightId,
+  remainingGroupUpdates,
+  changeMetadata,
+}: {
+  supabase: GroupsSupabaseClient
+  actorUserId: string
+  actorRole?: string | null
+  groupId: number
+  userId: string
+  flightId: number
+  remainingGroupUpdates?: {
+    uber_type?: string | null
+    is_subsidized?: boolean | null
+    is_verified?: boolean
+  }
+  changeMetadata: Record<string, unknown>
+}) => {
+  await Promise.all([
+    removeGroupMatch({ supabase, groupId, userId, flightId }),
+    remainingGroupUpdates
+      ? updateGroupMatchesMetadata({
+          supabase,
+          groupId,
+          updates: remainingGroupUpdates,
+        })
+      : Promise.resolve(),
+  ])
+  await logChangeLogEntry({
+    supabase,
+    actorUserId,
+    actorRole,
+    action: 'REMOVE_FROM_GROUP',
+    metadata: changeMetadata,
+    targetGroupId: groupId,
+    targetUserId: userId,
+  })
+}
+
+export const moveRiderToGroup = async ({
+  supabase,
+  actorUserId,
+  actorRole,
+  destinationGroupId,
+  sourceGroupId,
+  userId,
+  flightId,
+  date,
+  time,
+  voucher,
+  isSubsidized,
+  uberType,
+  destinationGroupUpdates,
+  sourceGroupUpdates,
+  changeLogIds,
+  sourceMetadata,
+  destinationMetadata,
+  changeBatchId,
+}: {
+  supabase: GroupsSupabaseClient
+  actorUserId: string
+  actorRole?: string | null
+  destinationGroupId: number
+  sourceGroupId?: number
+  userId: string
+  flightId: number
+  date: string
+  time: string
+  voucher: string
+  isSubsidized: boolean
+  uberType: string
+  destinationGroupUpdates: {
+    uber_type?: string | null
+    is_subsidized?: boolean | null
+    is_verified?: boolean
+  }
+  sourceGroupUpdates?: {
+    uber_type?: string | null
+    is_subsidized?: boolean | null
+    is_verified?: boolean
+  }
+  changeLogIds?: string[]
+  sourceMetadata?: Record<string, unknown>
+  destinationMetadata: Record<string, unknown>
+  changeBatchId: string
+}) => {
+  await deleteRiderMatches({ supabase, userId, flightId })
+  await upsertManualGroupMatch({
+    supabase,
+    rideId: destinationGroupId,
+    userId,
+    flightId,
+    date,
+    time,
+    voucher,
+    isSubsidized,
+    uberType,
+  })
+
+  await Promise.all([
+    updateGroupMatchesMetadata({
+      supabase,
+      groupId: destinationGroupId,
+      updates: destinationGroupUpdates,
+    }),
+    setMatchingStatus({
+      supabase,
+      flightIds: flightId,
+      status: 'matched',
+    }),
+    sourceGroupId && sourceGroupUpdates
+      ? updateGroupMatchesMetadata({
+          supabase,
+          groupId: sourceGroupId,
+          updates: sourceGroupUpdates,
+        })
+      : Promise.resolve(),
+    changeLogIds?.length
+      ? confirmChangeLogEntries({ supabase, changeLogIds })
+      : Promise.resolve(),
+  ])
+
+  if (sourceGroupId && sourceMetadata) {
+    await logChangeLogEntry({
+      supabase,
+      actorUserId,
+      actorRole,
+      action: 'REMOVE_FROM_GROUP',
+      metadata: sourceMetadata,
+      targetGroupId: sourceGroupId,
+      targetUserId: userId,
+      changeBatchId,
+    })
+  }
+
+  await logChangeLogEntry({
+    supabase,
+    actorUserId,
+    actorRole,
+    action: 'ADD_TO_GROUP',
+    metadata: destinationMetadata,
+    targetGroupId: destinationGroupId,
+    targetUserId: userId,
+    changeBatchId,
+  })
 }
 
 export const updateGroupTimeRecords = async ({
@@ -253,7 +461,7 @@ export const removeGroupMatch = async ({
   }
 }
 
-export const deleteRiderMatches = async ({
+const deleteRiderMatches = async ({
   supabase,
   userId,
   flightId,
@@ -267,7 +475,7 @@ export const deleteRiderMatches = async ({
     .delete()
     .eq('user_id', userId)
     .eq('flight_id', flightId)
-    .select()
+    .select('id')
 
   if (error) {
     throw createError(error, 'Failed to remove rider from original group')
@@ -302,7 +510,7 @@ const findExistingGroupMatch = async ({
   return data
 }
 
-export const upsertManualGroupMatch = async ({
+const upsertManualGroupMatch = async ({
   supabase,
   rideId,
   userId,

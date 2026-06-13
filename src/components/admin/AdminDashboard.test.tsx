@@ -138,16 +138,63 @@ const createSupabaseMock = (
 describe('AdminDashboard', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    requestJsonMock.mockResolvedValue({
-      school: 'Pomona',
-      matchRate: 67,
-      matchedRiders: 2,
-      totalRiders: 3,
-      unmatchedFlightsCount: 3,
-      algorithmLastRan: 'Jan 15, 2026 – 10:00 AM PT',
-      lastRunStatus: 'Completed (ASPC)',
-      nextScheduledRunDate: 'Jan 20, 2026 – 10:30 AM PT',
-      nextScheduledRunTarget: 'All',
+    requestJsonMock.mockImplementation((url: string) => {
+      if (url.includes('kind=no-shows')) {
+        return Promise.resolve({
+          rows: [
+            {
+              rideId: 77,
+              missingUserId: 'student-2',
+              name: 'Jordan Student',
+              matchDate: '2026-01-15',
+              reporterCount: 1,
+              rideRosterSize: 2,
+              info: {
+                reporterNames: ['Taylor Student'],
+                flag: 'orange',
+                submittedDelayForRide: true,
+                hadNewFlightOnDelay: false,
+                missingRiderSubmittedReady: false,
+              },
+            },
+          ],
+        })
+      }
+      if (url.includes('kind=cancellations')) {
+        return Promise.resolve({
+          rows: [
+            {
+              id: 1,
+              ride_id: 77,
+              user_id: 'student-1',
+              flight_id: 100,
+              cancelled_at: '2026-01-15T10:00:00Z',
+              match_date: '2026-01-15',
+              match_time: '10:00',
+              airport: 'LAX',
+              to_airport: true,
+              is_subsidized: true,
+              cancelled_after_deadline: true,
+              cancelled_before_1hr: false,
+              cancellation_type: 'late',
+              firstname: 'Taylor',
+              lastname: 'Student',
+              email: 'taylor@example.com',
+            },
+          ],
+        })
+      }
+      return Promise.resolve({
+        school: 'Pomona',
+        matchRate: 67,
+        matchedRiders: 2,
+        totalRiders: 3,
+        unmatchedFlightsCount: 3,
+        algorithmLastRan: 'Jan 15, 2026 – 10:00 AM PT',
+        lastRunStatus: 'Completed (ASPC)',
+        nextScheduledRunDate: 'Jan 20, 2026 – 10:30 AM PT',
+        nextScheduledRunTarget: 'All',
+      })
     })
     buildNoShowLookupMock.mockResolvedValue(new Map())
     postJsonMock.mockResolvedValue({
@@ -329,6 +376,17 @@ describe('AdminDashboard', () => {
     return { ...render(<AdminDashboard />), queryLog, supabase }
   }
 
+  it('shows the shared admin loading animation while summary data loads', () => {
+    requestJsonMock.mockReturnValue(new Promise(() => {}))
+    createBrowserClientMock.mockReturnValue({})
+
+    render(<AdminDashboard />)
+
+    const loadingStatus = screen.getByRole('status')
+    expect(loadingStatus).toHaveTextContent('Loading Dashboard...')
+    expect(loadingStatus.querySelector('.animate-spin')).toBeInTheDocument()
+  })
+
   it('loads and renders the core dashboard metrics', async () => {
     const { supabase } = renderDashboard()
 
@@ -443,7 +501,7 @@ describe('AdminDashboard', () => {
       ]),
     )
 
-    const { queryLog } = renderDashboard()
+    renderDashboard()
 
     await screen.findByText('Pickup Dashboard')
     await userEvent.click(
@@ -455,18 +513,13 @@ describe('AdminDashboard', () => {
     expect(await screen.findByText('1/2')).toBeInTheDocument()
     expect(await screen.findByText('Delay form in log')).toBeInTheDocument()
     expect(await screen.findByText('Not yet')).toBeInTheDocument()
-    expect(
-      queryLog.some(
-        (query) =>
-          query.table === 'Matches' &&
-          hasOp(query, 'gte', 'date') &&
-          hasOp(query, 'lte', 'date'),
-      ),
-    ).toBe(true)
+    expect(requestJsonMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/admin/reports?kind=no-shows'),
+    )
   })
 
   it('loads and renders cancellation rows on demand', async () => {
-    const { queryLog } = renderDashboard()
+    renderDashboard()
 
     await screen.findByText('Pickup Dashboard')
     await userEvent.click(
@@ -477,13 +530,8 @@ describe('AdminDashboard', () => {
     expect(await screen.findByText('taylor@example.com')).toBeInTheDocument()
 
     expect(await screen.findByText('$40')).toBeInTheDocument()
-    expect(
-      queryLog.some(
-        (query) =>
-          query.table === 'match_cancellations' &&
-          hasOp(query, 'gte', 'cancelled_at') &&
-          hasOp(query, 'lte', 'cancelled_at'),
-      ),
-    ).toBe(true)
+    expect(requestJsonMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/admin/reports?kind=cancellations'),
+    )
   })
 })

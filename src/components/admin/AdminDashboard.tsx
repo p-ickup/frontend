@@ -1,13 +1,8 @@
 'use client'
 
 import type { AdminSummaryDto } from '@/contracts/readModels'
-import {
-  buildNoShowLookup,
-  parseNoShowKey,
-  type NoShowRiderInfo,
-} from '@/utils/adminMatchNoShows'
+import type { NoShowRiderInfo } from '@/utils/adminMatchNoShows'
 import { postJson, requestJson } from '@/utils/api'
-import { createBrowserClient } from '@/utils/supabase'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
@@ -50,7 +45,6 @@ const getDefaultUnmatchedDateWindow = () => {
 }
 
 export default function AdminDashboard() {
-  const supabase = createBrowserClient()
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [school, setSchool] = useState<string>('')
@@ -434,56 +428,10 @@ export default function AdminDashboard() {
     if (!cancellationsDateStart || !cancellationsDateEnd) return
     setCancellationsLoading(true)
     try {
-      const { data: rows, error } = await supabase
-        .from('match_cancellations')
-        .select(
-          'id, ride_id, user_id, flight_id, cancelled_at, match_date, match_time, airport, to_airport, is_subsidized, cancelled_after_deadline, cancelled_before_1hr, cancellation_type',
-        )
-        .gte('cancelled_at', `${cancellationsDateStart}T00:00:00`)
-        .lte('cancelled_at', `${cancellationsDateEnd}T23:59:59`)
-        .order('cancelled_at', { ascending: false })
-
-      if (error) throw error
-
-      const userIds = Array.from(
-        new Set((rows || []).map((r: any) => r.user_id)),
+      const result = await requestJson<{ rows: typeof cancellations }>(
+        `/api/admin/reports?kind=cancellations&start=${encodeURIComponent(cancellationsDateStart)}&end=${encodeURIComponent(cancellationsDateEnd)}`,
       )
-      let usersMap: Record<
-        string,
-        { firstname: string; lastname: string; email: string }
-      > = {}
-      if (userIds.length > 0) {
-        const { data: users } = await supabase
-          .from('Users')
-          .select('user_id, firstname, lastname, email')
-          .in('user_id', userIds)
-        usersMap = (users || []).reduce(
-          (
-            acc: Record<
-              string,
-              { firstname: string; lastname: string; email: string }
-            >,
-            u: any,
-          ) => ({
-            ...acc,
-            [u.user_id]: {
-              firstname: u.firstname,
-              lastname: u.lastname,
-              email: u.email,
-            },
-          }),
-          {},
-        )
-      }
-
-      setCancellations(
-        (rows || []).map((r: any) => ({
-          ...r,
-          firstname: usersMap[r.user_id]?.firstname,
-          lastname: usersMap[r.user_id]?.lastname,
-          email: usersMap[r.user_id]?.email,
-        })),
-      )
+      setCancellations(result.rows)
     } catch (err) {
       console.error('Error fetching cancellations:', err)
       setCancellations([])
@@ -496,117 +444,10 @@ export default function AdminDashboard() {
     if (!noShowsDateStart || !noShowsDateEnd) return
     setNoShowsLoading(true)
     try {
-      type MRow = {
-        ride_id: number
-        user_id: string
-        reported_missing_user_ids: string[] | null
-        date: string | null
-        ready_for_pickup_at: string | null
-      }
-      let all: MRow[] = []
-      let from = 0
-      const pageSize = 1000
-      for (;;) {
-        const { data, error } = await supabase
-          .from('Matches')
-          .select(
-            'ride_id, user_id, reported_missing_user_ids, date, ready_for_pickup_at',
-          )
-          .gte('date', noShowsDateStart)
-          .lte('date', noShowsDateEnd)
-          .range(from, from + pageSize - 1)
-        if (error) throw error
-        if (!data?.length) break
-        all = [...all, ...(data as MRow[])]
-        if (data.length < pageSize) break
-        from += pageSize
-      }
-
-      const rideRosterSizeByRideId = new Map<number, number>()
-      {
-        const usersPerRide = new Map<number, Set<string>>()
-        for (const m of all) {
-          let set = usersPerRide.get(m.ride_id)
-          if (!set) {
-            set = new Set()
-            usersPerRide.set(m.ride_id, set)
-          }
-          set.add(m.user_id)
-        }
-        for (const [rideId, set] of Array.from(usersPerRide.entries())) {
-          rideRosterSizeByRideId.set(rideId, set.size)
-        }
-      }
-
-      const matchDateForRide = (rideId: number): string | null => {
-        const onRide = all.filter((m) => m.ride_id === rideId)
-        for (const m of onRide) {
-          if (m.date) return m.date
-        }
-        return null
-      }
-
-      const lookup = await buildNoShowLookup(supabase, all)
-      const parsed = Array.from(lookup.entries())
-        .map(([key, info]) => {
-          const p = parseNoShowKey(key)
-          if (!p) return null
-          return { rideId: p.rideId, missingUserId: p.missingId, info }
-        })
-        .filter(
-          (
-            r,
-          ): r is {
-            rideId: number
-            missingUserId: string
-            info: NoShowRiderInfo
-          } => r != null,
-        )
-
-      const rideDateById = new Map<number, string | null>()
-      for (const r of parsed) {
-        if (!rideDateById.has(r.rideId)) {
-          rideDateById.set(r.rideId, matchDateForRide(r.rideId))
-        }
-      }
-
-      parsed.sort((a, b) => {
-        const da = rideDateById.get(a.rideId) ?? ''
-        const db = rideDateById.get(b.rideId) ?? ''
-        if (da !== db) {
-          if (!da) return 1
-          if (!db) return -1
-          return db.localeCompare(da)
-        }
-        return (
-          a.rideId - b.rideId || a.missingUserId.localeCompare(b.missingUserId)
-        )
-      })
-
-      const uids = Array.from(new Set(parsed.map((r) => r.missingUserId)))
-      const names: Record<string, string> = {}
-      if (uids.length > 0) {
-        const { data: users } = await supabase
-          .from('Users')
-          .select('user_id, firstname, lastname')
-          .in('user_id', uids)
-        for (const u of users || []) {
-          names[u.user_id] =
-            `${u.firstname ?? ''} ${u.lastname ?? ''}`.trim() || u.user_id
-        }
-      }
-
-      setNoShowRows(
-        parsed.map((r) => ({
-          rideId: r.rideId,
-          missingUserId: r.missingUserId,
-          name: names[r.missingUserId] ?? r.missingUserId,
-          matchDate: rideDateById.get(r.rideId) ?? null,
-          reporterCount: r.info.reporterCount,
-          rideRosterSize: rideRosterSizeByRideId.get(r.rideId) ?? 0,
-          info: r.info,
-        })),
+      const result = await requestJson<{ rows: typeof noShowRows }>(
+        `/api/admin/reports?kind=no-shows&start=${encodeURIComponent(noShowsDateStart)}&end=${encodeURIComponent(noShowsDateEnd)}`,
       )
+      setNoShowRows(result.rows)
     } catch (err) {
       console.error('Error fetching match no-shows:', err)
       setNoShowRows([])
@@ -617,8 +458,20 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-lg text-gray-600">Loading dashboard...</div>
+      <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+        <div className="relative flex min-h-screen items-center justify-center p-4">
+          <div
+            className="flex items-center space-x-4 rounded-2xl bg-white/80 p-8 shadow-xl backdrop-blur-sm"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-200 border-t-teal-500"></div>
+            <span className="text-lg font-medium text-gray-700">
+              Loading Dashboard...
+            </span>
+          </div>
+        </div>
       </div>
     )
   }

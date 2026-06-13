@@ -4,7 +4,7 @@ import {
   withAdminRoute,
 } from '@/lib/server/auth'
 import { getAdminDashboardSummary } from '@/lib/server/adminDashboard'
-import { NextResponse } from 'next/server'
+import { performanceJson } from '@/lib/server/performanceResponse'
 
 const isDate = (value: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
@@ -15,6 +15,7 @@ const isDate = (value: string) => {
 }
 
 export const GET = withAdminRoute(async (request, auth) => {
+  const startedAt = performance.now()
   try {
     const url = new URL(request.url)
     const unmatchedStartDate = url.searchParams.get('unmatchedStart') || ''
@@ -35,7 +36,7 @@ export const GET = withAdminRoute(async (request, auth) => {
       unmatchedEndDate,
     })
 
-    return NextResponse.json(summary)
+    return performanceJson(summary, startedAt, 'admin_dashboard')
   } catch (error: any) {
     return routeErrorJson(error, 'Failed to load the admin dashboard summary.')
   }

@@ -1,7 +1,12 @@
 'use client'
 
 import { addUnmatchedFlight } from '@/components/admin/groups-management/services/groupsWriteService'
-import { createBrowserClient } from '@/utils/supabase'
+import {
+  checkAdminFlightExists,
+  fetchAdminSchools,
+  fetchAdminUsers,
+  type AdminLookupUser,
+} from '@/components/admin/services/adminLookupService'
 import { Plane, Search, User, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -31,14 +36,7 @@ interface AddRiderProps {
   ) => Promise<void>
 }
 
-interface User {
-  user_id: string
-  firstname: string
-  lastname: string
-  school: string
-  email: string
-  phonenumber: string
-}
+type User = AdminLookupUser
 
 export default function AddRider({
   isOpen,
@@ -46,7 +44,6 @@ export default function AddRider({
   onSuccess,
   logToChangeLog,
 }: AddRiderProps) {
-  const supabase = useMemo(() => createBrowserClient(), [])
   const [step, setStep] = useState<
     'select-school' | 'select-user' | 'flight-info'
   >('select-school')
@@ -73,58 +70,29 @@ export default function AddRider({
   const fetchSchools = useCallback(async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('Users')
-        .select('school')
-        .not('school', 'is', null)
-        .neq('school', '')
-
-      if (error) {
-        console.error('Error fetching schools:', error)
-        setError('Failed to fetch schools')
-        return
-      }
-
-      const uniqueSchools = Array.from(
-        new Set(data.map((u: any) => u.school).filter(Boolean)),
-      ).sort() as string[]
-      setSchools(uniqueSchools)
+      const result = await fetchAdminSchools()
+      setSchools(result.schools)
     } catch (err) {
       console.error('Error fetching schools:', err)
       setError('Failed to fetch schools')
     } finally {
       setLoading(false)
     }
-  }, [supabase])
+  }, [])
 
-  const fetchUsersBySchool = useCallback(
-    async (school: string) => {
-      setLoading(true)
-      setError(null)
-      try {
-        const { data, error } = await supabase
-          .from('Users')
-          .select('user_id, firstname, lastname, school, email, phonenumber')
-          .eq('school', school)
-          .order('firstname')
-          .order('lastname')
-
-        if (error) {
-          console.error('Error fetching users:', error)
-          setError('Failed to fetch users')
-          return
-        }
-
-        setUsers(data || [])
-      } catch (err) {
-        console.error('Error fetching users:', err)
-        setError('Failed to fetch users')
-      } finally {
-        setLoading(false)
-      }
-    },
-    [supabase],
-  )
+  const fetchUsersBySchool = useCallback(async (school: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await fetchAdminUsers(school)
+      setUsers(result.users)
+    } catch (err) {
+      console.error('Error fetching users:', err)
+      setError('Failed to fetch users')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   // Fetch schools on mount
   useEffect(() => {
@@ -261,24 +229,13 @@ export default function AddRider({
           ).toString()
 
           // Check if this flight number already exists for this user on this date
-          const { data: existingFlights, error: checkError } = await supabase
-            .from('Flights')
-            .select('flight_id, flight_no')
-            .eq('user_id', selectedUser.user_id)
-            .eq('flight_no', randomFlightNo)
-            .eq('date', date)
+          const { exists } = await checkAdminFlightExists({
+            userId: selectedUser.user_id,
+            flightNo: randomFlightNo,
+            date,
+          })
 
-          if (checkError) {
-            console.error(
-              'Error checking for duplicate flight number:',
-              checkError,
-            )
-            // If check fails, use the random number anyway
-            finalFlightNo = randomFlightNo
-            break
-          }
-
-          if (!existingFlights || existingFlights.length === 0) {
+          if (!exists) {
             // Flight number is available
             finalFlightNo = randomFlightNo
             break

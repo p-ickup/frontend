@@ -20,13 +20,17 @@ const collectProductionSourceFiles = (directory: string): string[] =>
   })
 
 describe('read-model query coverage', () => {
-  it('contains no select-star query in production TypeScript', () => {
+  it('contains no broad select query in production TypeScript', () => {
     const violations = collectProductionSourceFiles(
       path.join(process.cwd(), 'src'),
     )
-      .filter((sourcePath) =>
-        /\.select\(\s*['"`]\s*\*/.test(fs.readFileSync(sourcePath, 'utf8')),
-      )
+      .filter((sourcePath) => {
+        const source = fs.readFileSync(sourcePath, 'utf8')
+        return (
+          /\.select\(\s*['"`]\s*\*/.test(source) ||
+          /\.select\(\s*\)/.test(source)
+        )
+      })
       .map((sourcePath) => path.relative(process.cwd(), sourcePath))
 
     expect(violations).toEqual([])

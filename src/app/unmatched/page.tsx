@@ -2,7 +2,7 @@
 
 import RedirectButton from '@/components/buttons/RedirectButton'
 import { postJson, requestJson } from '@/utils/api'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import EmptyState from '@/components/results/EmptyState'
 import type {
@@ -11,11 +11,14 @@ import type {
   UnmatchedGroupDto,
   UnmatchedOptionsResponseDto,
 } from '@/contracts/readModels'
+import { useUnmatchedInitialData } from '@/providers/InitialPageDataProvider'
 
 const matchRequestsEnabled =
   process.env.NEXT_PUBLIC_ENABLE_MATCH_REQUESTS === 'true'
 
 export default function UnmatchedPage() {
+  const initialData = useUnmatchedInitialData()
+  const initialDataRef = useRef(initialData)
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const [flights, setFlights] = useState<UnmatchedFlightDto[]>([])
   const [groups, setGroups] = useState<UnmatchedGroupDto[]>([])
@@ -52,9 +55,12 @@ export default function UnmatchedPage() {
     }
 
     try {
-      const result = await requestJson<UnmatchedOptionsResponseDto>(
-        '/api/unmatched/options',
-      )
+      const result =
+        initialDataRef.current ??
+        (await requestJson<UnmatchedOptionsResponseDto>(
+          '/api/unmatched/options',
+        ))
+      initialDataRef.current = null
 
       setFlights(result.flights)
       setGroups(result.groups)

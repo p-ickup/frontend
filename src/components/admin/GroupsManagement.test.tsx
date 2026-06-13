@@ -325,7 +325,8 @@ describe('GroupsManagement', () => {
         }),
       ),
     )
-    await waitFor(() => expect(refreshGroupsMock).toHaveBeenCalled())
+    expect(refreshGroupsMock).not.toHaveBeenCalled()
+    expect(refreshChangeLogMock).not.toHaveBeenCalled()
     expect(confirmChangeLogEntriesMock).not.toHaveBeenCalled()
   })
 })

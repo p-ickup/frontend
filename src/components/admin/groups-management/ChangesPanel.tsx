@@ -2,6 +2,7 @@
 
 import { Copy, Flag, Mail, Phone } from 'lucide-react'
 import { useState } from 'react'
+import { fetchAdminContacts } from '@/components/admin/services/adminLookupService'
 
 import {
   confirmChangeLogEntries,
@@ -18,13 +19,11 @@ function ChangedGroupCard({
   changedGroup,
   onConfirmEmail,
   onEmailGroup,
-  supabase,
   isConfirming = false,
 }: {
   changedGroup: ChangedGroup
   onConfirmEmail: () => Promise<void>
   onEmailGroup?: (rideId: number) => Promise<void>
-  supabase: any
   isConfirming?: boolean
 }) {
   const [showContactInfo, setShowContactInfo] = useState(false)
@@ -51,18 +50,10 @@ function ChangedGroupCard({
     setLoadingEmails(true)
     try {
       const userIds = changedGroup.group.riders.map((r) => r.user_id)
-      const { data: users, error } = await supabase
-        .from('Users')
-        .select('email')
-        .in('user_id', userIds)
-
-      if (error) {
-        console.error('Error fetching emails:', error)
-        setLoadingEmails(false)
-        return
-      }
-
-      const emails = users?.map((u: any) => u.email).filter(Boolean) || []
+      const { contacts } = await fetchAdminContacts(userIds)
+      const emails = contacts
+        .map((contact) => contact.email)
+        .filter((email): email is string => Boolean(email))
       setMemberEmails(emails)
       setContactView('emails')
       setShowContactInfo(true)
@@ -87,18 +78,10 @@ function ChangedGroupCard({
     setLoadingPhones(true)
     try {
       const userIds = changedGroup.group.riders.map((r) => r.user_id)
-      const { data: users, error } = await supabase
-        .from('Users')
-        .select('phonenumber')
-        .in('user_id', userIds)
-
-      if (error) {
-        console.error('Error fetching phone numbers:', error)
-        setLoadingPhones(false)
-        return
-      }
-
-      const phones = users?.map((u: any) => u.phonenumber).filter(Boolean) || []
+      const { contacts } = await fetchAdminContacts(userIds)
+      const phones = contacts
+        .map((contact) => contact.phonenumber)
+        .filter((phone): phone is string => Boolean(phone))
       setMemberPhones(phones)
       setContactView('phones')
       setShowContactInfo(true)
@@ -335,12 +318,10 @@ function ChangedGroupCard({
 function UnmatchedIndividualCard({
   item,
   onConfirmEmail,
-  supabase,
   isConfirming = false,
 }: {
   item: UnmatchedIndividual
   onConfirmEmail: () => Promise<void>
-  supabase: any
   isConfirming?: boolean
 }) {
   const [showContactInfo, setShowContactInfo] = useState(false)
@@ -364,19 +345,8 @@ function UnmatchedIndividualCard({
 
     setLoadingEmail(true)
     try {
-      const { data: user, error } = await supabase
-        .from('Users')
-        .select('email')
-        .eq('user_id', item.rider.user_id)
-        .single()
-
-      if (error) {
-        console.error('Error fetching email:', error)
-        setLoadingEmail(false)
-        return
-      }
-
-      setEmail(user?.email || 'No email found')
+      const { contacts } = await fetchAdminContacts([item.rider.user_id])
+      setEmail(contacts[0]?.email || 'No email found')
       setContactView('emails')
       setShowContactInfo(true)
     } catch (error) {
@@ -399,19 +369,8 @@ function UnmatchedIndividualCard({
 
     setLoadingPhone(true)
     try {
-      const { data: user, error } = await supabase
-        .from('Users')
-        .select('phonenumber')
-        .eq('user_id', item.rider.user_id)
-        .single()
-
-      if (error) {
-        console.error('Error fetching phone number:', error)
-        setLoadingPhone(false)
-        return
-      }
-
-      setPhone(user?.phonenumber || 'No phone number found')
+      const { contacts } = await fetchAdminContacts([item.rider.user_id])
+      setPhone(contacts[0]?.phonenumber || 'No phone number found')
       setContactView('phones')
       setShowContactInfo(true)
     } catch (error) {
@@ -711,7 +670,6 @@ export default function ChangesPanel({
                       )}
                       onConfirmEmail={runConfirmFlow}
                       onEmailGroup={onEmailGroup}
-                      supabase={supabase}
                     />
                   )
                 })}
@@ -740,7 +698,6 @@ export default function ChangesPanel({
                     key={`confirmed-${changedGroup.group.ride_id}`}
                     changedGroup={changedGroup}
                     onConfirmEmail={async () => {}}
-                    supabase={supabase}
                   />
                 ))}
             </div>
@@ -841,7 +798,6 @@ export default function ChangesPanel({
                         })
                       }
                     }}
-                    supabase={supabase}
                   />
                 ))}
             </div>
@@ -869,7 +825,6 @@ export default function ChangesPanel({
                     key={`confirmed-${item.rider.user_id}-${item.rider.flight_id}`}
                     item={item}
                     onConfirmEmail={async () => {}}
-                    supabase={supabase}
                   />
                 ))}
             </div>

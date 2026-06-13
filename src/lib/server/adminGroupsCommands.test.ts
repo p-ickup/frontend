@@ -2,7 +2,10 @@
 
 jest.mock('server-only', () => ({}))
 
-import { setMatchingStatus } from '@/lib/server/adminGroupsCommands'
+import {
+  removeRiderToUnmatched,
+  setMatchingStatus,
+} from '@/lib/server/adminGroupsCommands'
 
 describe('setMatchingStatus', () => {
   it('updates matching_status to matched for a single flight id', async () => {
@@ -46,5 +49,69 @@ describe('setMatchingStatus', () => {
     })
 
     expect(from).not.toHaveBeenCalled()
+  })
+})
+
+describe('removeRiderToUnmatched', () => {
+  it('persists the rider move and audit entry without looking up the actor role', async () => {
+    const removeFlight = jest.fn().mockResolvedValue({ error: null })
+    const removeUser = jest.fn(() => ({ eq: removeFlight }))
+    const removeRide = jest.fn(() => ({ eq: removeUser }))
+    const deleteMatches = jest.fn(() => ({ eq: removeRide }))
+
+    const updateMatchesByRide = jest.fn().mockResolvedValue({ error: null })
+    const updateMatches = jest.fn(() => ({ eq: updateMatchesByRide }))
+
+    const updateFlightsByIds = jest.fn().mockResolvedValue({ error: null })
+    const updateFlights = jest.fn(() => ({ in: updateFlightsByIds }))
+
+    const insertChangeLog = jest.fn().mockResolvedValue({ error: null })
+    const from = jest.fn((table: string) => {
+      if (table === 'Matches') {
+        return { delete: deleteMatches, update: updateMatches }
+      }
+      if (table === 'Flights') return { update: updateFlights }
+      if (table === 'ChangeLog') return { insert: insertChangeLog }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await removeRiderToUnmatched({
+      supabase: { from },
+      actorUserId: 'admin-1',
+      actorRole: 'Admin',
+      groupId: 44,
+      userId: 'student-1',
+      flightId: 101,
+      remainingGroupUpdates: {
+        uber_type: 'XL',
+        is_subsidized: true,
+        is_verified: false,
+      },
+      changeMetadata: { from_group: 44, to: 'unmatched' },
+    })
+
+    expect(removeRide).toHaveBeenCalledWith('ride_id', 44)
+    expect(removeUser).toHaveBeenCalledWith('user_id', 'student-1')
+    expect(removeFlight).toHaveBeenCalledWith('flight_id', 101)
+    expect(updateFlights).toHaveBeenCalledWith({
+      matching_status: 'unmatched',
+    })
+    expect(updateFlightsByIds).toHaveBeenCalledWith('flight_id', [101])
+    expect(updateMatches).toHaveBeenCalledWith({
+      uber_type: 'XL',
+      is_subsidized: true,
+      is_verified: false,
+    })
+    expect(updateMatchesByRide).toHaveBeenCalledWith('ride_id', 44)
+    expect(insertChangeLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor_user_id: 'admin-1',
+        actor_role: 'Admin',
+        action: 'REMOVE_FROM_GROUP',
+        target_group_id: 44,
+        target_user_id: 'student-1',
+      }),
+    )
+    expect(from).not.toHaveBeenCalledWith('Users')
   })
 })

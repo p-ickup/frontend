@@ -9,7 +9,7 @@ import {
   getDefaultDateWindow,
 } from '@/components/admin/groups-management/services/groupsReadService'
 import { toAdminGroupsSnapshotResponseDto } from '@/contracts/readModels'
-import { NextResponse } from 'next/server'
+import { performanceJson } from '@/lib/server/performanceResponse'
 
 const isDate = (value: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
@@ -20,6 +20,7 @@ const isDate = (value: string) => {
 }
 
 export const GET = withAdminRoute(async (request, auth) => {
+  const startedAt = performance.now()
   try {
     const url = new URL(request.url)
     const defaults = getDefaultDateWindow()
@@ -63,13 +64,15 @@ export const GET = withAdminRoute(async (request, auth) => {
       fetchLastAlgorithmRunWindow(auth.supabase),
     ])
 
-    return NextResponse.json(
+    return performanceJson(
       toAdminGroupsSnapshotResponseDto({
         ...snapshot,
         dateRangeStart,
         dateRangeEnd,
         lastAlgorithmRunDate: algorithmWindow?.lastAlgorithmRunDate || '',
       }),
+      startedAt,
+      'admin_groups',
     )
   } catch (error: any) {
     return routeErrorJson(error, 'Failed to load groups management data.')

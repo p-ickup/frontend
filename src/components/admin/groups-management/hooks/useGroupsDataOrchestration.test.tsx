@@ -1,11 +1,13 @@
 import { renderHook, waitFor } from '@testing-library/react'
 
 const requestJsonMock = jest.fn()
+const postJsonMock = jest.fn()
 const fetchChangeLogEntriesMock = jest.fn()
 const fetchPendingChangesSnapshotMock = jest.fn()
 
 jest.mock('@/utils/api', () => ({
   requestJson: (...args: unknown[]) => requestJsonMock(...args),
+  postJson: (...args: unknown[]) => postJsonMock(...args),
 }))
 
 jest.mock(
@@ -82,6 +84,10 @@ describe('useGroupsDataOrchestration', () => {
       changedGroups: [],
       unmatchedIndividuals: [],
     })
+    postJsonMock.mockResolvedValue({
+      changedGroups: [],
+      unmatchedIndividuals: [],
+    })
   })
 
   it('renders the primary snapshot before loading secondary panels', async () => {
@@ -104,11 +110,16 @@ describe('useGroupsDataOrchestration', () => {
       }),
     )
 
-    await waitFor(() => expect(fetchChangeLogEntriesMock).toHaveBeenCalled())
     await waitFor(() =>
-      expect(fetchPendingChangesSnapshotMock).toHaveBeenCalledWith(
-        expect.objectContaining({ groups: [group] }),
+      expect(requestJsonMock).toHaveBeenCalledWith(
+        '/api/admin/groups/secondary?kind=changelog&page=1&pageSize=100',
       ),
+    )
+    await waitFor(() =>
+      expect(postJsonMock).toHaveBeenCalledWith('/api/admin/groups/secondary', {
+        kind: 'pending',
+        groups: [group],
+      }),
     )
   })
 

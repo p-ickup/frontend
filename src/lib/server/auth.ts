@@ -142,6 +142,7 @@ export async function getAuthenticatedPagePrincipal() {
     .maybeSingle()
 
   return {
+    supabase: auth.supabase,
     user: auth.user,
     profile: (profile as AuthProfile | null) || null,
   }

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
-import { requestJson } from '@/utils/api'
+import { postJson, requestJson } from '@/utils/api'
 
-import {
+import type {
   fetchChangeLogEntries,
   fetchPendingChangesSnapshot,
 } from '../services/groupsReadService'
@@ -94,7 +94,6 @@ export const useGroupsDataOrchestration = ({
   setSelectedAirports,
   setUnmatchedIndividuals,
   setUnmatchedRiders,
-  supabase,
 }: UseGroupsDataOrchestrationParams): UseGroupsDataOrchestrationResult => {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -218,10 +217,9 @@ export const useGroupsDataOrchestration = ({
   const refreshChangeLog = useCallback(async () => {
     setChangeLogLoading(true)
     try {
-      const result = await fetchChangeLogEntries(supabase, {
-        page: 1,
-        pageSize: 100,
-      })
+      const result = await requestJson<
+        Awaited<ReturnType<typeof fetchChangeLogEntries>>
+      >('/api/admin/groups/secondary?kind=changelog&page=1&pageSize=100')
       setChangeLog(result.entries)
       setChangeLogHasMore(result.hasMore)
       changeLogPageRef.current = 1
@@ -233,17 +231,18 @@ export const useGroupsDataOrchestration = ({
     } finally {
       setChangeLogLoading(false)
     }
-  }, [setChangeLog, supabase])
+  }, [setChangeLog])
 
   const loadMoreChangeLog = useCallback(async () => {
     if (changeLogLoading || !changeLogHasMore) return
     setChangeLogLoading(true)
     try {
       const nextPage = changeLogPageRef.current + 1
-      const result = await fetchChangeLogEntries(supabase, {
-        page: nextPage,
-        pageSize: 100,
-      })
+      const result = await requestJson<
+        Awaited<ReturnType<typeof fetchChangeLogEntries>>
+      >(
+        `/api/admin/groups/secondary?kind=changelog&page=${nextPage}&pageSize=100`,
+      )
       setChangeLog((current) => {
         const combined = [...current, ...result.entries]
         return Array.from(
@@ -255,7 +254,7 @@ export const useGroupsDataOrchestration = ({
     } finally {
       setChangeLogLoading(false)
     }
-  }, [changeLogHasMore, changeLogLoading, setChangeLog, supabase])
+  }, [changeLogHasMore, changeLogLoading, setChangeLog])
 
   const refreshUnconfirmed = useCallback(
     async (overrideGroups?: Group[]) => {
@@ -269,8 +268,10 @@ export const useGroupsDataOrchestration = ({
 
       try {
         setPendingChangesLoading(true)
-        const snapshot = await fetchPendingChangesSnapshot({
-          supabase,
+        const snapshot = await postJson<
+          Awaited<ReturnType<typeof fetchPendingChangesSnapshot>>
+        >('/api/admin/groups/secondary', {
+          kind: 'pending',
           groups: sourceGroups,
         })
 
@@ -285,7 +286,7 @@ export const useGroupsDataOrchestration = ({
         setPendingChangesLoading(false)
       }
     },
-    [setChangedGroups, setUnmatchedIndividuals, supabase],
+    [setChangedGroups, setUnmatchedIndividuals],
   )
 
   const refreshAll = useCallback(async () => {
