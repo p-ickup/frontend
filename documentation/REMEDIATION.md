@@ -64,7 +64,7 @@ The repository contains multiple unused or stale components, demo endpoints, com
 - Removed the global React Query provider. Retained providers were verified as active: theme behavior is applied at the document level, flight-form tooltips use the tooltip provider, and admin group contexts have live consumers.
 - Enabled `noUnusedLocals` and `noUnusedParameters` in TypeScript.
 - Added `pnpm knip` and `pnpm knip:production`; both complete with zero findings.
-- Added type checking, both Knip scans, linting, tests, and production build checks to pull-request CI.
+- Added type checking, both Knip scans, linting, tests, and production build checks to pull-request CI. The build uses non-production Supabase placeholders so prerendering can validate without repository credentials or database access.
 
 **Supporting documentation:**
 
