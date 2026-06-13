@@ -3,16 +3,13 @@ import userEvent from '@testing-library/user-event'
 
 const buildNoShowLookupMock = jest.fn()
 const postJsonMock = jest.fn()
+const requestJsonMock = jest.fn()
 const pushMock = jest.fn()
-const useAuthMock = jest.fn()
 const createBrowserClientMock = jest.fn()
 
 jest.mock('@/utils/api', () => ({
   postJson: (...args: unknown[]) => postJsonMock(...args),
-}))
-
-jest.mock('@/hooks/useAuth', () => ({
-  useAuth: () => useAuthMock(),
+  requestJson: (...args: unknown[]) => requestJsonMock(...args),
 }))
 
 jest.mock('@/utils/adminMatchNoShows', () => ({
@@ -138,15 +135,67 @@ const createSupabaseMock = (
   }
 }
 
-const dashboardUser = {
-  id: 'admin-1',
-  email: 'admin@example.com',
-} as any
-
 describe('AdminDashboard', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    useAuthMock.mockReturnValue({ user: null })
+    requestJsonMock.mockImplementation((url: string) => {
+      if (url.includes('kind=no-shows')) {
+        return Promise.resolve({
+          rows: [
+            {
+              rideId: 77,
+              missingUserId: 'student-2',
+              name: 'Jordan Student',
+              matchDate: '2026-01-15',
+              reporterCount: 1,
+              rideRosterSize: 2,
+              info: {
+                reporterNames: ['Taylor Student'],
+                flag: 'orange',
+                submittedDelayForRide: true,
+                hadNewFlightOnDelay: false,
+                missingRiderSubmittedReady: false,
+              },
+            },
+          ],
+        })
+      }
+      if (url.includes('kind=cancellations')) {
+        return Promise.resolve({
+          rows: [
+            {
+              id: 1,
+              ride_id: 77,
+              user_id: 'student-1',
+              flight_id: 100,
+              cancelled_at: '2026-01-15T10:00:00Z',
+              match_date: '2026-01-15',
+              match_time: '10:00',
+              airport: 'LAX',
+              to_airport: true,
+              is_subsidized: true,
+              cancelled_after_deadline: true,
+              cancelled_before_1hr: false,
+              cancellation_type: 'late',
+              firstname: 'Taylor',
+              lastname: 'Student',
+              email: 'taylor@example.com',
+            },
+          ],
+        })
+      }
+      return Promise.resolve({
+        school: 'Pomona',
+        matchRate: 67,
+        matchedRiders: 2,
+        totalRiders: 3,
+        unmatchedFlightsCount: 3,
+        algorithmLastRan: 'Jan 15, 2026 – 10:00 AM PT',
+        lastRunStatus: 'Completed (ASPC)',
+        nextScheduledRunDate: 'Jan 20, 2026 – 10:30 AM PT',
+        nextScheduledRunTarget: 'All',
+      })
+    })
     buildNoShowLookupMock.mockResolvedValue(new Map())
     postJsonMock.mockResolvedValue({
       success: true,
@@ -162,14 +211,9 @@ describe('AdminDashboard', () => {
   })
 
   const renderDashboard = () => {
+    const queryLog: Array<QueryState & { terminal: string }> = []
     const supabase = createSupabaseMock((state) => {
-      if (state.table === 'Users' && hasOp(state, 'eq', 'user_id', 'admin-1')) {
-        return {
-          data: { school: 'Pomona', role: 'admin', admin_scope: 'Pomona' },
-          error: null,
-        }
-      }
-
+      queryLog.push(state)
       if (
         state.table === 'AlgorithmStatus' &&
         hasOp(state, 'in', 'status', ['success', 'failed'])
@@ -329,13 +373,30 @@ describe('AdminDashboard', () => {
 
     createBrowserClientMock.mockReturnValue(supabase)
 
-    return render(<AdminDashboard user={dashboardUser} />)
+    return { ...render(<AdminDashboard />), queryLog, supabase }
   }
 
+  it('shows the shared admin loading animation while summary data loads', () => {
+    requestJsonMock.mockReturnValue(new Promise(() => {}))
+    createBrowserClientMock.mockReturnValue({})
+
+    render(<AdminDashboard />)
+
+    const loadingStatus = screen.getByRole('status')
+    expect(loadingStatus).toHaveTextContent('Loading Dashboard...')
+    expect(loadingStatus.querySelector('.animate-spin')).toBeInTheDocument()
+  })
+
   it('loads and renders the core dashboard metrics', async () => {
-    renderDashboard()
+    const { supabase } = renderDashboard()
 
     expect(await screen.findByText('Pickup Dashboard')).toBeInTheDocument()
+    expect(requestJsonMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\/api\/admin\/dashboard-summary\?unmatchedStart=\d{4}-\d{2}-\d{2}&unmatchedEnd=\d{4}-\d{2}-\d{2}$/,
+      ),
+    )
+    expect(supabase.from).not.toHaveBeenCalled()
     expect(await screen.findByText('Pomona')).toBeInTheDocument()
     expect(await screen.findByText('67%')).toBeInTheDocument()
     expect(await screen.findByText('2 / 3 riders matched')).toBeInTheDocument()
@@ -452,6 +513,9 @@ describe('AdminDashboard', () => {
     expect(await screen.findByText('1/2')).toBeInTheDocument()
     expect(await screen.findByText('Delay form in log')).toBeInTheDocument()
     expect(await screen.findByText('Not yet')).toBeInTheDocument()
+    expect(requestJsonMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/admin/reports?kind=no-shows'),
+    )
   })
 
   it('loads and renders cancellation rows on demand', async () => {
@@ -466,5 +530,8 @@ describe('AdminDashboard', () => {
     expect(await screen.findByText('taylor@example.com')).toBeInTheDocument()
 
     expect(await screen.findByText('$40')).toBeInTheDocument()
+    expect(requestJsonMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/admin/reports?kind=cancellations'),
+    )
   })
 })

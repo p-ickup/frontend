@@ -4,8 +4,9 @@ import { createServerClient } from '@/utils/supabase'
 import type { User } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import type { AuthProfile } from '@/types/auth'
 
-type UserProfile = {
+type UserProfile = AuthProfile & {
   role?: string | null
   admin_scope?: string | null
   school?: string | null
@@ -57,7 +58,7 @@ const authorizeAdmin = async () => {
 
   const { data: profile, error: profileError } = await auth.supabase
     .from('Users')
-    .select('role, admin_scope, school, firstname, lastname')
+    .select('role, admin_scope, school, firstname, lastname, photo_url')
     .eq('user_id', auth.user.id)
     .single()
 
@@ -130,14 +131,28 @@ async function requireAdminRoute() {
   }
 }
 
+export async function getAuthenticatedPagePrincipal() {
+  const auth = await authenticateRequest()
+  if (!auth.user) return null
+
+  const { data: profile } = await auth.supabase
+    .from('Users')
+    .select('role, admin_scope, school, photo_url')
+    .eq('user_id', auth.user.id)
+    .maybeSingle()
+
+  return {
+    supabase: auth.supabase,
+    user: auth.user,
+    profile: (profile as AuthProfile | null) || null,
+  }
+}
+
 export async function getAdminPagePrincipal() {
   const auth = await authorizeAdmin()
   if (auth.denial) return null
 
-  return {
-    user: auth.user,
-    profile: auth.profile,
-  }
+  return { user: auth.user, profile: auth.profile }
 }
 
 export const withAuthenticatedRoute =

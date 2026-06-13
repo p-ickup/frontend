@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/useAuth'
 import { useSubsidyLogic } from '@/hooks/useSubsidyLogic'
 import { createBrowserClient } from '@/utils/supabase'
-import { Download, Info, UserPlus, X } from 'lucide-react'
+import { Download, Info, Loader2, UserPlus, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ChangeLogPanel from './groups-management/ChangeLogPanel'
 import CorralPanel from './groups-management/CorralPanel'
@@ -23,21 +23,21 @@ import {
   confirmChangeLogEntries,
   createGroupRecords,
   deleteGroupRecords,
-  deleteRiderMatches,
   fetchRiderByFlightId,
   logChangeLogEntry,
+  moveRiderToGroup,
+  moveRiderToCorral,
   setMatchingStatus,
   normalizeVoucherInput,
   removeGroupMatch,
+  removeRiderToUnmatched,
   saveGroupOverrideRecords,
   updateFlightRecord,
   updateGroupMatchesMetadata,
   updateGroupTimeRecords,
   updateGroupVoucherRecords,
-  upsertManualGroupMatch,
 } from './groups-management/services/groupsWriteService'
 import type {
-  AdminDashboardProps,
   ChangeLogEntry,
   ChangedGroup,
   EditRiderForm,
@@ -67,9 +67,9 @@ import {
 } from './groups-management/utils'
 import UnmatchedRidersPanel from './groups-management/UnmatchedRidersPanel'
 
-export default function GroupsManagement({ user }: AdminDashboardProps) {
+export default function GroupsManagement() {
   const supabase = useMemo(() => createBrowserClient(), [])
-  const { user: authUser } = useAuth()
+  const { user } = useAuth()
   const { computeGroupSubsidized } = useSubsidyLogic()
   const [, setAdminScope] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'matched' | 'unmatched'>('matched')
@@ -135,6 +135,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     null,
   )
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [pendingRiderOperations, setPendingRiderOperations] = useState<
+    Set<number>
+  >(new Set())
   const [newGroupSectionExpanded, setNewGroupSectionExpanded] = useState(false)
   const [selectedRidersForNewGroup, setSelectedRidersForNewGroup] = useState<
     Rider[]
@@ -212,12 +215,25 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   >(new Set())
 
   const {
+    changeLogHasMore,
+    changeLogLoading,
+    error,
+    goToPage,
+    loadMoreChangeLog,
     loading,
+    page,
+    pendingChangesLoading,
     refreshChangeLog: fetchChangeLog,
     refreshGroups: fetchData,
     refreshUnconfirmed: loadUnconfirmedChanges,
+    refreshing,
+    totalPages,
+    totalRecords,
   } = useGroupsDataOrchestration({
-    currentUserId: (authUser || user)?.id,
+    changeLogExpanded,
+    corralTab,
+    dateRangeEnd,
+    dateRangeStart,
     groups,
     isResizingChangeLog,
     resizeStartRef,
@@ -239,6 +255,36 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
     supabase,
   })
 
+  const mergeChangeLogEntries = useCallback(
+    (entries?: ChangeLogEntry[]) => {
+      const validEntries = entries?.filter(Boolean) ?? []
+      if (validEntries.length === 0) return
+
+      setChangeLog((current) => {
+        const visibleLimit =
+          current.length >= 100
+            ? current.length
+            : current.length + validEntries.length
+        const deduped = Array.from(
+          new Map(
+            [...validEntries, ...current].map(
+              (entry) => [entry.id, entry] as const,
+            ),
+          ).values(),
+        )
+
+        return deduped
+          .sort(
+            (left, right) =>
+              new Date(right.created_at).getTime() -
+              new Date(left.created_at).getTime(),
+          )
+          .slice(0, visibleLimit)
+      })
+    },
+    [setChangeLog],
+  )
+
   // Helper function to log changes to ChangeLog
   const logToChangeLog = useCallback(
     async (
@@ -249,14 +295,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       confirmed: boolean = false,
       changeBatchId?: string,
     ) => {
-      const currentUser = authUser || user
-      if (!currentUser) {
-        return
-      }
+      if (!user) return
 
-      await logChangeLogEntry({
+      const entry = await logChangeLogEntry({
         supabase,
-        actorUserId: currentUser.id,
+        actorUserId: user.id,
         action,
         metadata,
         targetGroupId,
@@ -265,9 +308,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         confirmed,
       })
 
-      await fetchChangeLog()
+      if (changeLogExpanded) {
+        mergeChangeLogEntries([entry])
+      }
     },
-    [authUser, user, supabase, fetchChangeLog],
+    [changeLogExpanded, mergeChangeLogEntries, user, supabase],
   )
 
   const closeDeleteGroupConfirmation = useCallback(() => {
@@ -431,7 +476,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   // Update group voucher for all members
   const handleUpdateGroupVoucher = useCallback(
     async (groupId: number, newVoucher: string) => {
-      if (!authUser || !user) return
+      if (!user) return
 
       setIsUpdatingVoucher(true)
       try {
@@ -515,7 +560,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         setIsUpdatingVoucher(false)
       }
     },
-    [authUser, user, closeEditVoucher, supabase, logToChangeLog],
+    [closeEditVoucher, logToChangeLog, supabase, user],
   )
 
   const toggleAirport = useCallback((airport: string) => {
@@ -624,13 +669,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               .filter((g) => g.riders.length > 0),
           )
 
-          await removeGroupMatch({
-            supabase,
-            groupId: fromGroupId,
-            userId: rider.user_id,
-            flightId: rider.flight_id,
-          })
-
           // Do NOT set Flights.matched = false when moving to corral; only set unmatched when user explicitly clicks "Remove from group" (to unmatched).
 
           // Only update if there are remaining riders (groups need at least 1 rider)
@@ -665,43 +703,32 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
               : isSubsidized || hasVoucher || isConnectType
 
             if (effectiveUberType) {
-              try {
-                await updateGroupMatchesMetadata({
-                  supabase,
-                  groupId: fromGroupId,
-                  updates: {
-                    uber_type: effectiveUberType,
-                    is_subsidized: effectiveIsSubsidized,
-                    is_verified: false,
-                  },
-                })
-                newUberType = effectiveUberType
-                newIsSubsidized = effectiveIsSubsidized
-              } catch (updateError) {
-                console.error(
-                  'Error updating uber_type when removing rider:',
-                  updateError,
-                )
-              }
+              newUberType = effectiveUberType
+              newIsSubsidized = effectiveIsSubsidized
             }
           }
 
-          // Log to ChangeLog
-          // Note: target_group_id expects UUID, but ride_id is a number
-          // Storing ride_id in metadata instead
-          await logToChangeLog(
-            'REMOVE_FROM_GROUP',
-            {
+          await moveRiderToCorral({
+            supabase,
+            groupId: fromGroupId,
+            userId: rider.user_id,
+            flightId: rider.flight_id,
+            remainingGroupUpdates: newUberType
+              ? {
+                  uber_type: newUberType,
+                  is_subsidized: newIsSubsidized,
+                  is_verified: false,
+                }
+              : undefined,
+            changeMetadata: {
               from_group: fromGroupId,
               to: 'corral',
-              ride_id: fromGroupId, // Store as number in metadata
+              ride_id: fromGroupId,
               rider_name: rider.name,
               rider_user_id: rider.user_id,
               rider_flight_id: rider.flight_id,
             },
-            fromGroupId, // Set target_group_id to the group that was changed
-            rider.user_id,
-          )
+          })
 
           // Only update local state after successful database operations
           setCorralRiders((prev) => [
@@ -910,8 +937,37 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           )
         }
 
-        // Update local state - refresh groups and unmatched riders
-        await fetchData()
+        const applyRiderUpdates = (rider: Rider): Rider =>
+          rider.flight_id === flightId
+            ? {
+                ...rider,
+                ...(updates.flight_no !== undefined
+                  ? { flight_no: updates.flight_no }
+                  : {}),
+                ...(updates.airline_iata !== undefined
+                  ? { airline_iata: updates.airline_iata }
+                  : {}),
+                ...(updates.airport !== undefined
+                  ? { airport: updates.airport }
+                  : {}),
+                ...(updates.to_airport !== undefined
+                  ? { to_airport: updates.to_airport }
+                  : {}),
+                ...(updates.date !== undefined ? { date: updates.date } : {}),
+                ...(updates.time_range !== undefined
+                  ? { time_range: updates.time_range }
+                  : {}),
+              }
+            : rider
+
+        setGroups((previous) =>
+          previous.map((group) => ({
+            ...group,
+            riders: group.riders.map(applyRiderUpdates),
+          })),
+        )
+        setUnmatchedRiders((previous) => previous.map(applyRiderUpdates))
+        setCorralRiders((previous) => previous.map(applyRiderUpdates))
 
         closeEditRider()
         setErrorMessage(null)
@@ -923,298 +979,264 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         setIsUpdatingRider(false)
       }
     },
-    [
-      closeEditRider,
-      supabase,
-      fetchData,
-      groups,
-      unmatchedRiders,
-      logToChangeLog,
-    ],
+    [closeEditRider, groups, unmatchedRiders, logToChangeLog, supabase],
   )
 
   const handleRemoveFromGroupToUnmatched = useCallback(
     async (rider: Rider, groupId: number) => {
+      const group = groups.find((candidate) => candidate.ride_id === groupId)
+      if (!group || pendingRiderOperations.has(rider.flight_id)) return
+
+      const updatedRiders = group.riders.filter(
+        (candidate) => candidate.flight_id !== rider.flight_id,
+      )
+
+      // Confirm deletion before changing any records when this is the last rider.
+      if (updatedRiders.length === 0) {
+        setDeleteGroupConfirmation({
+          rider,
+          groupId,
+          callback: async () => {
+            const allFlightIds = group.riders.map(
+              (groupRider) => groupRider.flight_id,
+            )
+            setPendingRiderOperations(
+              (previous) => new Set([...Array.from(previous), ...allFlightIds]),
+            )
+            setGroups((previous) =>
+              previous.filter((candidate) => candidate.ride_id !== groupId),
+            )
+            setUnmatchedRiders((previous) => {
+              const existingIds = new Set(
+                previous.map((candidate) => candidate.flight_id),
+              )
+              return [
+                ...previous,
+                ...group.riders.filter(
+                  (candidate) => !existingIds.has(candidate.flight_id),
+                ),
+              ]
+            })
+
+            try {
+              await deleteGroupRecords({
+                supabase,
+                groupId,
+                flightIds: allFlightIds,
+                markFlightsUnmatched: true,
+              })
+              await logToChangeLog(
+                'DELETE_GROUP',
+                {
+                  ride_id: groupId,
+                  rider_name: rider.name,
+                  rider_user_id: rider.user_id,
+                },
+                groupId,
+              )
+              setChangedGroups((previous) => [
+                ...previous.filter(
+                  (changed) => changed.group.ride_id !== groupId,
+                ),
+                {
+                  group,
+                  changeType: 'deleted',
+                  changedAt: new Date().toISOString(),
+                  emailsSent: false,
+                },
+              ])
+              setUnmatchedIndividuals((previous) => {
+                const existingIds = new Set(
+                  previous.map((entry) => entry.rider.flight_id),
+                )
+                return [
+                  ...previous,
+                  ...group.riders
+                    .filter(
+                      (groupRider) => !existingIds.has(groupRider.flight_id),
+                    )
+                    .map((groupRider) => ({
+                      rider: groupRider,
+                      becameUnmatchedAt: new Date().toISOString(),
+                      emailSent: false,
+                    })),
+                ]
+              })
+            } catch (error) {
+              console.error('Error deleting final rider group:', error)
+              setGroups((previous) =>
+                previous.some((candidate) => candidate.ride_id === groupId)
+                  ? previous
+                  : [...previous, group],
+              )
+              setUnmatchedRiders((previous) =>
+                previous.filter(
+                  (candidate) => !allFlightIds.includes(candidate.flight_id),
+                ),
+              )
+              setErrorMessage('Failed to delete group')
+              setTimeout(() => setErrorMessage(null), 3000)
+              void fetchData()
+            } finally {
+              setPendingRiderOperations((previous) => {
+                const next = new Set(previous)
+                allFlightIds.forEach((flightId) => next.delete(flightId))
+                return next
+              })
+            }
+          },
+        })
+        return
+      }
+
+      const bagUnits = calculateBagUnits(updatedRiders)
+      const isConnect = group.uber_type?.toLowerCase() === 'connect'
+      const calculatedUberType = isConnect
+        ? 'Connect'
+        : determineUberType(updatedRiders.length, bagUnits)
+      const { subsidized: calculatedSubsidized } = computeGroupSubsidized({
+        date: group.date,
+        toAirport: group.to_airport,
+        airport: group.airport,
+        riderCount: updatedRiders.length,
+        riderSchools: updatedRiders.map((candidate) => candidate.school),
+        uberType: calculatedUberType ?? undefined,
+      })
+      const effectiveUberType = group.uber_type_override
+        ? (group.uber_type ?? calculatedUberType)
+        : calculatedUberType
+      const hasVoucher = Boolean(group.group_voucher?.trim())
+      const isConnectType =
+        (effectiveUberType ?? group.uber_type)?.toLowerCase() === 'connect'
+      const effectiveIsSubsidized = group.subsidized_override
+        ? (group.is_subsidized ?? calculatedSubsidized)
+        : calculatedSubsidized || hasVoucher || isConnectType
+      const optimisticGroup: Group = {
+        ...group,
+        riders: updatedRiders,
+        time_range: calculateGroupTimeRange(updatedRiders),
+        uber_type: effectiveUberType ?? group.uber_type,
+        is_subsidized: effectiveIsSubsidized,
+      }
+
+      setPendingRiderOperations((previous) =>
+        new Set(previous).add(rider.flight_id),
+      )
+      setGroups((previous) =>
+        previous.map((candidate) =>
+          candidate.ride_id === groupId ? optimisticGroup : candidate,
+        ),
+      )
+      setUnmatchedRiders((previous) =>
+        previous.some((candidate) => candidate.flight_id === rider.flight_id)
+          ? previous
+          : [...previous, rider],
+      )
+
       try {
-        await removeGroupMatch({
+        const { changeLogEntries } = await removeRiderToUnmatched({
           supabase,
           groupId,
           userId: rider.user_id,
           flightId: rider.flight_id,
-        })
-
-        await setMatchingStatus({
-          supabase,
-          flightIds: rider.flight_id,
-          matchingStatus: 'unmatched',
-        }).catch((error) => {
-          console.error('Error updating flight:', error)
-        })
-
-        // Find the group to get updated rider list
-        const group = groups.find((g) => g.ride_id === groupId)
-        let newUberType: string | null = null
-        let newIsSubsidized: boolean | null = null
-        if (group) {
-          const updatedRiders = group.riders.filter(
-            (r) => r.flight_id !== rider.flight_id,
-          )
-
-          // Check if this is the last person in the group
-          if (updatedRiders.length === 0) {
-            // Show confirmation modal
-            setDeleteGroupConfirmation({
-              rider,
-              groupId,
-              callback: async () => {
-                const allFlightIds = group.riders.map((r) => r.flight_id)
-
-                await deleteGroupRecords({
-                  supabase,
-                  groupId,
-                  flightIds: allFlightIds,
-                  markFlightsUnmatched: true,
-                })
-
-                // Log to ChangeLog
-                await logToChangeLog(
-                  'DELETE_GROUP',
-                  {
-                    ride_id: groupId, // Store as number in metadata
-                    rider_name: rider.name,
-                    rider_user_id: rider.user_id,
-                  },
-                  groupId, // Set target_group_id to the group that was deleted
-                )
-
-                // Track as deleted group
-                setChangedGroups((prev) => {
-                  const existing = prev.find(
-                    (cg) => cg.group.ride_id === groupId,
-                  )
-                  if (existing) {
-                    return prev.map((cg) =>
-                      cg.group.ride_id === groupId
-                        ? {
-                            ...cg,
-                            changeType: 'deleted',
-                            changedAt: new Date().toISOString(),
-                            emailsSent: false,
-                          }
-                        : cg,
-                    )
-                  }
-                  return [
-                    ...prev,
-                    {
-                      group,
-                      changeType: 'deleted',
-                      changedAt: new Date().toISOString(),
-                      emailsSent: false,
-                    },
-                  ]
-                })
-
-                // Track all riders as unmatched individuals
-                group.riders.forEach((r) => {
-                  setUnmatchedIndividuals((prev) => {
-                    const existing = prev.find(
-                      (ui) => ui.rider.flight_id === r.flight_id,
-                    )
-                    if (!existing) {
-                      return [
-                        ...prev,
-                        {
-                          rider: r,
-                          becameUnmatchedAt: new Date().toISOString(),
-                          emailSent: false,
-                        },
-                      ]
-                    }
-                    return prev
-                  })
-                })
-
-                // Update local state - remove group and add rider to unmatched
-                setGroups((prev) => prev.filter((g) => g.ride_id !== groupId))
-                setUnmatchedRiders((prev) => [...prev, rider])
-              },
-            })
-            return
-          }
-
-          // Only update if there are remaining riders (groups need at least 1 rider)
-          if (updatedRiders.length > 0) {
-            // Calculate new bag units and uber_type (preserve Connect if ride is Connect)
-            const bagUnits = calculateBagUnits(updatedRiders)
-            const isConnect = group.uber_type?.toLowerCase() === 'connect'
-            const uberType = isConnect
-              ? 'Connect'
-              : determineUberType(updatedRiders.length, bagUnits)
-            const { subsidized: isSubsidized } = computeGroupSubsidized({
-              date: group.date,
-              toAirport: group.to_airport,
-              airport: group.airport,
-              riderCount: updatedRiders.length,
-              riderSchools: updatedRiders.map((r) => r.school),
-              uberType: uberType ?? undefined,
-            })
-
-            // Respect manual overrides: use group's value when override is set
-            const effectiveUberType = group.uber_type_override
-              ? (group.uber_type ?? uberType)
-              : uberType
-            const hasVoucher = Boolean(group.group_voucher?.trim())
-            const isConnectType =
-              (effectiveUberType ?? group.uber_type)?.toLowerCase() ===
-              'connect'
-            const effectiveIsSubsidized = group.subsidized_override
-              ? (group.is_subsidized ?? isSubsidized)
-              : isSubsidized || hasVoucher || isConnectType
-
-            // Don't recalculate time - keep existing group time
-            // Only update uber_type, is_subsidized, and is_verified
-            if (effectiveUberType) {
-              try {
-                await updateGroupMatchesMetadata({
-                  supabase,
-                  groupId,
-                  updates: {
-                    uber_type: effectiveUberType,
-                    is_subsidized: effectiveIsSubsidized,
-                    is_verified: false,
-                  },
-                })
-                newUberType = effectiveUberType
-                newIsSubsidized = effectiveIsSubsidized
-              } catch (updateError) {
-                console.error(
-                  'Error updating matches when removing rider:',
-                  updateError,
-                )
+          remainingGroupUpdates: effectiveUberType
+            ? {
+                uber_type: effectiveUberType,
+                is_subsidized: effectiveIsSubsidized,
+                is_verified: false,
               }
-            }
-          }
-        }
-
-        // Update local state - remove from group and add to unmatched, and track changes
-        setGroups((prev) => {
-          const updatedGroups = prev.map((g) => {
-            if (g.ride_id === groupId) {
-              const remainingRiders = g.riders.filter(
-                (r) => r.flight_id !== rider.flight_id,
-              )
-              // Recalculate time range for display only, but keep existing match_time
-              const newTimeRange =
-                remainingRiders.length > 0
-                  ? calculateGroupTimeRange(remainingRiders)
-                  : g.time_range
-              // Keep existing match_time - don't recalculate
-              return {
-                ...g,
-                riders: remainingRiders,
-                time_range: newTimeRange, // Update time range for display only
-                match_time: g.match_time, // Keep existing time - don't change
-                uber_type: newUberType !== null ? newUberType : g.uber_type, // Update uber_type if calculated
-                is_subsidized: newIsSubsidized ?? g.is_subsidized,
-              }
-            }
-            return g
-          })
-          return updatedGroups
-        })
-
-        // Track this as a changed group
-        setGroups((prevGroups) => {
-          const updatedGroup = prevGroups.find((g) => g.ride_id === groupId)
-          if (updatedGroup) {
-            setChangedGroups((prevChanged) => {
-              const existing = prevChanged.find(
-                (cg) => cg.group.ride_id === groupId,
-              )
-              if (existing) {
-                // Merge new change description with existing ones
-                const newDescription = getChangeDescription('REMOVE_FROM_GROUP')
-                const existingDescriptions = existing.changeDescriptions || []
-                const updatedDescriptions = consolidateChangeDescriptions([
-                  ...existingDescriptions,
-                  newDescription,
-                ])
-                return prevChanged.map((cg) =>
-                  cg.group.ride_id === groupId
-                    ? {
-                        ...cg,
-                        group: updatedGroup, // Update with latest group data
-                        changedAt: new Date().toISOString(),
-                        emailsSent: false,
-                        changeDescriptions: updatedDescriptions,
-                      }
-                    : cg,
-                )
-              }
-              return [
-                ...prevChanged,
-                {
-                  group: updatedGroup,
-                  changeType: 'modified',
-                  changedAt: new Date().toISOString(),
-                  emailsSent: false,
-                  changeDescriptions: [
-                    getChangeDescription('REMOVE_FROM_GROUP'),
-                  ],
-                },
-              ]
-            })
-          }
-          return prevGroups
-        })
-
-        setUnmatchedRiders((prev) => [...prev, rider])
-
-        // Track this individual as unmatched
-        setUnmatchedIndividuals((prev) => {
-          const existing = prev.find(
-            (ui) => ui.rider.flight_id === rider.flight_id,
-          )
-          if (!existing) {
-            return [
-              ...prev,
-              {
-                rider,
-                becameUnmatchedAt: new Date().toISOString(),
-                emailSent: false,
-              },
-            ]
-          }
-          return prev
-        })
-
-        // Log to ChangeLog
-        // Note: target_group_id expects UUID, but ride_id is a number
-        // Storing ride_id in metadata instead
-        // Log the group change - this tracks that the group was modified
-        await logToChangeLog(
-          'REMOVE_FROM_GROUP',
-          {
+            : undefined,
+          changeMetadata: {
             from_group: groupId,
             to: 'unmatched',
-            ride_id: groupId, // Store as number in metadata
+            ride_id: groupId,
             rider_name: rider.name,
             rider_user_id: rider.user_id,
             rider_flight_id: rider.flight_id,
             flight_id: rider.flight_id,
             date: rider.date,
           },
-          groupId, // Set target_group_id to the group that was changed
-          rider.user_id,
+        })
+        if (changeLogExpanded) {
+          mergeChangeLogEntries(changeLogEntries)
+        }
+        setChangedGroups((previous) => {
+          const existing = previous.find(
+            (changed) => changed.group.ride_id === groupId,
+          )
+          const description = getChangeDescription('REMOVE_FROM_GROUP')
+          if (existing) {
+            return previous.map((changed) =>
+              changed.group.ride_id === groupId
+                ? {
+                    ...changed,
+                    group: optimisticGroup,
+                    changedAt: new Date().toISOString(),
+                    emailsSent: false,
+                    changeDescriptions: consolidateChangeDescriptions([
+                      ...(changed.changeDescriptions || []),
+                      description,
+                    ]),
+                  }
+                : changed,
+            )
+          }
+          return [
+            ...previous,
+            {
+              group: optimisticGroup,
+              changeType: 'modified',
+              changedAt: new Date().toISOString(),
+              emailsSent: false,
+              changeDescriptions: [description],
+            },
+          ]
+        })
+        setUnmatchedIndividuals((previous) =>
+          previous.some((entry) => entry.rider.flight_id === rider.flight_id)
+            ? previous
+            : [
+                ...previous,
+                {
+                  rider,
+                  becameUnmatchedAt: new Date().toISOString(),
+                  emailSent: false,
+                },
+              ],
         )
       } catch (error) {
         console.error('Error removing rider from group to unmatched:', error)
+        setGroups((previous) =>
+          previous.map((candidate) =>
+            candidate.ride_id === groupId ? group : candidate,
+          ),
+        )
+        setUnmatchedRiders((previous) =>
+          previous.filter(
+            (candidate) => candidate.flight_id !== rider.flight_id,
+          ),
+        )
         setErrorMessage('Failed to remove rider from group')
         setTimeout(() => setErrorMessage(null), 3000)
+        void fetchData()
+      } finally {
+        setPendingRiderOperations((previous) => {
+          const next = new Set(previous)
+          next.delete(rider.flight_id)
+          return next
+        })
       }
     },
-    [groups, supabase, logToChangeLog, computeGroupSubsidized],
+    [
+      changeLogExpanded,
+      computeGroupSubsidized,
+      fetchData,
+      groups,
+      logToChangeLog,
+      mergeChangeLogEntries,
+      pendingRiderOperations,
+      supabase,
+    ],
   )
 
   const handleRemoveFromCorral = useCallback((rider: Rider) => {
@@ -1526,6 +1548,56 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           ? (group.is_subsidized ?? isSubsidized)
           : isSubsidized || hasVoucher || isConnectType
 
+        const sourceGroup = sourceGroupId
+          ? groups.find((candidate) => candidate.ride_id === sourceGroupId)
+          : undefined
+        const sourceRemainingRiders = sourceGroup
+          ? sourceGroup.riders.filter(
+              (candidate) => candidate.flight_id !== rider.flight_id,
+            )
+          : []
+        let sourceGroupUpdates: Record<string, unknown> | undefined
+        if (sourceGroup && sourceRemainingRiders.length > 0) {
+          const sourceBagUnits = calculateBagUnits(sourceRemainingRiders)
+          const sourceComputedUberType =
+            sourceGroup.uber_type?.toLowerCase() === 'connect'
+              ? 'Connect'
+              : determineUberType(sourceRemainingRiders.length, sourceBagUnits)
+          const sourceEffectiveUberType = sourceGroup.uber_type_override
+            ? (sourceGroup.uber_type ?? sourceComputedUberType)
+            : sourceComputedUberType
+          const { subsidized: sourceComputedSubsidized } =
+            computeGroupSubsidized({
+              date: sourceGroup.date,
+              toAirport: sourceGroup.to_airport,
+              airport: sourceGroup.airport,
+              riderCount: sourceRemainingRiders.length,
+              riderSchools: sourceRemainingRiders.map(
+                (remainingRider) => remainingRider.school,
+              ),
+              uberType: sourceEffectiveUberType ?? undefined,
+            })
+          sourceGroupUpdates = {
+            uber_type: sourceEffectiveUberType || sourceGroup.uber_type,
+            is_subsidized: sourceGroup.subsidized_override
+              ? (sourceGroup.is_subsidized ?? sourceComputedSubsidized)
+              : sourceComputedSubsidized ||
+                Boolean(sourceGroup.group_voucher?.trim()) ||
+                sourceEffectiveUberType?.toLowerCase() === 'connect',
+            is_verified: false,
+          }
+        }
+
+        const pendingUnmatchedItem = unmatchedIndividuals.find(
+          (item) => item.rider.flight_id === rider.flight_id,
+        )
+        const unmatchedChangeLogIds = pendingUnmatchedItem?.changeLogIds?.length
+          ? pendingUnmatchedItem.changeLogIds
+          : pendingUnmatchedItem?.changeLogId
+            ? [pendingUnmatchedItem.changeLogId]
+            : []
+        const changeBatchId = crypto.randomUUID()
+
         setCorralRiders((prev) =>
           prev.filter((r) => r.flight_id !== rider.flight_id),
         )
@@ -1565,31 +1637,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
             .filter((g) => g.riders.length > 0),
         )
 
-        // Delete any existing matches for this exact flight form.
-        const deletedMatches = await deleteRiderMatches({
-          supabase,
-          userId: rider.user_id,
-          flightId: rider.flight_id,
-        })
-
-        if (deletedMatches && deletedMatches.length > 0) {
-          console.log(
-            `[handleSelectFromCorral] Deleted ${deletedMatches.length} existing match(es) for rider ${rider.name} (flight_id: ${rider.flight_id})`,
-          )
-          // Mark flight as unmatched when removing from previous group (so if insert below fails, DB stays consistent)
-          const unmatchError = await setMatchingStatus({
-            supabase,
-            flightIds: rider.flight_id,
-            matchingStatus: 'unmatched',
-          }).catch((error) => error)
-          if (unmatchError) {
-            console.error('Error updating flight to unmatched:', unmatchError)
-          }
-        }
-
-        await upsertManualGroupMatch({
-          supabase,
-          rideId: group.ride_id,
+        const { changeLogEntries } = await moveRiderToGroup({
+          destinationGroupId: group.ride_id,
+          sourceGroupId,
           userId: rider.user_id,
           flightId: rider.flight_id,
           date: finalDate,
@@ -1597,7 +1647,38 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           voucher: voucherValue,
           isSubsidized: effectiveIsSubsidized,
           uberType: effectiveUberType,
+          destinationGroupUpdates: {
+            uber_type: effectiveUberType,
+            is_subsidized: effectiveIsSubsidized,
+            is_verified: false,
+          },
+          sourceGroupUpdates,
+          changeLogIds: unmatchedChangeLogIds,
+          sourceMetadata: sourceGroupId
+            ? {
+                from_group: sourceGroupId,
+                to: 'corral',
+                ride_id: sourceGroupId,
+                rider_name: rider.name,
+                rider_user_id: rider.user_id,
+                rider_flight_id: rider.flight_id,
+                flight_id: rider.flight_id,
+              }
+            : undefined,
+          destinationMetadata: {
+            from: source,
+            to_group: group.ride_id,
+            from_group: sourceGroupId,
+            ride_id: group.ride_id,
+            rider_name: rider.name,
+            rider_user_id: rider.user_id,
+            rider_flight_id: rider.flight_id,
+          },
+          changeBatchId,
         })
+        if (changeLogExpanded) {
+          mergeChangeLogEntries(changeLogEntries)
+        }
 
         // Only remove from corral AFTER successful database operations
         if (isFromCorral && corralRider) {
@@ -1606,48 +1687,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           )
         }
 
-        // Update all existing matches in the group with uber_type, is_subsidized, and set is_verified to false.
-        // Do NOT update time for the whole group — only the newly added rider's match has their time set (in insert/update above).
-        // Use effective values so manual overrides are preserved
-        await updateGroupMatchesMetadata({
-          supabase,
-          groupId: group.ride_id,
-          updates: {
-            uber_type: effectiveUberType,
-            is_subsidized: effectiveIsSubsidized,
-            is_verified: false,
-          },
-        }).catch((error) => {
-          console.error('Error updating existing matches:', error)
-        })
-
-        await setMatchingStatus({
-          supabase,
-          flightIds: rider.flight_id,
-          matchingStatus: 'matched',
-        }).catch((error) => {
-          console.error('Error updating flight:', error)
-        })
-
-        // Auto-confirm unmatched individual change if rider was previously unmatched
-        // Check if there's an unconfirmed ChangeLog entry for this flight_id where they were removed to unmatched
-        const pendingUnmatchedItem = unmatchedIndividuals.find(
-          (item) => item.rider.flight_id === rider.flight_id,
-        )
-        const unmatchedChangeLogIds =
-          pendingUnmatchedItem?.changeLogIds &&
-          pendingUnmatchedItem.changeLogIds.length > 0
-            ? pendingUnmatchedItem.changeLogIds
-            : pendingUnmatchedItem?.changeLogId
-              ? [pendingUnmatchedItem.changeLogId]
-              : []
-
         if (unmatchedChangeLogIds.length > 0) {
-          await confirmChangeLogEntries({
-            supabase,
-            changeLogIds: unmatchedChangeLogIds,
-          })
-
           setUnmatchedIndividuals((prev) =>
             prev.filter((ui) => ui.rider.flight_id !== rider.flight_id),
           )
@@ -1714,18 +1754,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                 // Recalculate time range for display only, but keep existing match_time
                 const newSourceTimeRange =
                   calculateGroupTimeRange(remainingRiders)
-
-                updateGroupMatchesMetadata({
-                  supabase,
-                  groupId: sourceGroupId,
-                  updates: {
-                    uber_type: sourceEffectiveUberType || g.uber_type,
-                    is_subsidized: sourceEffectiveIsSubsidized,
-                    is_verified: false,
-                  },
-                }).catch((error) => {
-                  console.error('Error updating source group matches:', error)
-                })
 
                 return {
                   ...g,
@@ -1837,49 +1865,9 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
           })
         }
 
-        // Log to ChangeLog
-        const changeBatchId = crypto.randomUUID()
-
-        // If rider came from another group, log REMOVE_FROM_GROUP first
-        if (sourceGroupId) {
-          await logToChangeLog(
-            'REMOVE_FROM_GROUP',
-            {
-              from_group: sourceGroupId,
-              to: 'corral', // Even if direct drag, we track it as going through corral conceptually
-              ride_id: sourceGroupId, // Store as number in metadata
-              rider_name: rider.name,
-              rider_user_id: rider.user_id,
-              rider_flight_id: rider.flight_id,
-              flight_id: rider.flight_id,
-            },
-            sourceGroupId, // Set target_group_id to the source group that was changed
-            rider.user_id,
-            false,
-            changeBatchId,
-          )
+        if (corralTab === 'changes') {
+          void loadUnconfirmedChanges()
         }
-
-        // Then log ADD_TO_GROUP for the destination group
-        await logToChangeLog(
-          'ADD_TO_GROUP',
-          {
-            from: source,
-            to_group: group.ride_id,
-            from_group: sourceGroupId, // Include source group if coming from another group
-            ride_id: group.ride_id, // Store as number in metadata
-            rider_name: rider.name,
-            rider_user_id: rider.user_id,
-            rider_flight_id: rider.flight_id,
-          },
-          group.ride_id, // Set target_group_id to the group that was changed
-          rider.user_id,
-          false,
-          changeBatchId,
-        )
-
-        // Refresh Changed Groups so the group appears immediately without page refresh
-        await loadUnconfirmedChanges()
 
         // Clear selection mode
         setCorralSelectionMode(null)
@@ -1896,9 +1884,12 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       logToChangeLog,
       loadUnconfirmedChanges,
       fetchData,
-      supabase,
+      changeLogExpanded,
+      groups,
       corralRiders,
+      corralTab,
       computeGroupSubsidized,
+      mergeChangeLogEntries,
       unmatchedIndividuals,
     ],
   )
@@ -2107,7 +2098,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       const effectiveNewGroupSubsidized =
         isSubsidized || calculatedIsSubsidized || hasVoucher || isConnectType
 
-      const { rideId } = await createGroupRecords({
+      const { rideId, normalizedVoucher } = await createGroupRecords({
         supabase,
         rideDate,
         riders: selectedRidersForNewGroup,
@@ -2166,10 +2157,28 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       setCorralRiders((prev) =>
         prev.filter((r) => !selectedFlightIds.has(r.flight_id)),
       )
+      setUnmatchedRiders((prev) =>
+        prev.filter((r) => !selectedFlightIds.has(r.flight_id)),
+      )
+      setGroups((prev) => [
+        ...prev,
+        {
+          ride_id: rideId,
+          airport: groupAirport,
+          date: rideDate,
+          time_range: calculatedTimeRange,
+          match_time: formattedTime,
+          to_airport: groupToAirport,
+          riders: selectedRidersForNewGroup,
+          group_voucher: normalizedVoucher || undefined,
+          uber_type: uberType,
+          is_subsidized: effectiveNewGroupSubsidized,
+          subsidized_override: false,
+          uber_type_override: false,
+        },
+      ])
 
       clearDraftGroup()
-
-      await fetchData()
 
       setErrorMessage(null)
     } catch (error) {
@@ -2184,7 +2193,6 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   }, [
     clearDraftGroup,
     computeGroupSubsidized,
-    fetchData,
     isSubsidized,
     logToChangeLog,
     newGroupContingencyVoucher,
@@ -2624,10 +2632,63 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-lg text-gray-600">Loading groups...</div>
+      <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+        <div className="relative flex min-h-screen items-center justify-center p-4">
+          <div className="flex items-center space-x-4 rounded-2xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-200 border-t-teal-500"></div>
+            <span className="text-lg font-medium text-gray-700">
+              Loading Groups...
+            </span>
+          </div>
+        </div>
       </div>
     )
+  }
+
+  if (error && groups.length === 0 && unmatchedRiders.length === 0) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+        <div className="max-w-lg rounded-lg border border-red-200 bg-red-50 p-6 text-center">
+          <p className="font-medium text-red-700">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  const downloadAdminExport = async (kind: 'matched' | 'unmatched') => {
+    if (!dateRangeStart || !dateRangeEnd) {
+      setErrorMessage(
+        `Please select both a start and end date before downloading the ${kind} CSV.`,
+      )
+      setTimeout(() => setErrorMessage(null), 5000)
+      return
+    }
+
+    try {
+      setErrorMessage(null)
+      const response = await fetch(
+        `/api/admin/groups/export?kind=${kind}&start=${encodeURIComponent(dateRangeStart)}&end=${encodeURIComponent(dateRangeEnd)}`,
+      )
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.error || `Failed to generate ${kind} CSV`)
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${kind}-${dateRangeStart}-to-${dateRangeEnd}.csv`
+      link.click()
+      window.URL.revokeObjectURL(url)
+    } catch (error: any) {
+      console.error(`Error downloading ${kind} CSV:`, error)
+      setErrorMessage(
+        `Failed to download ${kind} CSV: ${error.message || 'Unknown error'}`,
+      )
+      setTimeout(() => setErrorMessage(null), 5000)
+    }
   }
 
   return (
@@ -3018,179 +3079,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   </div>
                   <div className="flex flex-wrap items-center gap-2 md:flex-initial md:flex-none">
                     <button
-                      onClick={async () => {
-                        try {
-                          setErrorMessage(null)
-                          const rangeStart = dateRangeStart
-                          const rangeEnd = dateRangeEnd
-
-                          if (!rangeStart || !rangeEnd) {
-                            setErrorMessage(
-                              'Please select both a start and end date before downloading the matched CSV.',
-                            )
-                            setTimeout(() => setErrorMessage(null), 5000)
-                            return
-                          }
-
-                          const { data: matchesData, error: matchesError } =
-                            await supabase
-                              .from('Matches')
-                              .select(
-                                'ride_id, date, time, voucher, is_subsidized, uber_type, flight_id, user_id',
-                              )
-                              .gte('date', rangeStart)
-                              .lte('date', rangeEnd)
-                              .order('date', { ascending: true })
-                              .order('time', { ascending: true })
-                              .order('ride_id', { ascending: true })
-
-                          if (matchesError) throw matchesError
-                          if (!matchesData || matchesData.length === 0) {
-                            setErrorMessage('No matched data found')
-                            setTimeout(() => setErrorMessage(null), 3000)
-                            return
-                          }
-
-                          const flightIds = Array.from(
-                            new Set(
-                              matchesData.map((match: any) => match.flight_id),
-                            ),
-                          )
-                          const userIds = Array.from(
-                            new Set(
-                              matchesData.map((match: any) => match.user_id),
-                            ),
-                          )
-
-                          const { data: flightsData, error: flightsError } =
-                            await supabase
-                              .from('Flights')
-                              .select(
-                                'flight_id, earliest_time, latest_time, airport, to_airport, airline_iata, flight_no, bag_no_personal, bag_no, bag_no_large',
-                              )
-                              .in('flight_id', flightIds)
-
-                          if (flightsError) throw flightsError
-
-                          const { data: usersData, error: usersError } =
-                            await supabase
-                              .from('Users')
-                              .select(
-                                'user_id, firstname, lastname, email, phonenumber, school',
-                              )
-                              .in('user_id', userIds)
-
-                          if (usersError) throw usersError
-
-                          const flightsMap = new Map<number, any>(
-                            flightsData?.map((flight: any) => [
-                              flight.flight_id,
-                              flight,
-                            ]) || [],
-                          )
-                          const usersMap = new Map<string, any>(
-                            usersData?.map((dashboardUser: any) => [
-                              dashboardUser.user_id,
-                              dashboardUser,
-                            ]) || [],
-                          )
-
-                          const csvData = matchesData.map((match: any) => {
-                            const flight = flightsMap.get(match.flight_id)
-                            const dashboardUser = usersMap.get(match.user_id)
-
-                            return {
-                              ride_id: match.ride_id,
-                              date: match.date,
-                              time: match.time || '',
-                              earliest_time: flight?.earliest_time || '',
-                              latest_time: flight?.latest_time || '',
-                              name: `${dashboardUser?.firstname || ''} ${dashboardUser?.lastname || ''}`.trim(),
-                              email: dashboardUser?.email || '',
-                              phonenumber: dashboardUser?.phonenumber || '',
-                              school: dashboardUser?.school || '',
-                              airport: flight?.airport || '',
-                              flight_label:
-                                `${flight?.airline_iata || ''} ${flight?.flight_no || ''}`.trim(),
-                              personal_bag: flight?.bag_no_personal || 0,
-                              carry_on: flight?.bag_no || 0,
-                              checked_bag: flight?.bag_no_large || 0,
-                              voucher: match.voucher || '',
-                              is_subsidized: match.is_subsidized || false,
-                              uber_type: match.uber_type || '',
-                              to_airport: flight?.to_airport || false,
-                            }
-                          })
-
-                          const headers = [
-                            'ride_id',
-                            'date',
-                            'time',
-                            'earliest_time',
-                            'latest_time',
-                            'name',
-                            'email',
-                            'phonenumber',
-                            'school',
-                            'airport',
-                            'flight',
-                            'personal_bag',
-                            'carry_on',
-                            'checked_bag',
-                            'voucher',
-                            'is_subsidized',
-                            'uber_type',
-                            'to_airport',
-                          ]
-                          const csv = [
-                            headers,
-                            ...csvData.map((row: any) => [
-                              row.ride_id,
-                              row.date,
-                              row.time,
-                              row.earliest_time,
-                              row.latest_time,
-                              row.name,
-                              row.email,
-                              row.phonenumber,
-                              row.school,
-                              row.airport,
-                              row.flight_label,
-                              row.personal_bag,
-                              row.carry_on,
-                              row.checked_bag,
-                              row.voucher,
-                              row.is_subsidized,
-                              row.uber_type,
-                              row.to_airport,
-                            ]),
-                          ]
-                            .map((row) =>
-                              row
-                                .map(
-                                  (cell: unknown) =>
-                                    `"${String(cell).replace(/"/g, '""')}"`,
-                                )
-                                .join(','),
-                            )
-                            .join('\n')
-
-                          const blob = new Blob([csv], { type: 'text/csv' })
-                          const url = window.URL.createObjectURL(blob)
-                          const link = document.createElement('a')
-                          link.href = url
-                          link.download = `matched-${rangeStart}-to-${rangeEnd}.csv`
-                          link.click()
-                          window.URL.revokeObjectURL(url)
-                        } catch (error: any) {
-                          console.error('Error downloading matched CSV:', error)
-                          setErrorMessage(
-                            'Failed to download matched CSV: ' +
-                              (error.message || 'Unknown error'),
-                          )
-                          setTimeout(() => setErrorMessage(null), 5000)
-                        }
-                      }}
+                      onClick={() => downloadAdminExport('matched')}
                       className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 transition-all hover:bg-gray-50"
                       title="Download Matched CSV"
                     >
@@ -3198,151 +3087,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                       <span>Matches CSV</span>
                     </button>
                     <button
-                      onClick={async () => {
-                        try {
-                          setErrorMessage(null)
-                          const rangeStart = dateRangeStart
-                          const rangeEnd = dateRangeEnd
-
-                          if (!rangeStart || !rangeEnd) {
-                            setErrorMessage(
-                              'Please select both a start and end date before downloading the unmatched CSV.',
-                            )
-                            setTimeout(() => setErrorMessage(null), 5000)
-                            return
-                          }
-
-                          const { data: flightsData, error: flightsError } =
-                            await supabase
-                              .from('Flights')
-                              .select(
-                                'flight_id, date, earliest_time, latest_time, airport, to_airport, airline_iata, flight_no, bag_no_personal, bag_no, bag_no_large, user_id',
-                              )
-                              .in('matching_status', ['submitted', 'unmatched'])
-                              .gte('date', rangeStart)
-                              .lt('date', rangeEnd)
-                              .order('date', { ascending: true })
-                              .order('earliest_time', { ascending: true })
-                              .order('flight_id', { ascending: true })
-
-                          if (flightsError) throw flightsError
-                          if (!flightsData || flightsData.length === 0) {
-                            setErrorMessage('No unmatched data found')
-                            setTimeout(() => setErrorMessage(null), 3000)
-                            return
-                          }
-
-                          const userIds = Array.from(
-                            new Set(
-                              flightsData
-                                .map((flight: any) => flight.user_id)
-                                .filter(Boolean),
-                            ),
-                          )
-
-                          const { data: usersData, error: usersError } =
-                            await supabase
-                              .from('Users')
-                              .select(
-                                'user_id, school, firstname, lastname, email',
-                              )
-                              .in('user_id', userIds)
-
-                          if (usersError) throw usersError
-
-                          const usersMap = new Map<string, any>(
-                            usersData?.map((dashboardUser: any) => [
-                              dashboardUser.user_id,
-                              dashboardUser,
-                            ]) || [],
-                          )
-
-                          const csvData = flightsData.map((flight: any) => {
-                            const dashboardUser = usersMap.get(flight.user_id)
-
-                            return {
-                              flight_id: flight.flight_id,
-                              date: flight.date,
-                              earliest_time: flight.earliest_time || '',
-                              latest_time: flight.latest_time || '',
-                              school: dashboardUser?.school || '',
-                              name: `${dashboardUser?.firstname || ''} ${dashboardUser?.lastname || ''}`.trim(),
-                              email: dashboardUser?.email || '',
-                              user_id: flight.user_id || '',
-                              flight_label:
-                                `${flight.airline_iata || ''} ${flight.flight_no || ''}`.trim(),
-                              personal_bag: flight.bag_no_personal || 0,
-                              carry_on: flight.bag_no || 0,
-                              checked_bag: flight.bag_no_large || 0,
-                              airport: flight.airport || '',
-                              to_airport: flight.to_airport || false,
-                            }
-                          })
-
-                          const headers = [
-                            'flight_id',
-                            'date',
-                            'earliest_time',
-                            'latest_time',
-                            'school',
-                            'name',
-                            'email',
-                            'user_id',
-                            'flight',
-                            'personal_bag',
-                            'carry_on',
-                            'checked_bag',
-                            'airport',
-                            'to_airport',
-                          ]
-                          const csv = [
-                            headers,
-                            ...csvData.map((row: any) => [
-                              row.flight_id,
-                              row.date,
-                              row.earliest_time,
-                              row.latest_time,
-                              row.school,
-                              row.name,
-                              row.email,
-                              row.user_id,
-                              row.flight_label,
-                              row.personal_bag,
-                              row.carry_on,
-                              row.checked_bag,
-                              row.airport,
-                              row.to_airport,
-                            ]),
-                          ]
-                            .map((row) =>
-                              row
-                                .map(
-                                  (cell: unknown) =>
-                                    `"${String(cell).replace(/"/g, '""')}"`,
-                                )
-                                .join(','),
-                            )
-                            .join('\n')
-
-                          const blob = new Blob([csv], { type: 'text/csv' })
-                          const url = window.URL.createObjectURL(blob)
-                          const link = document.createElement('a')
-                          link.href = url
-                          link.download = `unmatched-${rangeStart}-to-${rangeEnd}.csv`
-                          link.click()
-                          window.URL.revokeObjectURL(url)
-                        } catch (error: any) {
-                          console.error(
-                            'Error downloading unmatched CSV:',
-                            error,
-                          )
-                          setErrorMessage(
-                            'Failed to download unmatched CSV: ' +
-                              (error.message || 'Unknown error'),
-                          )
-                          setTimeout(() => setErrorMessage(null), 5000)
-                        }
-                      }}
+                      onClick={() => downloadAdminExport('unmatched')}
                       className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 transition-all hover:bg-gray-50"
                       title="Download Unmatched CSV"
                     >
@@ -3366,20 +3111,73 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                   </div>
                 )}
 
+                {pendingRiderOperations.size > 0 && (
+                  <div
+                    className="mb-4 flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm font-medium text-teal-800"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving {pendingRiderOperations.size}{' '}
+                    {pendingRiderOperations.size === 1
+                      ? 'rider change'
+                      : 'rider changes'}
+                    ...
+                  </div>
+                )}
+
                 <p className="mb-6 text-sm text-gray-600">
                   {activeTab === 'matched'
                     ? 'Drag and drop riders between groups or to the corral'
                     : 'View all unmatched riders - drag them to groups to assign'}
                 </p>
 
+                <div className="min-h-9 mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-gray-200 py-2 text-sm text-gray-600">
+                  <span>
+                    Page {page} of {totalPages} · {totalRecords} flight records
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {refreshing && (
+                      <span className="flex items-center gap-2 text-teal-700">
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-teal-200 border-t-teal-600"></span>
+                        Refreshing
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void goToPage(page - 1)}
+                      disabled={refreshing || page <= 1}
+                      className="rounded border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void goToPage(page + 1)}
+                      disabled={refreshing || page >= totalPages}
+                      className="rounded border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+
                 {activeTab === 'matched' && <MatchedGroupsPanel />}
-                {activeTab === 'unmatched' && <UnmatchedRidersPanel />}
+                {activeTab === 'unmatched' && (
+                  <UnmatchedRidersPanel
+                    pendingFlightIds={pendingRiderOperations}
+                  />
+                )}
               </div>
 
-              <CorralPanel />
+              <CorralPanel pendingChangesLoading={pendingChangesLoading} />
             </div>
 
-            <ChangeLogPanel />
+            <ChangeLogPanel
+              hasMore={changeLogHasMore}
+              loading={changeLogLoading}
+              onLoadMore={loadMoreChangeLog}
+            />
             <GroupsManagementModals />
           </GroupsUiContext.Provider>
         </GroupsActionsContext.Provider>

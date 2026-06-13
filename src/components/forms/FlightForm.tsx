@@ -27,6 +27,7 @@ import {
   shouldDefaultOptInUnmatched,
   type MatchingStatus,
 } from '@/utils/matchingStatus'
+import { useAuth } from '@/hooks/useAuth'
 
 export interface FlightFormProps {
   mode: 'create' | 'edit'
@@ -45,6 +46,7 @@ export default function FlightForm({
 }: FlightFormProps) {
   const supabase = useMemo(() => createBrowserClient(), [])
   const router = useRouter()
+  const { user, profile, isLoading: authLoading } = useAuth()
 
   // Form state
   const [tripType, setTripType] = useState<boolean | null>(null)
@@ -132,8 +134,10 @@ export default function FlightForm({
   // Check profile completeness on component mount
   useEffect(() => {
     const checkProfileStatus = async () => {
+      if (authLoading) return
+
       try {
-        const profileValidation = await validateUserProfile()
+        const profileValidation = await validateUserProfile(user)
         setIsProfileComplete(profileValidation.isValid)
         setProfileCheckComplete(true)
 
@@ -147,29 +151,12 @@ export default function FlightForm({
         router.replace('/profile')
       }
     }
-    checkProfileStatus()
-  }, [router])
+    void checkProfileStatus()
+  }, [authLoading, router, user])
 
-  // Fetch user school information
   useEffect(() => {
-    const fetchUserSchool = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (user) {
-        const { data: userProfile } = await supabase
-          .from('Users')
-          .select('school')
-          .eq('user_id', user.id)
-          .single()
-
-        if (userProfile?.school) {
-          setUserSchool(userProfile.school)
-        }
-      }
-    }
-    fetchUserSchool()
-  }, [supabase])
+    setUserSchool(profile?.school || '')
+  }, [profile?.school])
 
   // Check if selected date is past its deadline in real-time
   useEffect(() => {
@@ -208,12 +195,7 @@ export default function FlightForm({
       }
 
       try {
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser()
-
-        if (authError || !user) return
+        if (!user) return
 
         const { data: existingFlights, error: checkError } = await supabase
           .from('Flights')
@@ -247,7 +229,7 @@ export default function FlightForm({
     }
 
     checkForDuplicates()
-  }, [dateOfFlight, airport, tripType, mode, supabase])
+  }, [dateOfFlight, airport, tripType, mode, supabase, user])
 
   // ASPC subsidy checking function
   const checkASPCSubsidyEligibility = useCallback(() => {
@@ -432,7 +414,7 @@ export default function FlightForm({
     }
 
     // Validate user has complete profile
-    const profileValidation = await validateUserProfile()
+    const profileValidation = await validateUserProfile(user)
     if (!profileValidation.isValid) {
       setMessage(`${profileValidation.message}`)
       setIsValidationError(true)
@@ -529,12 +511,7 @@ export default function FlightForm({
     setIsSubmitting(true)
 
     try {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser()
-
-      if (authError || !user) {
+      if (!user) {
         setMessage('Error: You must be logged in to submit flight details!')
         setIsValidationError(true)
         isSubmittingRef.current = false

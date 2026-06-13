@@ -7,7 +7,12 @@ import { useAuth } from '@/hooks/useAuth'
 
 export default function Questionnaire() {
   const supabase = useMemo(() => createBrowserClient(), [])
-  const { updateAvatarUrl } = useAuth()
+  const {
+    user,
+    isLoading: authLoading,
+    refreshProfile,
+    updateAvatarUrl,
+  } = useAuth()
 
   const [firstname, setFirstName] = useState('')
   const [lastname, setLastName] = useState('')
@@ -48,12 +53,8 @@ export default function Questionnaire() {
 
   useEffect(() => {
     const fetchUserData = async () => {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser()
-
-      if (authError || !user) {
+      if (authLoading) return
+      if (!user) {
         setMessage('Error: You must be logged in to fetch data!')
         setLoading(false)
         return
@@ -61,7 +62,9 @@ export default function Questionnaire() {
 
       const { data, error } = await supabase
         .from('Users')
-        .select('*')
+        .select(
+          'firstname, lastname, school, email, phonenumber, sms_opt_in, instagram, photo_url',
+        )
         .eq('user_id', user.id)
         .single()
 
@@ -86,7 +89,7 @@ export default function Questionnaire() {
     }
 
     fetchUserData()
-  }, [supabase])
+  }, [authLoading, supabase, user])
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -126,12 +129,7 @@ export default function Questionnaire() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
+    if (!user) {
       setMessage('You must be logged in to submit your profile.')
       return
     }
@@ -176,6 +174,7 @@ export default function Questionnaire() {
     setShowUpdateReminder(false)
     // Update the avatar URL in the header immediately
     updateAvatarUrl(updatedPhotoUrl)
+    await refreshProfile()
   }
 
   return (

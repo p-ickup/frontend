@@ -2,7 +2,15 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const createBrowserClientMock = jest.fn(() => ({}))
-const useAuthMock = jest.fn(() => ({ user: null }))
+const useAuthMock = jest.fn(() => ({
+  user: { id: 'admin-1', email: 'admin@example.com' },
+  profile: {
+    role: 'admin',
+    admin_scope: 'Pomona',
+    school: 'Pomona',
+    photo_url: null,
+  },
+}))
 const useSubsidyLogicMock = jest.fn(() => ({
   computeGroupSubsidized: () => ({
     subsidized: false,
@@ -34,10 +42,20 @@ jest.mock(
   '@/components/admin/groups-management/hooks/useGroupsDataOrchestration',
   () => ({
     useGroupsDataOrchestration: () => ({
+      changeLogHasMore: false,
+      changeLogLoading: false,
+      error: null,
+      goToPage: jest.fn(),
+      loadMoreChangeLog: jest.fn(),
       loading: false,
+      page: 1,
+      pendingChangesLoading: false,
       refreshChangeLog: refreshChangeLogMock,
       refreshGroups: refreshGroupsMock,
       refreshUnconfirmed: refreshUnconfirmedMock,
+      refreshing: false,
+      totalPages: 1,
+      totalRecords: 0,
     }),
   }),
 )
@@ -307,7 +325,8 @@ describe('GroupsManagement', () => {
         }),
       ),
     )
-    await waitFor(() => expect(refreshGroupsMock).toHaveBeenCalled())
+    expect(refreshGroupsMock).not.toHaveBeenCalled()
+    expect(refreshChangeLogMock).not.toHaveBeenCalled()
     expect(confirmChangeLogEntriesMock).not.toHaveBeenCalled()
   })
 })

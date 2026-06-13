@@ -4,22 +4,32 @@ import {
   withAuthenticatedRoute,
 } from '@/lib/server/auth'
 import { createServiceRoleClient } from '@/lib/server/serviceRole'
-import { markGroupReadyIfEligible } from '@/lib/server/studentCommands'
+import { markGroupsReadyIfEligible } from '@/lib/server/studentCommands'
 import { NextResponse } from 'next/server'
 
 export const POST = withAuthenticatedRoute(async (request, auth) => {
   try {
     const body = await request.json()
-    const rideId = Number(body?.rideId)
+    const rideIds: number[] = Array.isArray(body?.rideIds)
+      ? Array.from(
+          new Set<number>(
+            body.rideIds.map((rideId: unknown) => Number(rideId)),
+          ),
+        )
+      : []
 
-    if (!Number.isFinite(rideId)) {
-      return badRequestJson('A valid ride ID is required.')
+    if (
+      rideIds.length === 0 ||
+      rideIds.length > 100 ||
+      rideIds.some((rideId) => !Number.isInteger(rideId) || rideId <= 0)
+    ) {
+      return badRequestJson('One to 100 valid ride IDs are required.')
     }
 
-    const result = await markGroupReadyIfEligible({
+    const result = await markGroupsReadyIfEligible({
       supabase: createServiceRoleClient(),
       userId: auth.user.id,
-      rideId,
+      rideIds,
     })
 
     return NextResponse.json(result)

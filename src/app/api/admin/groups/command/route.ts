@@ -19,8 +19,10 @@ import {
   confirmChangeLogEntries,
   createGroupRecords,
   deleteGroupRecords,
-  deleteRiderMatches,
   logChangeLogEntry,
+  moveRiderToGroup,
+  moveRiderToCorral,
+  removeRiderToUnmatched,
   setMatchingStatus,
   removeGroupMatch,
   saveGroupOverrideRecords,
@@ -28,7 +30,6 @@ import {
   updateGroupMatchesMetadata,
   updateGroupTimeRecords,
   updateGroupVoucherRecords,
-  upsertManualGroupMatch,
 } from '@/lib/server/adminGroupsCommands'
 import { NextResponse } from 'next/server'
 
@@ -38,6 +39,9 @@ export const POST = withAdminRoute(async (request, auth) => {
     const action = String(body?.action || '')
     const payload = body?.payload || {}
     const adminSupabase = createServiceRoleClient()
+    const actorName =
+      `${auth.profile.firstname || ''} ${auth.profile.lastname || ''}`.trim() ||
+      undefined
 
     switch (action) {
       case 'log_change_log_entry': {
@@ -54,9 +58,11 @@ export const POST = withAdminRoute(async (request, auth) => {
               : null,
         })
 
-        await logChangeLogEntry({
+        const entry = await logChangeLogEntry({
           supabase: adminSupabase,
           actorUserId: auth.user.id,
+          actorRole: auth.profile.role,
+          actorName,
           action: payload.action,
           metadata: payload.metadata,
           targetGroupId: payload.targetGroupId,
@@ -67,7 +73,7 @@ export const POST = withAdminRoute(async (request, auth) => {
               : undefined,
           confirmed: payload.confirmed,
         })
-        return NextResponse.json({ success: true })
+        return NextResponse.json({ success: true, entry })
       }
 
       case 'update_group_time': {
@@ -144,28 +150,30 @@ export const POST = withAdminRoute(async (request, auth) => {
         return NextResponse.json({ success: true })
       }
 
-      case 'delete_rider_matches': {
-        await assertAdminScopeForUserFlightPair({
-          supabase: adminSupabase,
-          profile: auth.profile,
-          userId: String(payload.userId),
-          flightId: Number(payload.flightId),
-        })
+      case 'remove_rider_to_unmatched': {
+        const requestedUpdates = payload.remainingGroupUpdates
+        const remainingGroupUpdates =
+          requestedUpdates && typeof requestedUpdates === 'object'
+            ? {
+                ...(typeof requestedUpdates.uber_type === 'string' ||
+                requestedUpdates.uber_type === null
+                  ? { uber_type: requestedUpdates.uber_type }
+                  : {}),
+                ...(typeof requestedUpdates.is_subsidized === 'boolean' ||
+                requestedUpdates.is_subsidized === null
+                  ? { is_subsidized: requestedUpdates.is_subsidized }
+                  : {}),
+                ...(typeof requestedUpdates.is_verified === 'boolean'
+                  ? { is_verified: requestedUpdates.is_verified }
+                  : {}),
+              }
+            : undefined
 
-        const data = await deleteRiderMatches({
-          supabase: adminSupabase,
-          userId: payload.userId,
-          flightId: payload.flightId,
-        })
-        return NextResponse.json({ success: true, data })
-      }
-
-      case 'upsert_manual_group_match': {
         await Promise.all([
           assertAdminScopeForRide({
             supabase: adminSupabase,
             profile: auth.profile,
-            rideId: Number(payload.rideId),
+            rideId: Number(payload.groupId),
           }),
           assertAdminScopeForUserFlightPair({
             supabase: adminSupabase,
@@ -175,18 +183,107 @@ export const POST = withAdminRoute(async (request, auth) => {
           }),
         ])
 
-        await upsertManualGroupMatch({
+        const result = await removeRiderToUnmatched({
           supabase: adminSupabase,
-          rideId: payload.rideId,
-          userId: payload.userId,
-          flightId: payload.flightId,
-          date: payload.date,
-          time: payload.time,
-          voucher: payload.voucher,
-          isSubsidized: payload.isSubsidized,
-          uberType: payload.uberType,
+          actorUserId: auth.user.id,
+          actorRole: auth.profile.role,
+          actorName,
+          groupId: Number(payload.groupId),
+          userId: String(payload.userId),
+          flightId: Number(payload.flightId),
+          remainingGroupUpdates,
+          changeMetadata: payload.changeMetadata || {},
         })
-        return NextResponse.json({ success: true })
+        return NextResponse.json({ success: true, ...result })
+      }
+
+      case 'move_rider_to_corral': {
+        await Promise.all([
+          assertAdminScopeForRide({
+            supabase: adminSupabase,
+            profile: auth.profile,
+            rideId: Number(payload.groupId),
+          }),
+          assertAdminScopeForUserFlightPair({
+            supabase: adminSupabase,
+            profile: auth.profile,
+            userId: String(payload.userId),
+            flightId: Number(payload.flightId),
+          }),
+        ])
+        const result = await moveRiderToCorral({
+          supabase: adminSupabase,
+          actorUserId: auth.user.id,
+          actorRole: auth.profile.role,
+          actorName,
+          groupId: Number(payload.groupId),
+          userId: String(payload.userId),
+          flightId: Number(payload.flightId),
+          remainingGroupUpdates: payload.remainingGroupUpdates,
+          changeMetadata: payload.changeMetadata || {},
+        })
+        return NextResponse.json({ success: true, ...result })
+      }
+
+      case 'move_rider_to_group': {
+        const destinationGroupId = Number(payload.destinationGroupId)
+        const sourceGroupId = Number.isFinite(Number(payload.sourceGroupId))
+          ? Number(payload.sourceGroupId)
+          : undefined
+        const changeLogIds = Array.isArray(payload.changeLogIds)
+          ? payload.changeLogIds.map(String)
+          : []
+
+        await Promise.all([
+          assertAdminScopeForRide({
+            supabase: adminSupabase,
+            profile: auth.profile,
+            rideId: destinationGroupId,
+          }),
+          sourceGroupId
+            ? assertAdminScopeForRide({
+                supabase: adminSupabase,
+                profile: auth.profile,
+                rideId: sourceGroupId,
+              })
+            : Promise.resolve(),
+          assertAdminScopeForUserFlightPair({
+            supabase: adminSupabase,
+            profile: auth.profile,
+            userId: String(payload.userId),
+            flightId: Number(payload.flightId),
+          }),
+          changeLogIds.length
+            ? assertAdminScopeForChangeLogIds({
+                supabase: adminSupabase,
+                profile: auth.profile,
+                changeLogIds,
+              })
+            : Promise.resolve(),
+        ])
+
+        const result = await moveRiderToGroup({
+          supabase: adminSupabase,
+          actorUserId: auth.user.id,
+          actorRole: auth.profile.role,
+          actorName,
+          destinationGroupId,
+          sourceGroupId,
+          userId: String(payload.userId),
+          flightId: Number(payload.flightId),
+          date: String(payload.date),
+          time: String(payload.time),
+          voucher: String(payload.voucher || ''),
+          isSubsidized: Boolean(payload.isSubsidized),
+          uberType: String(payload.uberType),
+          destinationGroupUpdates: payload.destinationGroupUpdates || {},
+          sourceGroupUpdates: payload.sourceGroupUpdates,
+          changeLogIds,
+          sourceMetadata: payload.sourceMetadata,
+          destinationMetadata: payload.destinationMetadata || {},
+          changeBatchId: String(payload.changeBatchId),
+        })
+        return NextResponse.json({ success: true, ...result })
       }
 
       case 'update_group_matches_metadata': {

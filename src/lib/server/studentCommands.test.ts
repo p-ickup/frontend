@@ -11,7 +11,9 @@ import {
   cancelOwnMatch,
   createOwnFlight,
   deleteOwnFlight,
+  getResultsMatches,
   getUnmatchedOptions,
+  markGroupsReadyIfEligible,
   reportReadyStatus,
   sendMatchRequest,
   updateOwnFlight,
@@ -432,15 +434,24 @@ describe('getUnmatchedOptions', () => {
     const partialGroups = createThenableEqChain([])
 
     let flightReads = 0
+    const selectCalls: string[] = []
     const from = jest.fn((table: string) => {
       if (table === 'Flights') {
         flightReads += 1
         return {
-          select: () => (flightReads === 1 ? myFlights : peerFlights).chain,
+          select: (fields: string) => {
+            selectCalls.push(fields)
+            return (flightReads === 1 ? myFlights : peerFlights).chain
+          },
         }
       }
       if (table === 'Matches') {
-        return { select: () => partialGroups.chain }
+        return {
+          select: (fields: string) => {
+            selectCalls.push(fields)
+            return partialGroups.chain
+          },
+        }
       }
       return {}
     })
@@ -465,6 +476,157 @@ describe('getUnmatchedOptions', () => {
       'matching_status',
       'submitted',
     ])
+    expect(selectCalls.every((fields) => !fields.includes('*'))).toBe(true)
+  })
+})
+
+describe('getResultsMatches', () => {
+  it('selects and returns only the declared Results response fields', async () => {
+    const userRideIds = createThenableEqChain([{ ride_id: 7 }])
+    const detailsIn = jest.fn().mockResolvedValue({
+      data: [
+        {
+          ride_id: 7,
+          user_id: 'user-1',
+          date: '2026-06-20',
+          time: '08:00:00',
+          voucher: null,
+          contingency_voucher: null,
+          uber_type: 'X',
+          ready_for_pickup_at: null,
+          reported_missing_user_ids: null,
+          group_ready_at: null,
+          internal_note: 'must not escape',
+          Flights: {
+            airport: 'LAX',
+            date: '2026-06-20',
+            to_airport: true,
+            terminal: '4',
+          },
+          Users: {
+            user_id: 'user-1',
+            firstname: 'Taylor',
+            lastname: 'Student',
+            phonenumber: null,
+            photo_url: null,
+            email: 'taylor@example.com',
+            role: 'admin',
+          },
+        },
+      ],
+      error: null,
+    })
+    const selectCalls: string[] = []
+    let reads = 0
+    const from = jest.fn(() => {
+      reads += 1
+      if (reads === 1) {
+        return {
+          select: (fields: string) => {
+            selectCalls.push(fields)
+            return userRideIds.chain
+          },
+        }
+      }
+      return {
+        select: (fields: string) => {
+          selectCalls.push(fields)
+          return { in: detailsIn }
+        },
+      }
+    })
+
+    const result = await getResultsMatches({
+      supabase: { from },
+      userId: 'user-1',
+    })
+
+    expect(selectCalls.every((fields) => !fields.includes('*'))).toBe(true)
+    expect(detailsIn).toHaveBeenCalledWith('ride_id', [7])
+    expect(Object.keys(result.matches[0])).not.toContain('internal_note')
+    expect(Object.keys(result.matches[0].Flights)).not.toContain('terminal')
+    expect(Object.keys(result.matches[0].Users)).not.toContain('role')
+  })
+})
+
+describe('markGroupsReadyIfEligible', () => {
+  it('checks all memberships once and updates eligible rides idempotently', async () => {
+    const readIn = jest.fn().mockResolvedValue({
+      data: [
+        {
+          ride_id: 7,
+          user_id: 'user-1',
+          ready_for_pickup_at: '2026-06-20T14:00:00Z',
+          reported_missing_user_ids: null,
+          group_ready_at: null,
+        },
+        {
+          ride_id: 8,
+          user_id: 'user-1',
+          ready_for_pickup_at: '2026-06-20T15:00:00Z',
+          reported_missing_user_ids: null,
+          group_ready_at: '2026-06-20T15:05:00Z',
+        },
+      ],
+      error: null,
+    })
+    const isNull = jest.fn().mockResolvedValue({ error: null })
+    const updateEq = jest.fn(() => ({ is: isNull }))
+    const update = jest.fn(() => ({ eq: updateEq }))
+    let calls = 0
+    const from = jest.fn(() => {
+      calls += 1
+      return calls === 1 ? { select: () => ({ in: readIn }) } : { update }
+    })
+
+    const result = await markGroupsReadyIfEligible({
+      supabase: { from },
+      userId: 'user-1',
+      rideIds: [7, 8, 7],
+    })
+
+    expect(readIn).toHaveBeenCalledWith('ride_id', [7, 8])
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(updateEq).toHaveBeenCalledWith('ride_id', 7)
+    expect(isNull).toHaveBeenCalledWith('group_ready_at', null)
+    expect(result.results).toEqual([
+      expect.objectContaining({ rideId: 7, updated: true }),
+      {
+        rideId: 8,
+        updated: false,
+        groupReadyAt: '2026-06-20T15:05:00Z',
+      },
+    ])
+  })
+
+  it('rejects the whole batch before writing when a ride is out of scope', async () => {
+    const readIn = jest.fn().mockResolvedValue({
+      data: [
+        {
+          ride_id: 7,
+          user_id: 'other-user',
+          ready_for_pickup_at: '2026-06-20T14:00:00Z',
+          reported_missing_user_ids: null,
+          group_ready_at: null,
+        },
+      ],
+      error: null,
+    })
+    const update = jest.fn()
+    const from = jest.fn().mockReturnValue({
+      select: () => ({ in: readIn }),
+      update,
+    })
+
+    await expect(
+      markGroupsReadyIfEligible({
+        supabase: { from },
+        userId: 'user-1',
+        rideIds: [7],
+      }),
+    ).rejects.toMatchObject({ status: 403 })
+
+    expect(update).not.toHaveBeenCalled()
   })
 })
 

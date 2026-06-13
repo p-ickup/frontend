@@ -1,4 +1,4 @@
-import { postJson } from '@/utils/api'
+import { postJson, requestJson } from '@/utils/api'
 
 import type { ChangeLogEntry, Rider } from '../types'
 
@@ -47,15 +47,20 @@ export const logChangeLogEntry = async ({
   changeBatchId?: string
   confirmed?: boolean
 }) => {
-  await runAdminGroupCommand('log_change_log_entry', {
-    actorUserId,
-    action,
-    metadata,
-    targetGroupId,
-    targetUserId,
-    changeBatchId,
-    confirmed,
-  })
+  const result = await runAdminGroupCommand<{ entry: ChangeLogEntry }>(
+    'log_change_log_entry',
+    {
+      actorUserId,
+      action,
+      metadata,
+      targetGroupId,
+      targetUserId,
+      changeBatchId,
+      confirmed,
+    },
+  )
+
+  return result.entry
 }
 
 export const updateGroupTimeRecords = async ({
@@ -88,48 +93,15 @@ export const updateGroupVoucherRecords = async ({
   })
 
 export const fetchRiderByFlightId = async ({
-  supabase,
   flightId,
 }: {
   supabase: GroupsSupabaseClient
   flightId: number
 }): Promise<Rider | null> => {
-  const { data: flightData, error: flightError } = await supabase
-    .from('Flights')
-    .select(
-      'flight_id, user_id, flight_no, airline_iata, airport, to_airport, date, earliest_time, latest_time, original_unmatched',
-    )
-    .eq('flight_id', flightId)
-    .single()
-
-  if (flightError || !flightData) {
-    return null
-  }
-
-  const { data: userData } = await supabase
-    .from('Users')
-    .select('firstname, lastname')
-    .eq('user_id', flightData.user_id)
-    .single()
-
-  return {
-    user_id: flightData.user_id,
-    flight_id: flightData.flight_id,
-    name: userData ? `${userData.firstname} ${userData.lastname}` : 'Unknown',
-    phone: '',
-    checked_bags: 0,
-    carry_on_bags: 0,
-    time_range:
-      flightData.earliest_time && flightData.latest_time
-        ? `${flightData.earliest_time} - ${flightData.latest_time}`
-        : '',
-    airport: flightData.airport || '',
-    to_airport: flightData.to_airport ?? true,
-    date: flightData.date || '',
-    flight_no: flightData.flight_no || '',
-    airline_iata: flightData.airline_iata || '',
-    original_unmatched: flightData.original_unmatched ?? false,
-  }
+  const result = await requestJson<{ rider: Rider }>(
+    `/api/admin/lookup?kind=rider&flightId=${flightId}`,
+  )
+  return result.rider
 }
 
 export const updateFlightRecord = async ({
@@ -167,37 +139,69 @@ export const removeGroupMatch = async ({
   })
 }
 
-export const deleteRiderMatches = async ({
+export const removeRiderToUnmatched = async ({
+  groupId,
   userId,
   flightId,
+  remainingGroupUpdates,
+  changeMetadata,
 }: {
   supabase: GroupsSupabaseClient
+  groupId: number
   userId: string
   flightId: number
+  remainingGroupUpdates?: {
+    uber_type?: string | null
+    is_subsidized?: boolean | null
+    is_verified?: boolean
+  }
+  changeMetadata: Record<string, unknown>
 }) => {
-  const result = await runAdminGroupCommand<{ data: any[] }>(
-    'delete_rider_matches',
+  return runAdminGroupCommand<{ changeLogEntries?: ChangeLogEntry[] }>(
+    'remove_rider_to_unmatched',
     {
+      groupId,
       userId,
       flightId,
+      remainingGroupUpdates,
+      changeMetadata,
     },
   )
-
-  return result.data || []
 }
 
-export const upsertManualGroupMatch = async ({
-  rideId,
+export const moveRiderToCorral = async ({
+  groupId,
   userId,
   flightId,
-  date,
-  time,
-  voucher,
-  isSubsidized,
-  uberType,
+  remainingGroupUpdates,
+  changeMetadata,
 }: {
   supabase: GroupsSupabaseClient
-  rideId: number
+  groupId: number
+  userId: string
+  flightId: number
+  remainingGroupUpdates?: {
+    uber_type?: string | null
+    is_subsidized?: boolean | null
+    is_verified?: boolean
+  }
+  changeMetadata: Record<string, unknown>
+}) => {
+  return runAdminGroupCommand<{ changeLogEntries?: ChangeLogEntry[] }>(
+    'move_rider_to_corral',
+    {
+      groupId,
+      userId,
+      flightId,
+      remainingGroupUpdates,
+      changeMetadata,
+    },
+  )
+}
+
+export const moveRiderToGroup = async (payload: {
+  destinationGroupId: number
+  sourceGroupId?: number
   userId: string
   flightId: number
   date: string
@@ -205,18 +209,17 @@ export const upsertManualGroupMatch = async ({
   voucher: string
   isSubsidized: boolean
   uberType: string
-}) => {
-  await runAdminGroupCommand('upsert_manual_group_match', {
-    rideId,
-    userId,
-    flightId,
-    date,
-    time,
-    voucher,
-    isSubsidized,
-    uberType,
-  })
-}
+  destinationGroupUpdates: Record<string, unknown>
+  sourceGroupUpdates?: Record<string, unknown>
+  changeLogIds: string[]
+  sourceMetadata?: Record<string, unknown>
+  destinationMetadata: Record<string, unknown>
+  changeBatchId: string
+}) =>
+  runAdminGroupCommand<{ changeLogEntries?: ChangeLogEntry[] }>(
+    'move_rider_to_group',
+    payload,
+  )
 
 export const updateGroupMatchesMetadata = async ({
   groupId,

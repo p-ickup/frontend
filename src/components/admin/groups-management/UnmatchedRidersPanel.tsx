@@ -8,6 +8,7 @@ import {
   Plane,
   PlaneLanding,
   PlaneTakeoff,
+  Loader2,
 } from 'lucide-react'
 
 import {
@@ -17,7 +18,11 @@ import {
 } from './context'
 import { formatTimeRange, isDatePassed } from './utils'
 
-export default function UnmatchedRidersPanel() {
+export default function UnmatchedRidersPanel({
+  pendingFlightIds = new Set<number>(),
+}: {
+  pendingFlightIds?: Set<number>
+}) {
   const { addRiderToNewGroup, handleAddToCorral, openEditRider } =
     useGroupsActionsContext()
   const { sortedUnmatchedRiders } = useGroupsDataContext()
@@ -43,6 +48,7 @@ export default function UnmatchedRidersPanel() {
           const isRecentlyAdded = recentlyAddedToNewGroup.has(
             String(rider.flight_id),
           )
+          const isPending = pendingFlightIds.has(rider.flight_id)
 
           return (
             <div
@@ -57,9 +63,14 @@ export default function UnmatchedRidersPanel() {
                   : !riderDatePassed
                     ? 'hover:bg-gray-50'
                     : ''
-              } ${isRecentlyAdded ? 'animate-pulse' : ''}`}
-              draggable
-              onDragStart={() => setDraggedRider(rider)}
+              } ${isRecentlyAdded ? 'animate-pulse' : ''} ${
+                isPending ? 'cursor-wait opacity-70' : ''
+              }`}
+              draggable={!isPending}
+              aria-busy={isPending}
+              onDragStart={() => {
+                if (!isPending) setDraggedRider(rider)
+              }}
               onDragEnd={() => {
                 setDraggedRider(null)
                 setDragOverGroupId(null)
@@ -74,6 +85,12 @@ export default function UnmatchedRidersPanel() {
                     </span>
                   )}
                 </p>
+                {isPending && (
+                  <span className="flex items-center gap-1 text-xs font-medium text-teal-700">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Saving
+                  </span>
+                )}
               </div>
               <p className="text-sm text-gray-600">{rider.phone}</p>
               {rider.airline_iata && rider.flight_no && (
@@ -134,7 +151,8 @@ export default function UnmatchedRidersPanel() {
                     e.stopPropagation()
                     handleAddToCorral(rider)
                   }}
-                  className="text-xs text-teal-600 underline hover:text-teal-800"
+                  disabled={isPending}
+                  className="text-xs text-teal-600 underline hover:text-teal-800 disabled:cursor-wait disabled:text-gray-400"
                 >
                   Add to corral
                 </button>
@@ -143,7 +161,8 @@ export default function UnmatchedRidersPanel() {
                     e.stopPropagation()
                     addRiderToNewGroup(rider)
                   }}
-                  className="text-xs text-purple-600 underline hover:text-purple-800"
+                  disabled={isPending}
+                  className="text-xs text-purple-600 underline hover:text-purple-800 disabled:cursor-wait disabled:text-gray-400"
                 >
                   Add to new group
                 </button>
@@ -154,9 +173,9 @@ export default function UnmatchedRidersPanel() {
                       openEditRider(rider)
                     }
                   }}
-                  disabled={riderDatePassed}
+                  disabled={riderDatePassed || isPending}
                   className={`rounded p-1 ${
-                    riderDatePassed
+                    riderDatePassed || isPending
                       ? 'cursor-not-allowed text-gray-400'
                       : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
                   }`}

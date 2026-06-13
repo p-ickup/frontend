@@ -1,6 +1,7 @@
 'use client'
 
-import { Clock, Lock, Unlock } from 'lucide-react'
+import { Clock, Loader2, Lock, Unlock } from 'lucide-react'
+import { useState } from 'react'
 
 import AddRider from '../AddRider'
 import { useGroupsActionsContext, useGroupsUiContext } from './context'
@@ -13,6 +14,7 @@ import {
 } from './utils'
 
 export default function GroupsManagementModals() {
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false)
   const {
     closeDeleteGroupConfirmation,
     closeEditRider,
@@ -72,18 +74,28 @@ export default function GroupsManagementModals() {
             <div className="flex justify-end gap-3">
               <button
                 onClick={closeDeleteGroupConfirmation}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                disabled={isDeletingGroup}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-wait disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={async () => {
-                  await deleteGroupConfirmation.callback()
-                  closeDeleteGroupConfirmation()
+                  setIsDeletingGroup(true)
+                  try {
+                    await deleteGroupConfirmation.callback()
+                    closeDeleteGroupConfirmation()
+                  } finally {
+                    setIsDeletingGroup(false)
+                  }
                 }}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                disabled={isDeletingGroup}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-wait disabled:opacity-70"
               >
-                Okay
+                {isDeletingGroup && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {isDeletingGroup ? 'Deleting...' : 'Okay'}
               </button>
             </div>
           </div>

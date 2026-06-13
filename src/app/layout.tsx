@@ -5,6 +5,7 @@ import './globals.css'
 import PickupHeader from '@/components/PickupHeader'
 import PickupFooter from '@/components/PickupFooter'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { AuthProvider } from '@/providers/AuthProvider'
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -30,13 +31,15 @@ export default function RootLayout({
       <body className="min-h-screen bg-background text-foreground">
         <NextTopLoader showSpinner={false} height={2} color="#2acf80" />
         <ThemeProvider attribute="class" enableSystem disableTransitionOnChange>
-          <TooltipProvider>
-            <div className="flex min-h-screen flex-col">
-              <PickupHeader />
-              <div className="flex-1">{children}</div>
-              <PickupFooter />
-            </div>
-          </TooltipProvider>
+          <AuthProvider>
+            <TooltipProvider>
+              <div className="flex min-h-screen flex-col">
+                <PickupHeader />
+                <div className="flex-1">{children}</div>
+                <PickupFooter />
+              </div>
+            </TooltipProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

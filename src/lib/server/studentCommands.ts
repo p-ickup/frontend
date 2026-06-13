@@ -8,6 +8,12 @@ import {
   MATCHING_STATUS,
   type MatchingStatus,
 } from '@/utils/matchingStatus'
+import {
+  toOwnUnmatchedFlightDto,
+  toResultMatchDto,
+  toUnmatchedFlightDto,
+  type UnmatchedGroupDto,
+} from '@/contracts/readModels'
 
 type SupabaseClient = any
 
@@ -304,7 +310,7 @@ export async function listIncomingMatchRequests({
   const { data, error } = await supabase
     .from('MatchRequests')
     .select(
-      `*,
+      `id,
       sender_flight:Flights!MatchRequests_sender_flight_id_fkey(
         flight_id, airport, earliest_time, latest_time, date, user_id, to_airport,
         Users (firstname, lastname)
@@ -590,20 +596,22 @@ export async function getUnmatchedOptions({
   const [{ data: myFlightsData }, flightRes, matchRes] = await Promise.all([
     supabase
       .from('Flights')
-      .select('*')
+      .select('flight_id, airport, date, earliest_time, latest_time')
       .eq('user_id', userId)
       .eq('matching_status', MATCHING_STATUS.unmatched)
       .eq('opt_in', true),
     supabase
       .from('Flights')
-      .select('*, Users:Users!Flights_user_id_fkey(firstname, lastname, email)')
+      .select(
+        'flight_id, user_id, airport, date, earliest_time, latest_time, to_airport, opt_in, Users:Users!Flights_user_id_fkey(firstname, lastname, email)',
+      )
       .eq('opt_in', true)
       .eq('matching_status', MATCHING_STATUS.unmatched)
       .neq('user_id', userId),
     supabase
       .from('Matches')
       .select(
-        'ride_id, time, is_subsidized, flight:Flights!matches_flight_id_fk(flight_id, airport, earliest_time, latest_time, date, user_id, matching_status, to_airport, opt_in, Users!Flights_user_id_fkey(firstname, lastname, email))',
+        'ride_id, time, flight:Flights!matches_flight_id_fk(flight_id, user_id, airport, date, earliest_time, latest_time, to_airport, opt_in, Users!Flights_user_id_fkey(firstname, lastname, email))',
       )
       .eq('is_subsidized', false),
   ])
@@ -627,6 +635,7 @@ export async function getUnmatchedOptions({
       flightDate.setHours(0, 0, 0, 0)
       return flightDate >= today
     })
+    .map(toUnmatchedFlightDto)
     .sort((left: any, right: any) => {
       const dateA = new Date(left.date).getTime()
       const dateB = new Date(right.date).getTime()
@@ -642,18 +651,18 @@ export async function getUnmatchedOptions({
       if (!acc[rideId]) {
         acc[rideId] = {
           ride_id: rideId,
-          flights: [],
+          flights: [] as ReturnType<typeof toUnmatchedFlightDto>[],
           time: match.time,
         }
       }
       if (match.flight && Array.isArray(match.flight)) {
-        acc[rideId].flights.push(...match.flight)
+        acc[rideId].flights.push(...match.flight.map(toUnmatchedFlightDto))
       } else if (match.flight) {
-        acc[rideId].flights.push(match.flight)
+        acc[rideId].flights.push(toUnmatchedFlightDto(match.flight))
       }
       return acc
     },
-    {} as Record<number, any>,
+    {} as Record<number, UnmatchedGroupDto>,
   )
 
   const groups = Object.values(reduced)
@@ -684,7 +693,7 @@ export async function getUnmatchedOptions({
     success: true,
     flights,
     groups,
-    myFlights: myFlightsData || [],
+    myFlights: (myFlightsData || []).map(toOwnUnmatchedFlightDto),
     userEligible: (myFlightsData || []).length > 0,
   }
 }
@@ -774,8 +783,17 @@ export async function getResultsMatches({
     .from('Matches')
     .select(
       `
-      *,
-      Flights!matches_flight_id_fk (*),
+      ride_id,
+      user_id,
+      date,
+      time,
+      voucher,
+      contingency_voucher,
+      uber_type,
+      ready_for_pickup_at,
+      reported_missing_user_ids,
+      group_ready_at,
+      Flights!matches_flight_id_fk (airport, date, to_airport),
       Users (
         user_id,
         firstname,
@@ -794,7 +812,7 @@ export async function getResultsMatches({
 
   return {
     success: true,
-    matches: data || [],
+    matches: (data || []).map(toResultMatchDto),
   }
 }
 
@@ -984,7 +1002,9 @@ export async function getRideComments({
         .maybeSingle(),
       supabase
         .from('Comments')
-        .select('*, user:Users(user_id, firstname)')
+        .select(
+          'id, ride_id, match_id, user_id, comment, created_at, user:Users(user_id, firstname)',
+        )
         .eq('ride_id', rideId)
         .order('created_at', { ascending: true }),
     ])
@@ -1028,7 +1048,9 @@ export async function createRideComment({
       user_id: userId,
       comment: trimmedComment,
     })
-    .select('*, user:Users(user_id, firstname)')
+    .select(
+      'id, ride_id, match_id, user_id, comment, created_at, user:Users(user_id, firstname)',
+    )
     .single()
 
   if (error || !data) {
@@ -1175,61 +1197,77 @@ export async function saveOwnProfile({
   }
 }
 
-export async function markGroupReadyIfEligible({
+export async function markGroupsReadyIfEligible({
   supabase,
   userId,
-  rideId,
+  rideIds,
 }: {
   supabase: SupabaseClient
   userId: string
-  rideId: number
+  rideIds: number[]
 }) {
-  const rideMatches = await assertRideMembership({ supabase, userId, rideId })
+  const uniqueRideIds = Array.from(
+    new Set(rideIds.filter((rideId) => Number.isInteger(rideId) && rideId > 0)),
+  )
 
-  const { data: fullRideMatches, error } = await supabase
+  if (uniqueRideIds.length === 0) {
+    return { success: true, results: [] }
+  }
+
+  const { data, error } = await supabase
     .from('Matches')
     .select(
-      'user_id, ready_for_pickup_at, ready_for_pickup_status, reported_missing_user_ids, group_ready_at',
+      'ride_id, user_id, ready_for_pickup_at, reported_missing_user_ids, group_ready_at',
     )
-    .eq('ride_id', rideId)
+    .in('ride_id', uniqueRideIds)
 
   if (error) {
     throw createError(error.message, 400, error)
   }
 
-  const existingGroupReadyAt = (fullRideMatches || []).find(
-    (match: { group_ready_at?: string | null }) => match.group_ready_at,
-  )?.group_ready_at
+  const matchesByRideId = new Map<number, any[]>()
+  for (const match of data || []) {
+    const rideMatches = matchesByRideId.get(match.ride_id) || []
+    rideMatches.push(match)
+    matchesByRideId.set(match.ride_id, rideMatches)
+  }
 
-  if (existingGroupReadyAt) {
-    return {
-      success: true,
-      updated: false,
-      groupReadyAt: existingGroupReadyAt,
+  for (const rideId of uniqueRideIds) {
+    const rideMatches = matchesByRideId.get(rideId) || []
+    if (!rideMatches.some((match) => match.user_id === userId)) {
+      throw createError('You are not a member of this ride.', 403)
     }
   }
 
-  if (!isGroupReady(fullRideMatches || rideMatches)) {
-    return {
-      success: true,
-      updated: false,
-      groupReadyAt: null,
-    }
-  }
+  const results = await Promise.all(
+    uniqueRideIds.map(async (rideId) => {
+      const rideMatches = matchesByRideId.get(rideId) || []
+      const existingGroupReadyAt = rideMatches.find(
+        (match) => match.group_ready_at,
+      )?.group_ready_at
 
-  const groupReadyAt = new Date().toISOString()
-  const { error: updateError } = await supabase
-    .from('Matches')
-    .update({ group_ready_at: groupReadyAt })
-    .eq('ride_id', rideId)
+      if (existingGroupReadyAt) {
+        return { rideId, updated: false, groupReadyAt: existingGroupReadyAt }
+      }
 
-  if (updateError) {
-    throw createError(updateError.message, 400, updateError)
-  }
+      if (!isGroupReady(rideMatches)) {
+        return { rideId, updated: false, groupReadyAt: null }
+      }
 
-  return {
-    success: true,
-    updated: true,
-    groupReadyAt,
-  }
+      const groupReadyAt = new Date().toISOString()
+      const { error: updateError } = await supabase
+        .from('Matches')
+        .update({ group_ready_at: groupReadyAt })
+        .eq('ride_id', rideId)
+        .is('group_ready_at', null)
+
+      if (updateError) {
+        throw createError(updateError.message, 400, updateError)
+      }
+
+      return { rideId, updated: true, groupReadyAt }
+    }),
+  )
+
+  return { success: true, results }
 }

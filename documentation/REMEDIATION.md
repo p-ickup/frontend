@@ -44,6 +44,48 @@ npm test -- --testPathPattern=studentCommands.test.ts
 
 ---
 
+## Remediation Issue #9
+
+**Audit item:** Page loads perform duplicate client-side authentication/profile requests, broad Supabase reads, blocking Results writes, and expensive client-side admin aggregation.
+
+**Status:** Completed
+
+**Summary:** A server-hydrated shared auth/profile provider removed duplicate Header, page, and nested-component identity queries; explicit Supabase field lists and response DTOs reduced payloads and prevent broad reads from returning. Results and Unmatched receive their initial data from the server, Results renders before one batched background readiness write, and the Admin dashboards use protected server aggregation, bounded pagination, deferred panels, consolidated mutations, visible progress, and reproducible timing/payload telemetry.
+
+**Remediation completed:**
+
+- **Authentication and profile state:** Added one root `AuthProvider` for user, profile, role, admin scope, school, and avatar state. Results, Unmatched, and Admin layouts hydrate that provider from a server-validated principal. The Header, pages, forms, cards, and comments reuse the shared state instead of issuing independent `getUser()` or role/profile queries. Session changes, sign-out, OAuth return paths, profile refresh, and immediate avatar updates were preserved.
+- **Supabase query scope:** Replaced broad reads in the affected Results, Unmatched, profile-validation, Admin, Match Request, comment, and Admin Groups mutation paths with explicit field lists. Added DTO serializers for Results, Unmatched, profile completeness, Admin summary, and Admin Groups responses so undeclared fields are removed before reaching the browser. Automated coverage rejects both `select('*')` and empty `.select()` calls anywhere in production TypeScript and verifies exact response keys for the principal read models.
+- **Results rendering:** Results data is committed to the page and loading is cleared before readiness persistence begins. Eligible ride IDs are deduplicated into one background request instead of sequential per-ride writes. The server validates membership for the full batch before updating, preserves existing readiness timestamps, and writes only rows whose `group_ready_at` remains null. Background failure does not remove rendered match data.
+- **Server-loaded initial content:** Results and Unmatched layouts now load their minimal DTOs with the authenticated server principal and seed the client pages. Initial content no longer waits for a post-hydration browser fetch; later user-requested refreshes continue through the protected APIs.
+- **Main Admin dashboard:** Added admin-protected `GET /api/admin/dashboard-summary` and moved summary aggregation to the server. Algorithm status, schedule, and unmatched count begin concurrently; match-rate reads retain only their required dependency on the last completed run. The browser receives the nine values displayed by the dashboard. Cancellation and no-show reports remain date-bounded, user-triggered reads and do not block initial rendering. Initial loading now uses the same visible spinner treatment as Admin Groups so administrators receive immediate progress feedback while the summary loads.
+- **Admin Groups dashboard:** Added admin-protected `GET /api/admin/groups/snapshot` for the primary matched/unmatched read model. It applies a default seven-days-back through one-month-forward window, validates a maximum 366-day range, and paginates Flights at 200 records before related hydration. The snapshot and algorithm status run concurrently, user batches run concurrently, and complete groups use a stable anchor so they appear on only one page. Changelog is loaded on expansion in 100-entry pages; pending changes load only when the Changes tab is opened. Date and page refreshes retain the current dashboard while loading.
+- **Database read-model evaluation:** A reproducible 200-rider/50-group fixture produced one approximately 70.5 KiB browser response. The server performed six narrow reads including algorithm status and processed approximately 145 KiB across 801 selected rows. The bounded transfer and processing volume did not justify introducing a database view or read-only RPC. No view, RPC, index, schema, or policy change was made.
+- **Admin supporting reads:** Date-filtered reports, rider and contact lookups, school/user lists, duplicate-flight checks, deferred changelog/pending panels, and CSV exports now use admin-protected server endpoints. Active Admin and Admin Groups components no longer query Supabase directly for those reads.
+- **Admin Groups interaction latency:** Successful rider edits and group creation patch local state without reloading the full snapshot. Moving a rider to unmatched, the corral, or another group uses one protected browser command that performs match, flight-status, source/destination metadata, pending-change confirmation, and audit work server-side. Changelog writes return their inserted audit entries so an already-open changelog can merge only the new rows into its bounded local list, preserving deferred loading while avoiding stale entries after re-adding a rider to a group. Per-rider saving states prevent duplicate actions and provide immediate feedback. Authoritative snapshot reconciliation remains limited to failed writes, and hidden changelog/pending panels are not refreshed by mutations.
+- **Performance telemetry:** Critical Results, Unmatched, Admin summary, and Admin Groups snapshot responses include `Server-Timing` duration and `X-Response-Bytes` headers. This permits authenticated browser or monitoring captures against production-like data without logging sensitive response bodies; automated coverage preserves the header contract.
+
+**Evidence and supporting materials:**
+
+- `documentation/PERFORMANCE_BASELINE.md` records the original request dependencies, remediated request paths, representative payload measurements, and database read-model decision.
+- `src/providers/AuthProvider.test.tsx` verifies one shared initialization, server hydration without client auth/profile reads, session changes, profile refresh, and avatar propagation.
+- `src/contracts/readModels.test.ts` and `src/contracts/readModelCoverage.test.ts` verify exact response shapes and prohibit production star or empty-column selections.
+- `src/app/results/page.test.tsx` and `src/lib/server/studentCommands.test.ts` verify render-before-write behavior, batching, membership validation, idempotency, and background-write failure handling.
+- Admin dashboard and Admin Groups tests verify concurrent reads, bounded dates and pages, admin-scope filtering/redaction, cross-page group behavior, and deferred changelog/pending panels.
+- Admin Groups mutation tests verify single-command browser contracts, ride and user/flight scope rejection, removal persistence and changelog behavior, returned audit entries for incremental open-panel updates, local-state updates after successful creation, and visible pending-state action blocking.
+- `src/lib/server/performanceResponse.test.ts` verifies the reproducible server-duration and serialized-payload telemetry headers.
+
+**Current verification:**
+
+- `pnpm type-check`, `pnpm lint`, `pnpm knip`, and `pnpm knip:production` - passed with no findings.
+- `pnpm exec jest --ci --runInBand` - 22 suites and 140 tests passed.
+- `pnpm build` - passed; 48 application route entries generated, including the protected Admin summary, groups snapshot/command, report, lookup, secondary-panel, and export endpoints.
+- Production-build route smoke tests confirmed Results, Unmatched, Admin, and Admin Groups reject missing sessions and preserve their complete return destinations. The Admin Groups snapshot and command endpoints returned `401 Unauthorized` without a session, and local browser smoke testing reported no console errors.
+- Authenticated warm-reload measurements against the local production build reached principal content at median times of 710 ms for Results, 646 ms for Unmatched, 672 ms for Admin, and 790 ms for Admin Groups. A representative Group #736 rider mutation became visible in 404 ms when removed and 703 ms when re-added from the Corral; the complete Unmatched-to-Corral-to-group re-add work took 1.34 seconds. `documentation/PERFORMANCE_BASELINE.md` records the tested rider, restoration, raw page runs, capture procedures, payload evidence, and measurement limitations.
+- Follow-up changelog verification: `pnpm exec jest --runInBand src/components/admin/groups-management/services/groupsWriteService.test.ts src/lib/server/adminGroupsCommands.test.ts src/app/api/admin/groups/command/route.test.ts`, `pnpm exec jest --runInBand src/components/admin/GroupsManagement.test.tsx`, and `pnpm type-check` passed after adding incremental audit-entry merging.
+
+---
+
 ## Remediation Issue #10
 
 **Audit item:** Middleware performed Supabase session refresh work across nearly all routes without enforcing route access. Authorization was distributed across pages, API helpers, server commands, RLS policies, and RPCs, increasing the risk of missed checks.
@@ -54,20 +96,20 @@ npm test -- --testPathPattern=studentCommands.test.ts
 
 **Remediation completed:**
 
-- Added a central public, authenticated, and admin page policy in `src/config/routeAccess.ts`; tests fail if a page is unclassified or middleware coverage drifts.
+- Added a central public, authenticated, and admin page policy in `src/config/routeAccess.ts`; middleware and admin pages now use the same route and authorization architecture.
 - Limited middleware to protected pages and replaced `getSession()` with server-validated `getUser()`. Public pages, APIs, OAuth callbacks, and static assets no longer incur middleware session refresh work.
 - Preserved internal return destinations and copied cookies from Supabase's final refreshed response during sign-in redirects. OAuth redirects use the configured production origin, and external, protocol-relative, malformed, and backslash-based return URLs are rejected.
 - Consolidated API and server-rendered admin authorization in `src/lib/server/auth.ts` and removed the duplicate `adminGuard.ts` implementation.
-- Added `withAuthenticatedRoute` and `withAdminRoute`; all 23 API handlers use the required wrapper. Missing sessions return `401`; authenticated non-admin users return `403`.
+- Added `withAuthenticatedRoute` and `withAdminRoute`; all 23 API methods across 19 route files use the required wrapper. Missing sessions return `401`; authenticated non-admin users return `403`.
 - Retained role, school-based admin scope, record ownership, ride membership, RLS, and RPC checks at the API/database boundary. Service-role operations remain server-only and execute only after explicit scope or ownership validation.
 - Reviewed production RLS for seven browser-accessed tables, `profile_picture` storage policies, and relevant security-definer RPCs. The reviewed policies enforce self, shared-ride, ride-member, scoped-admin, or admin access. No database policies or functions were changed.
-- Added negative coverage for public/protected routing, unsafe return URLs, missing or invalid sessions, non-admin users, out-of-scope admins, cross-user flight access, and cookie refresh propagation.
+- Added tests that scan every page and API route, preventing unclassified pages, middleware-policy drift, unwrapped API methods, or reintroduced manual guards. Negative cases cover unsafe return URLs, missing or invalid sessions, non-admin and out-of-scope admin access, cross-user flight mutations, and refreshed-cookie propagation.
 
 **Supporting documentation:**
 
-- `documentation/SERVICE_ROLE_AUTHORIZATION.md` records each service-role operation and its authorization gate.
-- `documentation/RLS_POLICY_EVIDENCE.md` records the production RLS, storage-policy, and RPC evidence reviewed on June 12, 2026.
-- `documentation/RLS_POLICY_AUDIT.sql` and `documentation/RLS_POLICY_FOLLOWUP.sql` provide read-only policy, grant, storage, and RPC evidence queries.
+- `documentation/SERVICE_ROLE_AUTHORIZATION.md` maps each service-role operation to its server-derived identity, ownership, membership, or admin-scope gate.
+- `documentation/RLS_POLICY_EVIDENCE.md` records the production RLS, storage-policy, grant, and RPC conclusions reviewed on June 12, 2026.
+- `documentation/RLS_POLICY_AUDIT.sql` and `documentation/RLS_POLICY_FOLLOWUP.sql` provide the read-only queries used to collect that evidence.
 
 **Test results:**
 
@@ -76,6 +118,8 @@ npm test -- --testPathPattern=studentCommands.test.ts
 - `pnpm lint` - passed with three pre-existing React hook dependency warnings.
 - `pnpm test:ci --passWithNoTests --runInBand` - 10 suites and 101 tests passed.
 - `pnpm build` - passed; all 42 routes generated and middleware bundled successfully.
+- Middleware tests confirmed public routes perform no Supabase session work, protected routes reject missing sessions, return destinations remain internal, and refreshed cookies survive redirects.
+- Authorization tests confirmed `401` versus `403`, school-scope enforcement, user/flight ownership validation, and cross-user mutation denial before protected operations execute.
 - Production smoke tests passed for all 7 public pages and 13 protected/admin route cases. Protected routes preserved their complete return destination, representative APIs rejected missing sessions with `401`, and no browser console errors occurred.
 
 ---
