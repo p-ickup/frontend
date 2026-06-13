@@ -23,7 +23,15 @@ const ACTION_OPTIONS = [
   { value: 'ASPC_DELAY', label: 'ASPC delay (rider)' },
 ]
 
-export default function ChangeLogPanel() {
+export default function ChangeLogPanel({
+  hasMore = false,
+  loading = false,
+  onLoadMore,
+}: {
+  hasMore?: boolean
+  loading?: boolean
+  onLoadMore?: () => Promise<void>
+}) {
   const { clearChangeLogFilters, setChangeLogDateRange } =
     useGroupsActionsContext()
   const { changeLog, formatChangeLogEntry, sortedChangeLog } =
@@ -505,6 +513,21 @@ export default function ChangeLogPanel() {
                         </div>
                       )
                     })
+                  )}
+                  {(loading || hasMore) && (
+                    <div className="flex justify-center pt-3">
+                      <button
+                        type="button"
+                        onClick={() => void onLoadMore?.()}
+                        disabled={loading || !hasMore}
+                        className="flex items-center gap-2 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {loading && (
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-teal-200 border-t-teal-600"></span>
+                        )}
+                        {loading ? 'Loading changes...' : 'Load more'}
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

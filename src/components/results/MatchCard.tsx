@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { MatchWithDetails } from '@/app/results/page'
+import type { ResultMatchDto } from '@/contracts/readModels'
 import { useAuth } from '@/hooks/useAuth'
 import { useState } from 'react'
 import { createBrowserClient } from '@/utils/supabase'
@@ -10,7 +10,7 @@ import { formatTime12Hour } from '@/utils/formatTime'
 import ConfirmCancelMatch from './ConfirmCancelMatch'
 
 interface MatchCardProps {
-  matches: MatchWithDetails[]
+  matches: ResultMatchDto[]
   upcoming: boolean
   onDelete?: (rideId: number) => Promise<void>
   rideId?: number

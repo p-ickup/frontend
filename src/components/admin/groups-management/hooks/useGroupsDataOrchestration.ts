@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
+import { requestJson } from '@/utils/api'
 
 import {
   fetchChangeLogEntries,
-  fetchGroupsManagementSnapshot,
-  fetchLastAlgorithmRunWindow,
   fetchPendingChangesSnapshot,
 } from '../services/groupsReadService'
+import type { GroupsManagementSnapshot } from '../services/groupsReadService'
 import type {
   ChangeLogEntry,
   ChangedGroup,
@@ -18,7 +18,10 @@ import type {
 type SetState<T> = Dispatch<SetStateAction<T>>
 
 export interface UseGroupsDataOrchestrationParams {
-  currentUserId?: string
+  changeLogExpanded: boolean
+  corralTab: 'riders' | 'changes'
+  dateRangeEnd: string
+  dateRangeStart: string
   groups: Group[]
   isResizingChangeLog: boolean
   resizeStartRef: MutableRefObject<{ y: number; height: number } | null>
@@ -41,20 +44,38 @@ export interface UseGroupsDataOrchestrationParams {
 }
 
 export interface UseGroupsDataOrchestrationResult {
+  changeLogHasMore: boolean
+  changeLogLoading: boolean
   error: string | null
+  goToPage: (page: number) => Promise<void>
+  loadMoreChangeLog: () => Promise<void>
   loading: boolean
+  page: number
+  pendingChangesLoading: boolean
   refreshAll: () => Promise<void>
   refreshChangeLog: () => Promise<void>
   refreshGroups: () => Promise<void>
   refreshLastAlgorithmRun: () => Promise<void>
   refreshUnconfirmed: (overrideGroups?: Group[]) => Promise<void>
+  refreshing: boolean
+  totalPages: number
+  totalRecords: number
+}
+
+type GroupsSnapshotResponse = GroupsManagementSnapshot & {
+  dateRangeStart: string
+  dateRangeEnd: string
+  lastAlgorithmRunDate: string
 }
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback
 
 export const useGroupsDataOrchestration = ({
-  currentUserId,
+  changeLogExpanded,
+  corralTab,
+  dateRangeEnd,
+  dateRangeStart,
   groups,
   isResizingChangeLog,
   resizeStartRef,
@@ -76,77 +97,165 @@ export const useGroupsDataOrchestration = ({
   supabase,
 }: UseGroupsDataOrchestrationParams): UseGroupsDataOrchestrationResult => {
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalRecords, setTotalRecords] = useState(0)
+  const [changeLogLoading, setChangeLogLoading] = useState(false)
+  const [changeLogHasMore, setChangeLogHasMore] = useState(false)
+  const [pendingChangesLoading, setPendingChangesLoading] = useState(false)
   const groupsRef = useRef(groups)
-  const skipNextGroupsRefreshRef = useRef(false)
+  const changeLogPageRef = useRef(0)
+  const changeLogLoadedRef = useRef(false)
+  const pendingLoadedRef = useRef(false)
+  const loadedRangeRef = useRef({ start: '', end: '' })
+  const snapshotRequestRef = useRef(0)
 
   useEffect(() => {
     groupsRef.current = groups
   }, [groups])
 
   const applyGroupsSnapshot = useCallback(
-    (snapshot: Awaited<ReturnType<typeof fetchGroupsManagementSnapshot>>) => {
+    (snapshot: GroupsSnapshotResponse) => {
       setAdminScope(snapshot.adminScope)
       setAvailableAirports(snapshot.availableAirports)
       setSelectedAirports(snapshot.availableAirports)
       setGroups(snapshot.groups)
       setUnmatchedRiders(snapshot.unmatchedRiders)
+      setChangedGroups([])
+      setUnmatchedIndividuals([])
+      setLastAlgorithmRunDate(snapshot.lastAlgorithmRunDate)
+      loadedRangeRef.current = {
+        start: snapshot.dateRangeStart,
+        end: snapshot.dateRangeEnd,
+      }
+      setDateRangeStart(snapshot.dateRangeStart)
+      setDateRangeEnd(snapshot.dateRangeEnd)
+      setPage(snapshot.pagination.page)
+      setTotalPages(snapshot.pagination.totalPages)
+      setTotalRecords(snapshot.pagination.totalRecords)
+      pendingLoadedRef.current = false
 
       return snapshot.groups
     },
     [
       setAdminScope,
       setAvailableAirports,
+      setChangedGroups,
       setGroups,
+      setDateRangeEnd,
+      setDateRangeStart,
+      setLastAlgorithmRunDate,
       setSelectedAirports,
+      setUnmatchedIndividuals,
       setUnmatchedRiders,
     ],
   )
 
-  const loadGroupsSnapshot = useCallback(async () => {
-    try {
-      const snapshot = await fetchGroupsManagementSnapshot({
-        supabase,
-        currentUserId,
-      })
+  const loadGroupsSnapshot = useCallback(
+    async ({
+      requestedPage,
+      requestedStart,
+      requestedEnd,
+    }: {
+      requestedPage: number
+      requestedStart?: string
+      requestedEnd?: string
+    }) => {
+      const requestId = snapshotRequestRef.current + 1
+      snapshotRequestRef.current = requestId
+      try {
+        const params = new URLSearchParams({
+          page: String(requestedPage),
+          pageSize: '200',
+        })
+        if (requestedStart) params.set('dateStart', requestedStart)
+        if (requestedEnd) params.set('dateEnd', requestedEnd)
+        const snapshot = await requestJson<GroupsSnapshotResponse>(
+          `/api/admin/groups/snapshot?${params.toString()}`,
+        )
 
-      return applyGroupsSnapshot(snapshot)
-    } catch (nextError) {
-      console.error('Error fetching groups data:', nextError)
-      setError(getErrorMessage(nextError, 'Failed to fetch group data'))
-      throw nextError
-    }
-  }, [applyGroupsSnapshot, currentUserId, supabase])
+        if (requestId !== snapshotRequestRef.current) {
+          return groupsRef.current
+        }
+
+        return applyGroupsSnapshot(snapshot)
+      } catch (nextError) {
+        if (requestId !== snapshotRequestRef.current) {
+          return groupsRef.current
+        }
+        console.error('Error fetching groups data:', nextError)
+        setError(getErrorMessage(nextError, 'Failed to fetch group data'))
+        throw nextError
+      }
+    },
+    [applyGroupsSnapshot],
+  )
 
   const refreshLastAlgorithmRun = useCallback(async () => {
-    try {
-      const window = await fetchLastAlgorithmRunWindow(supabase)
-      if (!window) return
-
-      setLastAlgorithmRunDate(window.lastAlgorithmRunDate)
-      setDateRangeStart(window.dateRangeStart)
-      setDateRangeEnd(window.dateRangeEnd)
-    } catch (nextError) {
-      console.error('Error fetching last algorithm run:', nextError)
-      setError(getErrorMessage(nextError, 'Failed to fetch algorithm status'))
-      throw nextError
-    }
-  }, [setDateRangeEnd, setDateRangeStart, setLastAlgorithmRunDate, supabase])
+    await loadGroupsSnapshot({
+      requestedPage: page,
+      requestedStart: dateRangeStart,
+      requestedEnd: dateRangeEnd,
+    })
+  }, [dateRangeEnd, dateRangeStart, loadGroupsSnapshot, page])
 
   const refreshGroups = useCallback(async () => {
-    await loadGroupsSnapshot()
-  }, [loadGroupsSnapshot])
+    setRefreshing(true)
+    setError(null)
+    try {
+      await loadGroupsSnapshot({
+        requestedPage: page,
+        requestedStart: dateRangeStart,
+        requestedEnd: dateRangeEnd,
+      })
+    } finally {
+      setRefreshing(false)
+    }
+  }, [dateRangeEnd, dateRangeStart, loadGroupsSnapshot, page])
 
   const refreshChangeLog = useCallback(async () => {
+    setChangeLogLoading(true)
     try {
-      const entries = await fetchChangeLogEntries(supabase)
-      setChangeLog(entries)
+      const result = await fetchChangeLogEntries(supabase, {
+        page: 1,
+        pageSize: 100,
+      })
+      setChangeLog(result.entries)
+      setChangeLogHasMore(result.hasMore)
+      changeLogPageRef.current = 1
+      changeLogLoadedRef.current = true
     } catch (nextError) {
       console.error('Error fetching changelog:', nextError)
       setError(getErrorMessage(nextError, 'Failed to fetch changelog'))
       throw nextError
+    } finally {
+      setChangeLogLoading(false)
     }
   }, [setChangeLog, supabase])
+
+  const loadMoreChangeLog = useCallback(async () => {
+    if (changeLogLoading || !changeLogHasMore) return
+    setChangeLogLoading(true)
+    try {
+      const nextPage = changeLogPageRef.current + 1
+      const result = await fetchChangeLogEntries(supabase, {
+        page: nextPage,
+        pageSize: 100,
+      })
+      setChangeLog((current) => {
+        const combined = [...current, ...result.entries]
+        return Array.from(
+          new Map(combined.map((entry) => [entry.id, entry])).values(),
+        )
+      })
+      setChangeLogHasMore(result.hasMore)
+      changeLogPageRef.current = nextPage
+    } finally {
+      setChangeLogLoading(false)
+    }
+  }, [changeLogHasMore, changeLogLoading, setChangeLog, supabase])
 
   const refreshUnconfirmed = useCallback(
     async (overrideGroups?: Group[]) => {
@@ -159,6 +268,7 @@ export const useGroupsDataOrchestration = ({
       }
 
       try {
+        setPendingChangesLoading(true)
         const snapshot = await fetchPendingChangesSnapshot({
           supabase,
           groups: sourceGroups,
@@ -166,10 +276,13 @@ export const useGroupsDataOrchestration = ({
 
         setChangedGroups(snapshot.changedGroups)
         setUnmatchedIndividuals(snapshot.unmatchedIndividuals)
+        pendingLoadedRef.current = true
       } catch (nextError) {
         console.error('Error loading unconfirmed changes:', nextError)
         setError(getErrorMessage(nextError, 'Failed to load pending changes'))
         throw nextError
+      } finally {
+        setPendingChangesLoading(false)
       }
     },
     [setChangedGroups, setUnmatchedIndividuals, supabase],
@@ -180,37 +293,71 @@ export const useGroupsDataOrchestration = ({
     setError(null)
 
     try {
-      skipNextGroupsRefreshRef.current = true
-      await refreshLastAlgorithmRun()
-      const nextGroups = await loadGroupsSnapshot()
-      await refreshChangeLog()
-      await refreshUnconfirmed(nextGroups)
+      await loadGroupsSnapshot({ requestedPage: 1 })
     } catch {
       // Individual refresh helpers already log and store a user-facing error.
     } finally {
       setLoading(false)
     }
-  }, [
-    loadGroupsSnapshot,
-    refreshChangeLog,
-    refreshLastAlgorithmRun,
-    refreshUnconfirmed,
-  ])
+  }, [loadGroupsSnapshot])
 
   useEffect(() => {
     void refreshAll()
   }, [refreshAll])
 
   useEffect(() => {
-    if (skipNextGroupsRefreshRef.current) {
-      skipNextGroupsRefreshRef.current = false
+    if (!changeLogExpanded || changeLogLoadedRef.current) return
+    void refreshChangeLog().catch(() => undefined)
+  }, [changeLogExpanded, refreshChangeLog])
+
+  useEffect(() => {
+    if (corralTab !== 'changes' || pendingLoadedRef.current) {
+      return
+    }
+    void refreshUnconfirmed().catch(() => undefined)
+  }, [corralTab, groups, refreshUnconfirmed])
+
+  useEffect(() => {
+    if (loading || !dateRangeStart || !dateRangeEnd) return
+    if (
+      loadedRangeRef.current.start === dateRangeStart &&
+      loadedRangeRef.current.end === dateRangeEnd
+    ) {
       return
     }
 
-    if (groups.length > 0) {
-      void refreshUnconfirmed()
-    }
-  }, [groups.length, refreshUnconfirmed])
+    const timeoutId = window.setTimeout(() => {
+      setRefreshing(true)
+      setError(null)
+      void loadGroupsSnapshot({
+        requestedPage: 1,
+        requestedStart: dateRangeStart,
+        requestedEnd: dateRangeEnd,
+      })
+        .catch(() => undefined)
+        .finally(() => setRefreshing(false))
+    }, 350)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [dateRangeEnd, dateRangeStart, loadGroupsSnapshot, loading])
+
+  const goToPage = useCallback(
+    async (nextPage: number) => {
+      if (nextPage < 1 || nextPage > totalPages || nextPage === page) return
+      setRefreshing(true)
+      setError(null)
+      try {
+        await loadGroupsSnapshot({
+          requestedPage: nextPage,
+          requestedStart: dateRangeStart,
+          requestedEnd: dateRangeEnd,
+        })
+      } finally {
+        setRefreshing(false)
+      }
+    },
+    [dateRangeEnd, dateRangeStart, loadGroupsSnapshot, page, totalPages],
+  )
 
   useEffect(() => {
     const isMobile = window.innerWidth < 768
@@ -261,12 +408,21 @@ export const useGroupsDataOrchestration = ({
   ])
 
   return {
+    changeLogHasMore,
+    changeLogLoading,
     error,
+    goToPage,
+    loadMoreChangeLog,
     loading,
+    page,
+    pendingChangesLoading,
     refreshAll,
     refreshChangeLog,
     refreshGroups,
     refreshLastAlgorithmRun,
     refreshUnconfirmed,
+    refreshing,
+    totalPages,
+    totalRecords,
   }
 }

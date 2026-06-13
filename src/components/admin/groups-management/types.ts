@@ -1,10 +1,4 @@
-import type { User } from '@supabase/supabase-js'
-
 import type { NoShowRiderInfo } from '@/utils/adminMatchNoShows'
-
-export interface AdminDashboardProps {
-  user: User
-}
 
 export interface Rider {
   user_id: string

@@ -19,7 +19,7 @@ export default function Index() {
 
     try {
       // Check if profile is complete
-      const profileStatus = await validateUserProfile()
+      const profileStatus = await validateUserProfile(user)
 
       if (profileStatus.hasCompleteProfile) {
         // Profile is complete, go to questionnaire

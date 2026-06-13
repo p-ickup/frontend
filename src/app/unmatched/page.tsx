@@ -2,40 +2,30 @@
 
 import RedirectButton from '@/components/buttons/RedirectButton'
 import { postJson, requestJson } from '@/utils/api'
-import type { Database } from '@/lib/database.types'
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import EmptyState from '@/components/results/EmptyState'
-
-type Tables = Database['public']['Tables']
-type Flight = Tables['Flights']['Row']
-type User = Tables['Users']['Row']
-
-interface FlightWithUser extends Flight {
-  Users: User | null
-}
-
-interface GroupedMatch {
-  ride_id: number
-  flights: FlightWithUser[]
-  time: string | null
-}
+import type {
+  OwnUnmatchedFlightDto,
+  UnmatchedFlightDto,
+  UnmatchedGroupDto,
+  UnmatchedOptionsResponseDto,
+} from '@/contracts/readModels'
 
 const matchRequestsEnabled =
   process.env.NEXT_PUBLIC_ENABLE_MATCH_REQUESTS === 'true'
 
 export default function UnmatchedPage() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-  const [flights, setFlights] = useState<FlightWithUser[]>([])
-  const [groups, setGroups] = useState<GroupedMatch[]>([])
+  const [flights, setFlights] = useState<UnmatchedFlightDto[]>([])
+  const [groups, setGroups] = useState<UnmatchedGroupDto[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [selectedFlight, setSelectedFlight] = useState<FlightWithUser | null>(
-    null,
-  )
+  const [selectedFlight, setSelectedFlight] =
+    useState<UnmatchedFlightDto | null>(null)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [userEligible, setUserEligible] = useState(false)
-  const [myFlights, setMyFlights] = useState<Flight[]>([])
+  const [myFlights, setMyFlights] = useState<OwnUnmatchedFlightDto[]>([])
   const [selectedMyFlightId, setSelectedMyFlightId] = useState<number | null>(
     null,
   )
@@ -62,13 +52,9 @@ export default function UnmatchedPage() {
     }
 
     try {
-      const result = await requestJson<{
-        success: boolean
-        flights: FlightWithUser[]
-        groups: GroupedMatch[]
-        myFlights: Flight[]
-        userEligible: boolean
-      }>('/api/unmatched/options')
+      const result = await requestJson<UnmatchedOptionsResponseDto>(
+        '/api/unmatched/options',
+      )
 
       setFlights(result.flights)
       setGroups(result.groups)
@@ -590,7 +576,7 @@ function ConfirmationModal({
   title: string
   onConfirm: () => void
   onCancel: () => void
-  myFlights: Flight[]
+  myFlights: OwnUnmatchedFlightDto[]
   selectedMyFlightId: number | null
   setSelectedMyFlightId: (id: number) => void
 }) {

@@ -119,7 +119,7 @@ export default function Questionnaires() {
     if (user) {
       const loadPage = async () => {
         try {
-          const profileValidation = await validateUserProfile()
+          const profileValidation = await validateUserProfile(user)
           if (!profileValidation.isValid) {
             router.replace('/profile')
             return

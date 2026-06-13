@@ -3,16 +3,13 @@ import userEvent from '@testing-library/user-event'
 
 const buildNoShowLookupMock = jest.fn()
 const postJsonMock = jest.fn()
+const requestJsonMock = jest.fn()
 const pushMock = jest.fn()
-const useAuthMock = jest.fn()
 const createBrowserClientMock = jest.fn()
 
 jest.mock('@/utils/api', () => ({
   postJson: (...args: unknown[]) => postJsonMock(...args),
-}))
-
-jest.mock('@/hooks/useAuth', () => ({
-  useAuth: () => useAuthMock(),
+  requestJson: (...args: unknown[]) => requestJsonMock(...args),
 }))
 
 jest.mock('@/utils/adminMatchNoShows', () => ({
@@ -138,15 +135,20 @@ const createSupabaseMock = (
   }
 }
 
-const dashboardUser = {
-  id: 'admin-1',
-  email: 'admin@example.com',
-} as any
-
 describe('AdminDashboard', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    useAuthMock.mockReturnValue({ user: null })
+    requestJsonMock.mockResolvedValue({
+      school: 'Pomona',
+      matchRate: 67,
+      matchedRiders: 2,
+      totalRiders: 3,
+      unmatchedFlightsCount: 3,
+      algorithmLastRan: 'Jan 15, 2026 – 10:00 AM PT',
+      lastRunStatus: 'Completed (ASPC)',
+      nextScheduledRunDate: 'Jan 20, 2026 – 10:30 AM PT',
+      nextScheduledRunTarget: 'All',
+    })
     buildNoShowLookupMock.mockResolvedValue(new Map())
     postJsonMock.mockResolvedValue({
       success: true,
@@ -162,14 +164,9 @@ describe('AdminDashboard', () => {
   })
 
   const renderDashboard = () => {
+    const queryLog: Array<QueryState & { terminal: string }> = []
     const supabase = createSupabaseMock((state) => {
-      if (state.table === 'Users' && hasOp(state, 'eq', 'user_id', 'admin-1')) {
-        return {
-          data: { school: 'Pomona', role: 'admin', admin_scope: 'Pomona' },
-          error: null,
-        }
-      }
-
+      queryLog.push(state)
       if (
         state.table === 'AlgorithmStatus' &&
         hasOp(state, 'in', 'status', ['success', 'failed'])
@@ -329,13 +326,19 @@ describe('AdminDashboard', () => {
 
     createBrowserClientMock.mockReturnValue(supabase)
 
-    return render(<AdminDashboard user={dashboardUser} />)
+    return { ...render(<AdminDashboard />), queryLog, supabase }
   }
 
   it('loads and renders the core dashboard metrics', async () => {
-    renderDashboard()
+    const { supabase } = renderDashboard()
 
     expect(await screen.findByText('Pickup Dashboard')).toBeInTheDocument()
+    expect(requestJsonMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\/api\/admin\/dashboard-summary\?unmatchedStart=\d{4}-\d{2}-\d{2}&unmatchedEnd=\d{4}-\d{2}-\d{2}$/,
+      ),
+    )
+    expect(supabase.from).not.toHaveBeenCalled()
     expect(await screen.findByText('Pomona')).toBeInTheDocument()
     expect(await screen.findByText('67%')).toBeInTheDocument()
     expect(await screen.findByText('2 / 3 riders matched')).toBeInTheDocument()
@@ -440,7 +443,7 @@ describe('AdminDashboard', () => {
       ]),
     )
 
-    renderDashboard()
+    const { queryLog } = renderDashboard()
 
     await screen.findByText('Pickup Dashboard')
     await userEvent.click(
@@ -452,10 +455,18 @@ describe('AdminDashboard', () => {
     expect(await screen.findByText('1/2')).toBeInTheDocument()
     expect(await screen.findByText('Delay form in log')).toBeInTheDocument()
     expect(await screen.findByText('Not yet')).toBeInTheDocument()
+    expect(
+      queryLog.some(
+        (query) =>
+          query.table === 'Matches' &&
+          hasOp(query, 'gte', 'date') &&
+          hasOp(query, 'lte', 'date'),
+      ),
+    ).toBe(true)
   })
 
   it('loads and renders cancellation rows on demand', async () => {
-    renderDashboard()
+    const { queryLog } = renderDashboard()
 
     await screen.findByText('Pickup Dashboard')
     await userEvent.click(
@@ -466,5 +477,13 @@ describe('AdminDashboard', () => {
     expect(await screen.findByText('taylor@example.com')).toBeInTheDocument()
 
     expect(await screen.findByText('$40')).toBeInTheDocument()
+    expect(
+      queryLog.some(
+        (query) =>
+          query.table === 'match_cancellations' &&
+          hasOp(query, 'gte', 'cancelled_at') &&
+          hasOp(query, 'lte', 'cancelled_at'),
+      ),
+    ).toBe(true)
   })
 })

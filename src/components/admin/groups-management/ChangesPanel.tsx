@@ -543,7 +543,11 @@ function UnmatchedIndividualCard({
   )
 }
 
-export default function ChangesPanel() {
+export default function ChangesPanel({
+  loading = false,
+}: {
+  loading?: boolean
+}) {
   const {
     fetchChangeLog,
     loadUnconfirmedChanges,
@@ -560,6 +564,15 @@ export default function ChangesPanel() {
     setConfirmingIndividuals,
     setErrorMessage,
   } = useGroupsUiContext()
+
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center gap-3 p-6 text-sm text-gray-600">
+        <span className="h-5 w-5 animate-spin rounded-full border-2 border-teal-200 border-t-teal-600"></span>
+        Loading pending changes...
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-4">

@@ -1,6 +1,7 @@
 import { routeErrorJson, withAuthenticatedRoute } from '@/lib/server/auth'
 import { getResultsMatches } from '@/lib/server/studentCommands'
 import { NextResponse } from 'next/server'
+import { toResultsResponseDto } from '@/contracts/readModels'
 
 export const GET = withAuthenticatedRoute(async (_request, auth) => {
   try {
@@ -9,7 +10,7 @@ export const GET = withAuthenticatedRoute(async (_request, auth) => {
       userId: auth.user.id,
     })
 
-    return NextResponse.json(result)
+    return NextResponse.json(toResultsResponseDto(result))
   } catch (error: any) {
     return routeErrorJson(error, 'Failed to load results.')
   }

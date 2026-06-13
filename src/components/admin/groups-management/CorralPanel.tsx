@@ -18,7 +18,11 @@ import {
 } from './context'
 import { formatTimeRange } from './utils'
 
-export default function CorralPanel() {
+export default function CorralPanel({
+  pendingChangesLoading = false,
+}: {
+  pendingChangesLoading?: boolean
+}) {
   const {
     changedGroups,
     corralRiders,
@@ -386,7 +390,9 @@ export default function CorralPanel() {
             </div>
           )}
 
-          {corralTab === 'changes' && <ChangesPanel />}
+          {corralTab === 'changes' && (
+            <ChangesPanel loading={pendingChangesLoading} />
+          )}
 
           {!leftSidebarTabs.includes('createGroup') && (
             <div className="flex flex-1 flex-col overflow-hidden border-t border-gray-200">

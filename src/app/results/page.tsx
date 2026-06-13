@@ -3,31 +3,27 @@ import CommentSection from '@/components/results/CommentSection'
 import RedirectButton from '@/components/buttons/RedirectButton'
 import EmptyState from '@/components/results/EmptyState'
 import MatchCard from '@/components/results/MatchCard'
-import type { Database } from '@/lib/database.types'
 import { postJson, requestJson } from '@/utils/api'
 import { isGroupReady } from '@/utils/groupReadiness'
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-
-type Tables = Database['public']['Tables']
-type Match = Tables['Matches']['Row']
-
-export interface MatchWithDetails extends Match {
-  Flights: Database['public']['Tables']['Flights']['Row']
-  Users: Database['public']['Tables']['Users']['Row']
-}
+import type {
+  MarkGroupsReadyResponseDto,
+  ResultMatchDto,
+  ResultsResponseDto,
+} from '@/contracts/readModels'
 
 interface GroupedMatches {
   upcoming: {
-    [ride_id: number]: MatchWithDetails[]
+    [ride_id: number]: ResultMatchDto[]
   }
   previous: {
-    [ride_id: number]: MatchWithDetails[]
+    [ride_id: number]: ResultMatchDto[]
   }
 }
 
-const groupMatchesByRideId = (matches: MatchWithDetails[]) => {
-  const grouped: { [key: number]: MatchWithDetails[] } = {}
+const groupMatchesByRideId = (matches: ResultMatchDto[]) => {
+  const grouped: { [key: number]: ResultMatchDto[] } = {}
 
   matches.forEach((match) => {
     const rideId = match.ride_id
@@ -50,6 +46,7 @@ export default function Results() {
   >({})
   const [showPrevious, setShowPrevious] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [pendingReadyRideIds, setPendingReadyRideIds] = useState<number[]>([])
   const { user, isAuthenticated } = useAuth()
 
   const fetchMatches = useCallback(async () => {
@@ -61,14 +58,12 @@ export default function Results() {
         return
       }
 
-      const result = await requestJson<{
-        success: boolean
-        matches: MatchWithDetails[]
-      }>('/api/results')
+      const result = await requestJson<ResultsResponseDto>('/api/results')
 
       if (!result.matches || result.matches.length === 0) {
         setMatches({ upcoming: {}, previous: {} })
         setRideReadiness({})
+        setPendingReadyRideIds([])
         return
       }
 
@@ -119,6 +114,7 @@ export default function Results() {
         number,
         { isReady: boolean; matchDateTime: Date | null }
       > = {}
+      const readyRideIdsToPersist: number[] = []
       const rideIds = Array.from(
         new Set(matchesWithDetails.map((match) => match.ride_id)),
       )
@@ -136,9 +132,7 @@ export default function Results() {
           const [y, mo, d] = firstMatch.Flights.date.split('-').map(Number)
           matchDateTime = new Date(y, mo - 1, d)
         }
-        const groupReadyAt = (
-          rideMatches[0] as { group_ready_at?: string | null }
-        )?.group_ready_at
+        const groupReadyAt = rideMatches[0]?.group_ready_at
         const computedReady = isGroupReady(rideMatches)
         const timePassed =
           matchDateTime != null &&
@@ -146,24 +140,19 @@ export default function Results() {
         const isReady = groupReadyAt != null || computedReady || timePassed
 
         if (computedReady && groupReadyAt == null) {
-          try {
-            await postJson('/api/matches/mark-group-ready', { rideId })
-          } catch (updateError) {
-            console.error(
-              `[results] Failed to set group_ready_at for ride ${rideId}:`,
-              updateError,
-            )
-          }
+          readyRideIdsToPersist.push(rideId)
         }
 
         readiness[rideId] = { isReady, matchDateTime }
       }
       setRideReadiness(readiness)
       setMatches(grouped)
+      setPendingReadyRideIds(readyRideIdsToPersist)
     } catch (error) {
       console.error('Error details:', error)
       setMatches({ upcoming: {}, previous: {} })
       setRideReadiness({})
+      setPendingReadyRideIds([])
     } finally {
       setLoading(false)
     }
@@ -176,6 +165,22 @@ export default function Results() {
       setLoading(false)
     }
   }, [user, fetchMatches])
+
+  useEffect(() => {
+    if (loading || pendingReadyRideIds.length === 0) return
+
+    const rideIds = pendingReadyRideIds
+    setPendingReadyRideIds([])
+
+    void postJson<MarkGroupsReadyResponseDto>('/api/matches/mark-group-ready', {
+      rideIds,
+    }).catch((updateError) => {
+      console.error(
+        `[results] Failed to persist readiness for rides ${rideIds.join(', ')}:`,
+        updateError,
+      )
+    })
+  }, [loading, pendingReadyRideIds])
 
   const deleteMatch = async (rideId: number) => {
     if (!user) {

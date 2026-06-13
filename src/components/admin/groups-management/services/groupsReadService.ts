@@ -1,6 +1,7 @@
 type GroupsSupabaseClient = any
 
 import { buildNoShowLookup } from '@/utils/adminMatchNoShows'
+import { toAdminGroupRowDto } from '@/contracts/readModels'
 
 import type {
   ChangeLogEntry,
@@ -38,6 +39,12 @@ export interface GroupsManagementSnapshot {
   availableAirports: string[]
   groups: Group[]
   unmatchedRiders: Rider[]
+  pagination: {
+    page: number
+    pageSize: number
+    totalRecords: number
+    totalPages: number
+  }
 }
 
 export interface PendingChangesSnapshot {
@@ -66,7 +73,7 @@ const formatDateForInput = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
-const getDefaultDateWindow = () => {
+export const getDefaultDateWindow = () => {
   const currentDate = new Date()
   const dateRangeStartDate = new Date(currentDate)
   dateRangeStartDate.setDate(dateRangeStartDate.getDate() - 7)
@@ -79,63 +86,30 @@ const getDefaultDateWindow = () => {
   }
 }
 
-const fetchPagedRows = async <T>(
-  fetchPage: (
-    from: number,
-    to: number,
-  ) => Promise<{ data: T[] | null; error: any }>,
-  pageSize = 1000,
-): Promise<T[]> => {
-  let from = 0
-  let hasMore = true
-  const rows: T[] = []
-
-  while (hasMore) {
-    const { data, error } = await fetchPage(from, from + pageSize - 1)
-    if (error) {
-      throw createError(error, 'Failed to fetch paginated rows')
-    }
-
-    if (!data || data.length === 0) {
-      hasMore = false
-      continue
-    }
-
-    rows.push(...data)
-    from += pageSize
-    hasMore = data.length === pageSize
-  }
-
-  return rows
-}
-
 const fetchUsersInBatches = async (
   supabase: GroupsSupabaseClient,
   userIds: string[],
   select: string,
   batchSize = 100,
 ) => {
-  const rows: any[] = []
-
+  const batches: string[][] = []
   for (let index = 0; index < userIds.length; index += batchSize) {
-    const batch = userIds.slice(index, index + batchSize)
-    if (batch.length === 0) continue
-
-    const { data, error } = await supabase
-      .from('Users')
-      .select(select)
-      .in('user_id', batch)
-
-    if (error) {
-      throw createError(error, 'Failed to fetch users')
-    }
-
-    if (data) {
-      rows.push(...data)
-    }
+    batches.push(userIds.slice(index, index + batchSize))
   }
 
-  return rows
+  const results = await Promise.all(
+    batches.map(async (batch) => {
+      const { data, error } = await supabase
+        .from('Users')
+        .select(select)
+        .in('user_id', batch)
+
+      if (error) throw createError(error, 'Failed to fetch users')
+      return data || []
+    }),
+  )
+
+  return results.flat()
 }
 
 const buildUsersMap = (users: any[]) =>
@@ -333,17 +307,29 @@ export const fetchLastAlgorithmRunWindow = async (
 
 export const fetchGroupsManagementSnapshot = async ({
   supabase,
-  currentUserId,
+  adminScope,
+  dateRangeStart,
+  dateRangeEnd,
+  page = 1,
+  pageSize = 200,
 }: {
   supabase: GroupsSupabaseClient
-  currentUserId?: string
+  adminScope: string | null
+  dateRangeStart: string
+  dateRangeEnd: string
+  page?: number
+  pageSize?: number
 }): Promise<GroupsManagementSnapshot> => {
-  const flightsData = await fetchPagedRows<any>(
-    async (from, to) =>
-      await supabase
-        .from('Flights')
-        .select(
-          `
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+  const {
+    data: flightsDataRaw,
+    count,
+    error: flightsError,
+  } = await supabase
+    .from('Flights')
+    .select(
+      `
         flight_id,
         airport,
         date,
@@ -360,12 +346,89 @@ export const fetchGroupsManagementSnapshot = async ({
         opt_in,
         original_unmatched
       `,
+      { count: 'exact' },
+    )
+    .gte('date', dateRangeStart)
+    .lte('date', dateRangeEnd)
+    .order('date', { ascending: true })
+    .order('flight_id', { ascending: true })
+    .range(from, to)
+
+  if (flightsError) {
+    throw createError(flightsError, 'Failed to fetch flights')
+  }
+
+  const flightsData = flightsDataRaw || []
+  const totalRecords = count || 0
+  const pagination = {
+    page,
+    pageSize,
+    totalRecords,
+    totalPages: Math.max(1, Math.ceil(totalRecords / pageSize)),
+  }
+
+  if (flightsData.length === 0) {
+    return {
+      adminScope,
+      availableAirports: [],
+      groups: [],
+      unmatchedRiders: [],
+      pagination,
+    }
+  }
+
+  const pageFlightIds = flightsData.map((flight: any) => flight.flight_id)
+  const { data: pageMatches, error: pageMatchesError } = await supabase
+    .from('Matches')
+    .select('ride_id, flight_id')
+    .in('flight_id', pageFlightIds)
+
+  if (pageMatchesError) {
+    throw createError(pageMatchesError, 'Failed to identify page groups')
+  }
+
+  const rideIds = Array.from(
+    new Set((pageMatches || []).map((match: any) => match.ride_id)),
+  )
+  const { data: matchesDataRaw, error: matchesError } = rideIds.length
+    ? await supabase
+        .from('Matches')
+        .select(
+          'ride_id, flight_id, user_id, voucher, time, date, uber_type, is_subsidized, subsidized_override, uber_type_override, reported_missing_user_ids, ready_for_pickup_status, ready_for_pickup_at',
         )
-        .range(from, to),
+        .in('ride_id', rideIds)
+    : { data: [], error: null }
+
+  if (matchesError) {
+    throw createError(matchesError, 'Failed to fetch complete groups')
+  }
+
+  const matchesData = matchesDataRaw || []
+  const matchFlightIds = Array.from(
+    new Set(matchesData.map((match: any) => match.flight_id)),
+  )
+  const missingMatchFlightIds = matchFlightIds.filter(
+    (flightId) => !pageFlightIds.includes(flightId),
   )
 
+  const { data: additionalMatchFlights, error: matchFlightsError } =
+    missingMatchFlightIds.length
+      ? await supabase
+          .from('Flights')
+          .select(
+            'flight_id, airport, date, earliest_time, latest_time, to_airport, bag_no, bag_no_large, bag_no_personal, user_id, matching_status, flight_no, airline_iata, opt_in, original_unmatched',
+          )
+          .in('flight_id', missingMatchFlightIds)
+      : { data: [], error: null }
+
+  if (matchFlightsError) {
+    throw createError(matchFlightsError, 'Failed to fetch matched flights')
+  }
+
+  const allFlightsData = [...flightsData, ...(additionalMatchFlights || [])]
+
   const userIds = Array.from(
-    new Set(flightsData.map((flight) => flight.user_id).filter(Boolean)),
+    new Set(allFlightsData.map((flight) => flight.user_id).filter(Boolean)),
   )
 
   const allUsersData =
@@ -377,39 +440,21 @@ export const fetchGroupsManagementSnapshot = async ({
         )
       : []
 
-  let adminScope: string | null = null
-  if (currentUserId) {
-    const { data, error } = await supabase
-      .from('Users')
-      .select('admin_scope')
-      .eq('user_id', currentUserId)
-      .single()
-
-    if (error) {
-      throw createError(error, 'Failed to fetch admin scope')
-    }
-
-    adminScope = data?.admin_scope || null
-  }
-
   const usersMap = buildUsersMap(allUsersData)
-  const flightsWithUsers = flightsData.map((flight) => ({
+  const flightsWithUsers = allFlightsData.map((flight) => ({
     ...flight,
     Users: flight.user_id ? usersMap.get(String(flight.user_id)) || null : null,
   }))
 
-  const availableAirports = Array.from(
-    new Set(flightsWithUsers.map((flight) => flight.airport).filter(Boolean)),
-  )
-
-  const matchesData = await fetchPagedRows<any>(
-    async (from, to) =>
-      await supabase
-        .from('Matches')
-        .select(
-          'ride_id, flight_id, user_id, voucher, time, date, uber_type, is_subsidized, subsidized_override, uber_type_override, reported_missing_user_ids, ready_for_pickup_status, ready_for_pickup_at',
-        )
-        .range(from, to),
+  const availableAirports: string[] = Array.from(
+    new Set<string>(
+      (flightsData as Array<{ airport?: unknown }>)
+        .map((flight: any) => flight.airport)
+        .filter(
+          (airport: unknown): airport is string =>
+            typeof airport === 'string' && airport.length > 0,
+        ),
+    ),
   )
 
   const noShowLookup = await buildNoShowLookup(supabase, matchesData)
@@ -454,85 +499,19 @@ export const fetchGroupsManagementSnapshot = async ({
       availableAirports,
       groups: [],
       unmatchedRiders,
+      pagination,
     }
   }
-
-  const matchFlightIds = Array.from(
-    new Set(matchesData.map((match) => match.flight_id)),
-  )
-
-  const matchFlightsData: any[] = []
-  const flightIdBatchSize = 500
-  for (
-    let index = 0;
-    index < matchFlightIds.length;
-    index += flightIdBatchSize
-  ) {
-    const batch = matchFlightIds.slice(index, index + flightIdBatchSize)
-    const { data, error } = await supabase
-      .from('Flights')
-      .select(
-        `
-        flight_id,
-        airport,
-        date,
-        earliest_time,
-        latest_time,
-        to_airport,
-        bag_no,
-        bag_no_large,
-        bag_no_personal,
-        user_id,
-        matching_status,
-        flight_no,
-        airline_iata,
-        original_unmatched
-      `,
-      )
-      .in('flight_id', batch)
-
-    if (error) {
-      throw createError(error, 'Failed to fetch matched flights')
-    }
-
-    if (data) {
-      matchFlightsData.push(...data)
-    }
-  }
-
-  const matchFlightUserIds = Array.from(
-    new Set(matchFlightsData.map((flight) => flight.user_id).filter(Boolean)),
-  )
-
-  const matchUsersData =
-    matchFlightUserIds.length > 0
-      ? await fetchUsersInBatches(
-          supabase,
-          matchFlightUserIds,
-          'user_id, firstname, lastname, phonenumber, school',
-        )
-      : []
-
-  const matchUsersMap = buildUsersMap(matchUsersData)
   const flightsMap = new Map<number, any>()
 
-  matchFlightsData.forEach((flight) => {
-    flightsMap.set(flight.flight_id, {
-      ...flight,
-      Users: matchUsersMap.get(String(flight.user_id)) || null,
-    })
-  })
-
   flightsWithUsers.forEach((flight) => {
-    if (!flightsMap.has(flight.flight_id)) {
-      flightsMap.set(flight.flight_id, flight)
-    }
+    flightsMap.set(flight.flight_id, flight)
   })
 
   const groupsMap = new Map<number, Group>()
   const matchedFlightIds = new Set<number>()
 
-  matchesData.forEach((match) => {
+  matchesData.forEach((match: any) => {
     const flight = flightsMap.get(match.flight_id)
 
     if (!flight) {
@@ -641,10 +620,37 @@ export const fetchGroupsManagementSnapshot = async ({
     }
   }
 
-  let groups = Array.from(groupsMap.values()).map((group) => ({
-    ...group,
-    time_range: calculateGroupTimeRange(group.riders),
-  }))
+  const pageFlightIdSet = new Set(pageFlightIds)
+  const groupAnchors = new Map<number, { date: string; flightId: number }>()
+
+  for (const match of matchesData) {
+    const flight = flightsMap.get(match.flight_id)
+    const flightDate = flight ? normalizeDateToYYYYMMDD(flight.date) : ''
+    if (flightDate < dateRangeStart || flightDate > dateRangeEnd) continue
+
+    const currentAnchor = groupAnchors.get(match.ride_id)
+    if (
+      !currentAnchor ||
+      flightDate < currentAnchor.date ||
+      (flightDate === currentAnchor.date &&
+        match.flight_id < currentAnchor.flightId)
+    ) {
+      groupAnchors.set(match.ride_id, {
+        date: flightDate,
+        flightId: match.flight_id,
+      })
+    }
+  }
+
+  let groups = Array.from(groupsMap.values())
+    .filter((group) => {
+      const anchor = groupAnchors.get(group.ride_id)
+      return Boolean(anchor && pageFlightIdSet.has(anchor.flightId))
+    })
+    .map((group) => ({
+      ...group,
+      time_range: calculateGroupTimeRange(group.riders),
+    }))
 
   if (adminScope) {
     groups = groups.map((group) => ({
@@ -661,9 +667,12 @@ export const fetchGroupsManagementSnapshot = async ({
     }))
   }
 
-  const unmatchedRiders = flightsWithUsers
+  groups = groups.map((group) => toAdminGroupRowDto(group) as Group)
+
+  let unmatchedRiders = flightsWithUsers
     .filter(
       (flight) =>
+        pageFlightIds.includes(flight.flight_id) &&
         !matchedFlightIds.has(flight.flight_id) &&
         flight.matching_status !== 'matched',
     )
@@ -688,21 +697,31 @@ export const fetchGroupsManagementSnapshot = async ({
         reason: 'unmatched',
         flight_no: flight.flight_no || '',
         airline_iata: flight.airline_iata || '',
+        school: userData?.school || undefined,
         original_unmatched: flight.original_unmatched ?? false,
       } satisfies Rider
     })
+
+  if (adminScope) {
+    unmatchedRiders = unmatchedRiders.filter(
+      (rider) => rider.school === adminScope,
+    )
+  }
 
   return {
     adminScope,
     availableAirports,
     groups,
     unmatchedRiders,
+    pagination,
   }
 }
 
 export const fetchChangeLogEntries = async (
   supabase: GroupsSupabaseClient,
-): Promise<ChangeLogEntry[]> => {
+  { page = 1, pageSize = 100 }: { page?: number; pageSize?: number } = {},
+): Promise<{ entries: ChangeLogEntry[]; hasMore: boolean }> => {
+  const from = (page - 1) * pageSize
   const { data, error } = await supabase
     .from('ChangeLog')
     .select(
@@ -722,13 +741,14 @@ export const fetchChangeLogEntries = async (
     `,
     )
     .order('created_at', { ascending: false })
+    .range(from, from + pageSize)
 
   if (error) {
     throw createError(error, 'Failed to fetch changelog')
   }
 
   if (!data || data.length === 0) {
-    return []
+    return { entries: [], hasMore: false }
   }
 
   const rawEntries = data as any[]
@@ -772,9 +792,14 @@ export const fetchChangeLogEntries = async (
     }),
   )
 
-  return Array.from(
+  const deduped = Array.from(
     new Map(entries.map((entry) => [entry.id, entry] as const)).values(),
   )
+
+  return {
+    entries: deduped.slice(0, pageSize),
+    hasMore: rawEntries.length > pageSize,
+  }
 }
 
 export const fetchPendingChangesSnapshot = async ({

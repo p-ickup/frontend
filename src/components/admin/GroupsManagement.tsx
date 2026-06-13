@@ -37,7 +37,6 @@ import {
   upsertManualGroupMatch,
 } from './groups-management/services/groupsWriteService'
 import type {
-  AdminDashboardProps,
   ChangeLogEntry,
   ChangedGroup,
   EditRiderForm,
@@ -67,9 +66,9 @@ import {
 } from './groups-management/utils'
 import UnmatchedRidersPanel from './groups-management/UnmatchedRidersPanel'
 
-export default function GroupsManagement({ user }: AdminDashboardProps) {
+export default function GroupsManagement() {
   const supabase = useMemo(() => createBrowserClient(), [])
-  const { user: authUser } = useAuth()
+  const { user } = useAuth()
   const { computeGroupSubsidized } = useSubsidyLogic()
   const [, setAdminScope] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'matched' | 'unmatched'>('matched')
@@ -212,12 +211,25 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   >(new Set())
 
   const {
+    changeLogHasMore,
+    changeLogLoading,
+    error,
+    goToPage,
+    loadMoreChangeLog,
     loading,
+    page,
+    pendingChangesLoading,
     refreshChangeLog: fetchChangeLog,
     refreshGroups: fetchData,
     refreshUnconfirmed: loadUnconfirmedChanges,
+    refreshing,
+    totalPages,
+    totalRecords,
   } = useGroupsDataOrchestration({
-    currentUserId: (authUser || user)?.id,
+    changeLogExpanded,
+    corralTab,
+    dateRangeEnd,
+    dateRangeStart,
     groups,
     isResizingChangeLog,
     resizeStartRef,
@@ -249,14 +261,11 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
       confirmed: boolean = false,
       changeBatchId?: string,
     ) => {
-      const currentUser = authUser || user
-      if (!currentUser) {
-        return
-      }
+      if (!user) return
 
       await logChangeLogEntry({
         supabase,
-        actorUserId: currentUser.id,
+        actorUserId: user.id,
         action,
         metadata,
         targetGroupId,
@@ -267,7 +276,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
       await fetchChangeLog()
     },
-    [authUser, user, supabase, fetchChangeLog],
+    [user, supabase, fetchChangeLog],
   )
 
   const closeDeleteGroupConfirmation = useCallback(() => {
@@ -431,7 +440,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
   // Update group voucher for all members
   const handleUpdateGroupVoucher = useCallback(
     async (groupId: number, newVoucher: string) => {
-      if (!authUser || !user) return
+      if (!user) return
 
       setIsUpdatingVoucher(true)
       try {
@@ -515,7 +524,7 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
         setIsUpdatingVoucher(false)
       }
     },
-    [authUser, user, closeEditVoucher, supabase, logToChangeLog],
+    [closeEditVoucher, logToChangeLog, supabase, user],
   )
 
   const toggleAirport = useCallback((airport: string) => {
@@ -2624,8 +2633,26 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-lg text-gray-600">Loading groups...</div>
+      <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+        <div className="relative flex min-h-screen items-center justify-center p-4">
+          <div className="flex items-center space-x-4 rounded-2xl bg-white/80 p-8 shadow-xl backdrop-blur-sm">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-200 border-t-teal-500"></div>
+            <span className="text-lg font-medium text-gray-700">
+              Loading Groups...
+            </span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error && groups.length === 0 && unmatchedRiders.length === 0) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
+        <div className="max-w-lg rounded-lg border border-red-200 bg-red-50 p-6 text-center">
+          <p className="font-medium text-red-700">{error}</p>
+        </div>
       </div>
     )
   }
@@ -3372,14 +3399,48 @@ export default function GroupsManagement({ user }: AdminDashboardProps) {
                     : 'View all unmatched riders - drag them to groups to assign'}
                 </p>
 
+                <div className="min-h-9 mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-gray-200 py-2 text-sm text-gray-600">
+                  <span>
+                    Page {page} of {totalPages} · {totalRecords} flight records
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {refreshing && (
+                      <span className="flex items-center gap-2 text-teal-700">
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-teal-200 border-t-teal-600"></span>
+                        Refreshing
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void goToPage(page - 1)}
+                      disabled={refreshing || page <= 1}
+                      className="rounded border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void goToPage(page + 1)}
+                      disabled={refreshing || page >= totalPages}
+                      className="rounded border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+
                 {activeTab === 'matched' && <MatchedGroupsPanel />}
                 {activeTab === 'unmatched' && <UnmatchedRidersPanel />}
               </div>
 
-              <CorralPanel />
+              <CorralPanel pendingChangesLoading={pendingChangesLoading} />
             </div>
 
-            <ChangeLogPanel />
+            <ChangeLogPanel
+              hasMore={changeLogHasMore}
+              loading={changeLogLoading}
+              onLoadMore={loadMoreChangeLog}
+            />
             <GroupsManagementModals />
           </GroupsUiContext.Provider>
         </GroupsActionsContext.Provider>

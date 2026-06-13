@@ -7,50 +7,13 @@ import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
 import SignInModal from '@/components/SignInModal'
 import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@/utils/supabase'
 
 export default function PickupHeader() {
-  const supabase = createBrowserClient()
-  const { user, avatarUrl, signOut, signInWithGoogle } = useAuth()
+  const { user, avatarUrl, isAdmin, signOut, signInWithGoogle } = useAuth()
   const router = useRouter()
   const [avatarKey, setAvatarKey] = useState(0)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isSignInModalOpen, setIsSignInModalOpen] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
-
-  // Fetch admin status from Users table
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (!user) {
-        setIsAdmin(false)
-        return
-      }
-
-      try {
-        const { data: userProfiles } = await supabase
-          .from('Users')
-          .select('role')
-          .eq('user_id', user.id)
-          .limit(1)
-
-        const userProfile = userProfiles?.[0] || null
-
-        if (userProfile?.role) {
-          const normalizedRole = userProfile.role.toLowerCase()
-          setIsAdmin(
-            normalizedRole === 'admin' || normalizedRole === 'super_admin',
-          )
-        } else {
-          setIsAdmin(false)
-        }
-      } catch (error) {
-        console.error('Error checking admin status:', error)
-        setIsAdmin(false)
-      }
-    }
-
-    checkAdminStatus()
-  }, [user])
 
   // Force re-render when avatarUrl changes
   useEffect(() => {
