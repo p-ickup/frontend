@@ -255,6 +255,36 @@ export default function GroupsManagement() {
     supabase,
   })
 
+  const mergeChangeLogEntries = useCallback(
+    (entries?: ChangeLogEntry[]) => {
+      const validEntries = entries?.filter(Boolean) ?? []
+      if (validEntries.length === 0) return
+
+      setChangeLog((current) => {
+        const visibleLimit =
+          current.length >= 100
+            ? current.length
+            : current.length + validEntries.length
+        const deduped = Array.from(
+          new Map(
+            [...validEntries, ...current].map(
+              (entry) => [entry.id, entry] as const,
+            ),
+          ).values(),
+        )
+
+        return deduped
+          .sort(
+            (left, right) =>
+              new Date(right.created_at).getTime() -
+              new Date(left.created_at).getTime(),
+          )
+          .slice(0, visibleLimit)
+      })
+    },
+    [setChangeLog],
+  )
+
   // Helper function to log changes to ChangeLog
   const logToChangeLog = useCallback(
     async (
@@ -267,7 +297,7 @@ export default function GroupsManagement() {
     ) => {
       if (!user) return
 
-      await logChangeLogEntry({
+      const entry = await logChangeLogEntry({
         supabase,
         actorUserId: user.id,
         action,
@@ -279,10 +309,10 @@ export default function GroupsManagement() {
       })
 
       if (changeLogExpanded) {
-        void fetchChangeLog()
+        mergeChangeLogEntries([entry])
       }
     },
-    [changeLogExpanded, user, supabase, fetchChangeLog],
+    [changeLogExpanded, mergeChangeLogEntries, user, supabase],
   )
 
   const closeDeleteGroupConfirmation = useCallback(() => {
@@ -1104,7 +1134,7 @@ export default function GroupsManagement() {
       )
 
       try {
-        await removeRiderToUnmatched({
+        const { changeLogEntries } = await removeRiderToUnmatched({
           supabase,
           groupId,
           userId: rider.user_id,
@@ -1127,6 +1157,9 @@ export default function GroupsManagement() {
             date: rider.date,
           },
         })
+        if (changeLogExpanded) {
+          mergeChangeLogEntries(changeLogEntries)
+        }
         setChangedGroups((previous) => {
           const existing = previous.find(
             (changed) => changed.group.ride_id === groupId,
@@ -1171,7 +1204,6 @@ export default function GroupsManagement() {
                 },
               ],
         )
-        if (changeLogExpanded) void fetchChangeLog()
       } catch (error) {
         console.error('Error removing rider from group to unmatched:', error)
         setGroups((previous) =>
@@ -1198,10 +1230,10 @@ export default function GroupsManagement() {
     [
       changeLogExpanded,
       computeGroupSubsidized,
-      fetchChangeLog,
       fetchData,
       groups,
       logToChangeLog,
+      mergeChangeLogEntries,
       pendingRiderOperations,
       supabase,
     ],
@@ -1605,7 +1637,7 @@ export default function GroupsManagement() {
             .filter((g) => g.riders.length > 0),
         )
 
-        await moveRiderToGroup({
+        const { changeLogEntries } = await moveRiderToGroup({
           destinationGroupId: group.ride_id,
           sourceGroupId,
           userId: rider.user_id,
@@ -1644,6 +1676,9 @@ export default function GroupsManagement() {
           },
           changeBatchId,
         })
+        if (changeLogExpanded) {
+          mergeChangeLogEntries(changeLogEntries)
+        }
 
         // Only remove from corral AFTER successful database operations
         if (isFromCorral && corralRider) {
@@ -1849,10 +1884,12 @@ export default function GroupsManagement() {
       logToChangeLog,
       loadUnconfirmedChanges,
       fetchData,
+      changeLogExpanded,
       groups,
       corralRiders,
       corralTab,
       computeGroupSubsidized,
+      mergeChangeLogEntries,
       unmatchedIndividuals,
     ],
   )

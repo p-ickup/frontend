@@ -47,15 +47,20 @@ export const logChangeLogEntry = async ({
   changeBatchId?: string
   confirmed?: boolean
 }) => {
-  await runAdminGroupCommand('log_change_log_entry', {
-    actorUserId,
-    action,
-    metadata,
-    targetGroupId,
-    targetUserId,
-    changeBatchId,
-    confirmed,
-  })
+  const result = await runAdminGroupCommand<{ entry: ChangeLogEntry }>(
+    'log_change_log_entry',
+    {
+      actorUserId,
+      action,
+      metadata,
+      targetGroupId,
+      targetUserId,
+      changeBatchId,
+      confirmed,
+    },
+  )
+
+  return result.entry
 }
 
 export const updateGroupTimeRecords = async ({
@@ -152,13 +157,16 @@ export const removeRiderToUnmatched = async ({
   }
   changeMetadata: Record<string, unknown>
 }) => {
-  await runAdminGroupCommand('remove_rider_to_unmatched', {
-    groupId,
-    userId,
-    flightId,
-    remainingGroupUpdates,
-    changeMetadata,
-  })
+  return runAdminGroupCommand<{ changeLogEntries?: ChangeLogEntry[] }>(
+    'remove_rider_to_unmatched',
+    {
+      groupId,
+      userId,
+      flightId,
+      remainingGroupUpdates,
+      changeMetadata,
+    },
+  )
 }
 
 export const moveRiderToCorral = async ({
@@ -179,13 +187,16 @@ export const moveRiderToCorral = async ({
   }
   changeMetadata: Record<string, unknown>
 }) => {
-  await runAdminGroupCommand('move_rider_to_corral', {
-    groupId,
-    userId,
-    flightId,
-    remainingGroupUpdates,
-    changeMetadata,
-  })
+  return runAdminGroupCommand<{ changeLogEntries?: ChangeLogEntry[] }>(
+    'move_rider_to_corral',
+    {
+      groupId,
+      userId,
+      flightId,
+      remainingGroupUpdates,
+      changeMetadata,
+    },
+  )
 }
 
 export const moveRiderToGroup = async (payload: {
@@ -204,7 +215,11 @@ export const moveRiderToGroup = async (payload: {
   sourceMetadata?: Record<string, unknown>
   destinationMetadata: Record<string, unknown>
   changeBatchId: string
-}) => runAdminGroupCommand('move_rider_to_group', payload)
+}) =>
+  runAdminGroupCommand<{ changeLogEntries?: ChangeLogEntry[] }>(
+    'move_rider_to_group',
+    payload,
+  )
 
 export const updateGroupMatchesMetadata = async ({
   groupId,

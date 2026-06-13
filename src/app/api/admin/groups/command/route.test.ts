@@ -103,6 +103,7 @@ describe('POST /api/admin/groups/command remove_rider_to_unmatched', () => {
       supabase: serviceRoleClient,
       actorUserId: 'admin-1',
       actorRole: 'Admin',
+      actorName: undefined,
       groupId: 44,
       userId: 'student-1',
       flightId: 101,

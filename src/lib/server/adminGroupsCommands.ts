@@ -63,6 +63,7 @@ export const logChangeLogEntry = async ({
   supabase,
   actorUserId,
   actorRole,
+  actorName,
   action,
   metadata,
   targetGroupId,
@@ -73,6 +74,7 @@ export const logChangeLogEntry = async ({
   supabase: GroupsSupabaseClient
   actorUserId: string
   actorRole?: string | null
+  actorName?: string
   action: ChangeLogEntry['action']
   metadata?: any
   targetGroupId?: number
@@ -81,10 +83,11 @@ export const logChangeLogEntry = async ({
   confirmed?: boolean
 }) => {
   let resolvedActorRole = actorRole
+  let resolvedActorName = actorName
   if (!resolvedActorRole) {
     const { data: userProfile, error: roleError } = await supabase
       .from('Users')
-      .select('role')
+      .select('role, firstname, lastname')
       .eq('user_id', actorUserId)
       .single()
 
@@ -92,6 +95,9 @@ export const logChangeLogEntry = async ({
       throw createError(roleError, 'Failed to fetch actor role for change log')
     }
     resolvedActorRole = userProfile?.role
+    resolvedActorName =
+      `${userProfile?.firstname || ''} ${userProfile?.lastname || ''}`.trim() ||
+      resolvedActorName
   }
 
   let serializedMetadata = null
@@ -118,16 +124,46 @@ export const logChangeLogEntry = async ({
     confirmed,
   }
 
-  const { error } = await supabase.from('ChangeLog').insert(payload)
+  const { data, error } = await supabase
+    .from('ChangeLog')
+    .insert(payload)
+    .select(
+      `
+      id,
+      actor_user_id,
+      actor_role,
+      action,
+      algorithm_run_id,
+      change_batch_id,
+      target_group_id,
+      target_user_id,
+      ignored_error,
+      confirmed,
+      metadata,
+      created_at
+    `,
+    )
+    .single()
+
   if (error) {
     throw createError(error, 'Failed to write change log entry')
   }
+
+  if (!data) {
+    throw createError(null, 'Failed to read written change log entry')
+  }
+
+  return {
+    ...data,
+    actor_name: resolvedActorName,
+  } as ChangeLogEntry
 }
 
 export const removeRiderToUnmatched = async ({
   supabase,
   actorUserId,
   actorRole,
+  actorName,
   groupId,
   userId,
   flightId,
@@ -137,6 +173,7 @@ export const removeRiderToUnmatched = async ({
   supabase: GroupsSupabaseClient
   actorUserId: string
   actorRole?: string | null
+  actorName?: string
   groupId: number
   userId: string
   flightId: number
@@ -163,21 +200,25 @@ export const removeRiderToUnmatched = async ({
       : Promise.resolve(),
   ])
 
-  await logChangeLogEntry({
+  const changeLogEntry = await logChangeLogEntry({
     supabase,
     actorUserId,
     actorRole,
+    actorName,
     action: 'REMOVE_FROM_GROUP',
     metadata: changeMetadata,
     targetGroupId: groupId,
     targetUserId: userId,
   })
+
+  return { changeLogEntries: [changeLogEntry] }
 }
 
 export const moveRiderToCorral = async ({
   supabase,
   actorUserId,
   actorRole,
+  actorName,
   groupId,
   userId,
   flightId,
@@ -187,6 +228,7 @@ export const moveRiderToCorral = async ({
   supabase: GroupsSupabaseClient
   actorUserId: string
   actorRole?: string | null
+  actorName?: string
   groupId: number
   userId: string
   flightId: number
@@ -207,21 +249,25 @@ export const moveRiderToCorral = async ({
         })
       : Promise.resolve(),
   ])
-  await logChangeLogEntry({
+  const changeLogEntry = await logChangeLogEntry({
     supabase,
     actorUserId,
     actorRole,
+    actorName,
     action: 'REMOVE_FROM_GROUP',
     metadata: changeMetadata,
     targetGroupId: groupId,
     targetUserId: userId,
   })
+
+  return { changeLogEntries: [changeLogEntry] }
 }
 
 export const moveRiderToGroup = async ({
   supabase,
   actorUserId,
   actorRole,
+  actorName,
   destinationGroupId,
   sourceGroupId,
   userId,
@@ -241,6 +287,7 @@ export const moveRiderToGroup = async ({
   supabase: GroupsSupabaseClient
   actorUserId: string
   actorRole?: string | null
+  actorName?: string
   destinationGroupId: number
   sourceGroupId?: number
   userId: string
@@ -301,29 +348,37 @@ export const moveRiderToGroup = async ({
       : Promise.resolve(),
   ])
 
+  const changeLogEntries: ChangeLogEntry[] = []
+
   if (sourceGroupId && sourceMetadata) {
-    await logChangeLogEntry({
+    const sourceChangeLogEntry = await logChangeLogEntry({
       supabase,
       actorUserId,
       actorRole,
+      actorName,
       action: 'REMOVE_FROM_GROUP',
       metadata: sourceMetadata,
       targetGroupId: sourceGroupId,
       targetUserId: userId,
       changeBatchId,
     })
+    changeLogEntries.push(sourceChangeLogEntry)
   }
 
-  await logChangeLogEntry({
+  const destinationChangeLogEntry = await logChangeLogEntry({
     supabase,
     actorUserId,
     actorRole,
+    actorName,
     action: 'ADD_TO_GROUP',
     metadata: destinationMetadata,
     targetGroupId: destinationGroupId,
     targetUserId: userId,
     changeBatchId,
   })
+  changeLogEntries.push(destinationChangeLogEntry)
+
+  return { changeLogEntries }
 }
 
 export const updateGroupTimeRecords = async ({

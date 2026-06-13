@@ -65,7 +65,29 @@ describe('removeRiderToUnmatched', () => {
     const updateFlightsByIds = jest.fn().mockResolvedValue({ error: null })
     const updateFlights = jest.fn(() => ({ in: updateFlightsByIds }))
 
-    const insertChangeLog = jest.fn().mockResolvedValue({ error: null })
+    const readInsertedChangeLog = jest.fn().mockResolvedValue({
+      data: {
+        id: 'change-1',
+        actor_user_id: 'admin-1',
+        actor_role: 'Admin',
+        action: 'REMOVE_FROM_GROUP',
+        algorithm_run_id: null,
+        change_batch_id: null,
+        target_group_id: 44,
+        target_user_id: 'student-1',
+        ignored_error: false,
+        confirmed: false,
+        metadata: { from_group: 44, to: 'unmatched' },
+        created_at: '2026-06-13T00:00:00.000Z',
+      },
+      error: null,
+    })
+    const selectInsertedChangeLog = jest.fn(() => ({
+      single: readInsertedChangeLog,
+    }))
+    const insertChangeLog = jest.fn(() => ({
+      select: selectInsertedChangeLog,
+    }))
     const from = jest.fn((table: string) => {
       if (table === 'Matches') {
         return { delete: deleteMatches, update: updateMatches }
@@ -111,6 +133,9 @@ describe('removeRiderToUnmatched', () => {
         target_group_id: 44,
         target_user_id: 'student-1',
       }),
+    )
+    expect(selectInsertedChangeLog).toHaveBeenCalledWith(
+      expect.stringContaining('id'),
     )
     expect(from).not.toHaveBeenCalledWith('Users')
   })

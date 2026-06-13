@@ -39,6 +39,9 @@ export const POST = withAdminRoute(async (request, auth) => {
     const action = String(body?.action || '')
     const payload = body?.payload || {}
     const adminSupabase = createServiceRoleClient()
+    const actorName =
+      `${auth.profile.firstname || ''} ${auth.profile.lastname || ''}`.trim() ||
+      undefined
 
     switch (action) {
       case 'log_change_log_entry': {
@@ -55,10 +58,11 @@ export const POST = withAdminRoute(async (request, auth) => {
               : null,
         })
 
-        await logChangeLogEntry({
+        const entry = await logChangeLogEntry({
           supabase: adminSupabase,
           actorUserId: auth.user.id,
           actorRole: auth.profile.role,
+          actorName,
           action: payload.action,
           metadata: payload.metadata,
           targetGroupId: payload.targetGroupId,
@@ -69,7 +73,7 @@ export const POST = withAdminRoute(async (request, auth) => {
               : undefined,
           confirmed: payload.confirmed,
         })
-        return NextResponse.json({ success: true })
+        return NextResponse.json({ success: true, entry })
       }
 
       case 'update_group_time': {
@@ -179,17 +183,18 @@ export const POST = withAdminRoute(async (request, auth) => {
           }),
         ])
 
-        await removeRiderToUnmatched({
+        const result = await removeRiderToUnmatched({
           supabase: adminSupabase,
           actorUserId: auth.user.id,
           actorRole: auth.profile.role,
+          actorName,
           groupId: Number(payload.groupId),
           userId: String(payload.userId),
           flightId: Number(payload.flightId),
           remainingGroupUpdates,
           changeMetadata: payload.changeMetadata || {},
         })
-        return NextResponse.json({ success: true })
+        return NextResponse.json({ success: true, ...result })
       }
 
       case 'move_rider_to_corral': {
@@ -206,17 +211,18 @@ export const POST = withAdminRoute(async (request, auth) => {
             flightId: Number(payload.flightId),
           }),
         ])
-        await moveRiderToCorral({
+        const result = await moveRiderToCorral({
           supabase: adminSupabase,
           actorUserId: auth.user.id,
           actorRole: auth.profile.role,
+          actorName,
           groupId: Number(payload.groupId),
           userId: String(payload.userId),
           flightId: Number(payload.flightId),
           remainingGroupUpdates: payload.remainingGroupUpdates,
           changeMetadata: payload.changeMetadata || {},
         })
-        return NextResponse.json({ success: true })
+        return NextResponse.json({ success: true, ...result })
       }
 
       case 'move_rider_to_group': {
@@ -256,10 +262,11 @@ export const POST = withAdminRoute(async (request, auth) => {
             : Promise.resolve(),
         ])
 
-        await moveRiderToGroup({
+        const result = await moveRiderToGroup({
           supabase: adminSupabase,
           actorUserId: auth.user.id,
           actorRole: auth.profile.role,
+          actorName,
           destinationGroupId,
           sourceGroupId,
           userId: String(payload.userId),
@@ -276,7 +283,7 @@ export const POST = withAdminRoute(async (request, auth) => {
           destinationMetadata: payload.destinationMetadata || {},
           changeBatchId: String(payload.changeBatchId),
         })
-        return NextResponse.json({ success: true })
+        return NextResponse.json({ success: true, ...result })
       }
 
       case 'update_group_matches_metadata': {
