@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createServerClient } from '@/utils/supabase'
+import type { User } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
@@ -12,7 +13,24 @@ type UserProfile = {
   lastname?: string | null
 }
 
-export async function requireAuthenticatedRoute() {
+type ServerSupabaseClient = ReturnType<typeof createServerClient>
+
+export type AuthenticatedApiPrincipal = {
+  supabase: ServerSupabaseClient
+  user: User
+}
+
+export type AdminApiPrincipal = AuthenticatedApiPrincipal & {
+  profile: UserProfile
+}
+
+type ApiHandler<TPrincipal, TContext> = (
+  request: Request,
+  auth: TPrincipal,
+  context: TContext,
+) => Response | Promise<Response>
+
+const authenticateRequest = async () => {
   const cookieStore = cookies()
   const supabase = createServerClient(cookieStore)
 
@@ -21,26 +39,18 @@ export async function requireAuthenticatedRoute() {
     error,
   } = await supabase.auth.getUser()
 
-  if (error || !user) {
-    return {
-      error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
-      supabase,
-      user: null,
-    }
-  }
-
   return {
-    error: null,
     supabase,
-    user,
+    user: error ? null : user,
   }
 }
 
-export async function requireAdminRoute() {
-  const auth = await requireAuthenticatedRoute()
-  if (auth.error || !auth.user) {
+const authorizeAdmin = async () => {
+  const auth = await authenticateRequest()
+  if (!auth.user) {
     return {
       ...auth,
+      denial: 'unauthenticated' as const,
       profile: null,
     }
   }
@@ -53,7 +63,7 @@ export async function requireAdminRoute() {
 
   if (profileError || !profile) {
     return {
-      error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+      denial: 'forbidden' as const,
       supabase: auth.supabase,
       user: null,
       profile: null,
@@ -63,7 +73,49 @@ export async function requireAdminRoute() {
   const normalizedRole = profile.role?.toLowerCase()
   if (normalizedRole !== 'admin' && normalizedRole !== 'super_admin') {
     return {
-      error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+      denial: 'forbidden' as const,
+      supabase: auth.supabase,
+      user: null,
+      profile: null,
+    }
+  }
+
+  return {
+    denial: null,
+    supabase: auth.supabase,
+    user: auth.user,
+    profile: profile as UserProfile,
+  }
+}
+
+async function requireAuthenticatedRoute() {
+  const auth = await authenticateRequest()
+
+  if (!auth.user) {
+    return {
+      error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+      supabase: auth.supabase,
+      user: null,
+    }
+  }
+
+  return {
+    error: null,
+    supabase: auth.supabase,
+    user: auth.user,
+  }
+}
+
+async function requireAdminRoute() {
+  const auth = await authorizeAdmin()
+
+  if (auth.denial) {
+    const unauthenticated = auth.denial === 'unauthenticated'
+    return {
+      error: NextResponse.json(
+        { error: unauthenticated ? 'Unauthorized' : 'Forbidden' },
+        { status: unauthenticated ? 401 : 403 },
+      ),
       supabase: auth.supabase,
       user: null,
       profile: null,
@@ -74,9 +126,51 @@ export async function requireAdminRoute() {
     error: null,
     supabase: auth.supabase,
     user: auth.user,
-    profile: profile as UserProfile,
+    profile: auth.profile,
   }
 }
+
+export async function getAdminPagePrincipal() {
+  const auth = await authorizeAdmin()
+  if (auth.denial) return null
+
+  return {
+    user: auth.user,
+    profile: auth.profile,
+  }
+}
+
+export const withAuthenticatedRoute =
+  <TContext = unknown>(
+    handler: ApiHandler<AuthenticatedApiPrincipal, TContext>,
+  ) =>
+  async (request: Request, context: TContext) => {
+    const auth = await requireAuthenticatedRoute()
+    if (auth.error || !auth.user) return auth.error
+
+    return handler(
+      request,
+      { supabase: auth.supabase, user: auth.user },
+      context,
+    )
+  }
+
+export const withAdminRoute =
+  <TContext = unknown>(handler: ApiHandler<AdminApiPrincipal, TContext>) =>
+  async (request: Request, context: TContext) => {
+    const auth = await requireAdminRoute()
+    if (auth.error || !auth.user || !auth.profile) return auth.error
+
+    return handler(
+      request,
+      {
+        supabase: auth.supabase,
+        user: auth.user,
+        profile: auth.profile,
+      },
+      context,
+    )
+  }
 
 export const badRequestJson = (message: string, details?: unknown) =>
   NextResponse.json({ error: message, details }, { status: 400 })

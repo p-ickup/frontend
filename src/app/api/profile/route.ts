@@ -1,18 +1,13 @@
 import {
   badRequestJson,
-  requireAuthenticatedRoute,
   routeErrorJson,
+  withAuthenticatedRoute,
 } from '@/lib/server/auth'
 import { createServiceRoleClient } from '@/lib/server/serviceRole'
 import { saveOwnProfile } from '@/lib/server/studentCommands'
 import { NextResponse } from 'next/server'
 
-export async function POST(request: Request) {
-  const auth = await requireAuthenticatedRoute()
-  if (auth.error || !auth.user) {
-    return auth.error
-  }
-
+export const POST = withAuthenticatedRoute(async (request, auth) => {
   try {
     const body = await request.json()
     const profile = body?.profile
@@ -43,4 +38,4 @@ export async function POST(request: Request) {
   } catch (error: any) {
     return routeErrorJson(error, 'Failed to save profile.')
   }
-}
+})

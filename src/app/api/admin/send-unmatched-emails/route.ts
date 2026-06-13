@@ -1,12 +1,7 @@
-import { internalErrorJson, requireAdminRoute } from '@/lib/server/auth'
+import { internalErrorJson, withAdminRoute } from '@/lib/server/auth'
 import { NextResponse } from 'next/server'
 
-export async function POST(request: Request) {
-  const auth = await requireAdminRoute()
-  if (auth.error || !auth.user) {
-    return auth.error
-  }
-
+export const POST = withAdminRoute(async (request) => {
   try {
     const body = await request.json().catch(() => ({}))
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -44,4 +39,4 @@ export async function POST(request: Request) {
       error?.details,
     )
   }
-}
+})

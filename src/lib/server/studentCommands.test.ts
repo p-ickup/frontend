@@ -563,6 +563,35 @@ describe('createOwnFlight', () => {
 })
 
 describe('updateOwnFlight', () => {
+  it('rejects cross-user updates before invoking the transaction RPC', async () => {
+    const maybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        flight_id: 77,
+        user_id: 'other-student',
+        date: '2099-01-20',
+      },
+      error: null,
+    })
+    const selectEq = jest.fn(() => ({ maybeSingle }))
+    const select = jest.fn(() => ({ eq: selectEq }))
+    const from = jest.fn(() => ({ select }))
+    const rpc = jest.fn()
+
+    await expect(
+      updateOwnFlight({
+        supabase: { from, rpc },
+        userId: 'student-1',
+        flightId: 77,
+        payload: { airport: 'LAX' },
+      }),
+    ).rejects.toMatchObject({
+      message: 'Flight not found.',
+      status: 404,
+    })
+
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
   it('narrows the update payload before calling the transactional RPC', async () => {
     const maybeSingle = jest.fn().mockResolvedValue({
       data: {
@@ -680,6 +709,34 @@ describe('updateOwnFlight', () => {
 })
 
 describe('deleteOwnFlight', () => {
+  it('rejects cross-user deletes before invoking the transaction RPC', async () => {
+    const maybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        flight_id: 88,
+        user_id: 'other-student',
+        date: '2099-01-20',
+      },
+      error: null,
+    })
+    const selectEq = jest.fn(() => ({ maybeSingle }))
+    const select = jest.fn(() => ({ eq: selectEq }))
+    const from = jest.fn(() => ({ select }))
+    const rpc = jest.fn()
+
+    await expect(
+      deleteOwnFlight({
+        supabase: { from, rpc },
+        userId: 'student-1',
+        flightId: 88,
+      }),
+    ).rejects.toMatchObject({
+      message: 'Flight not found.',
+      status: 404,
+    })
+
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
   it('calls the transactional RPC for flight deletion', async () => {
     const maybeSingle = jest.fn().mockResolvedValue({
       data: {

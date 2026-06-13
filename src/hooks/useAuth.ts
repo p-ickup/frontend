@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createBrowserClient } from '@/utils/supabase'
 import { type AuthChangeEvent, type Session, User } from '@supabase/supabase-js'
+import { getSafeReturnPath } from '@/config/routeAccess'
 
 interface AuthState {
   user: User | null
@@ -137,10 +138,21 @@ export function useAuth() {
       : process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL ||
         `${callbackOrigin}/auth/callback`
 
+    const requestedReturnPath =
+      typeof window !== 'undefined'
+        ? getSafeReturnPath(
+            new URLSearchParams(window.location.search).get('redirectTo'),
+          )
+        : null
+    const callbackWithReturnPath = new URL(callbackUrl, callbackOrigin)
+    if (requestedReturnPath) {
+      callbackWithReturnPath.searchParams.set('redirectTo', requestedReturnPath)
+    }
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: callbackUrl,
+        redirectTo: callbackWithReturnPath.toString(),
       },
     })
 

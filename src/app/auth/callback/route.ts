@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@/utils/supabase'
 import { createServiceRoleClient } from '@/lib/server/serviceRole'
+import { getSafeAuthOrigin, getSafeReturnPath } from '@/config/routeAccess'
 
 const splitName = (fullName: string | null | undefined) => {
   const trimmed = (fullName || '').trim()
@@ -17,18 +18,6 @@ const splitName = (fullName: string | null | undefined) => {
   const lastname = parts.length > 1 ? parts.slice(1).join(' ') : null
 
   return { firstname, lastname }
-}
-
-const getRequestOrigin = (request: Request, requestUrl: URL) => {
-  const forwardedProto = request.headers.get('x-forwarded-proto')
-  const host =
-    request.headers.get('x-forwarded-host') || request.headers.get('host')
-
-  if (host) {
-    return `${forwardedProto || requestUrl.protocol.replace(':', '')}://${host}`
-  }
-
-  return requestUrl.origin
 }
 
 const hasProfileValue = (value: string | null | undefined) =>
@@ -60,9 +49,13 @@ const hasCompleteProfile = (profile: {
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
-  const requestOrigin = getRequestOrigin(request, requestUrl)
+  const requestOrigin = getSafeAuthOrigin(
+    requestUrl,
+    process.env.NEXT_PUBLIC_AUTH_CALLBACK_URL,
+  )
   const code = requestUrl.searchParams.get('code')
-  const redirectTo = requestUrl.searchParams.get('redirectTo') || '/' // Default to home
+  const redirectTo =
+    getSafeReturnPath(requestUrl.searchParams.get('redirectTo')) || '/'
   const errorRedirect = (message: string) =>
     NextResponse.redirect(
       `${requestOrigin}/?authError=${encodeURIComponent(message)}`,

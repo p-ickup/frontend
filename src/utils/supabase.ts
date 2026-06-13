@@ -88,5 +88,8 @@ export const createMiddlewareClient = (request: NextRequest) => {
     },
   )
 
-  return { supabase, response }
+  return {
+    supabase,
+    getResponse: () => response,
+  }
 }
