@@ -1,15 +1,13 @@
 import GroupsManagement from '@/components/admin/GroupsManagement'
-import { checkAdminAccess } from '@/utils/adminGuard'
+import { getAdminPagePrincipal } from '@/lib/server/auth'
 import { redirect } from 'next/navigation'
 
 export default async function GroupsPage() {
-  // Check admin access - redirects if not admin
-  const user = await checkAdminAccess()
+  const principal = await getAdminPagePrincipal()
 
-  if (!user) {
+  if (!principal) {
     redirect('/')
   }
 
-  // User is authenticated and has admin privileges
-  return <GroupsManagement user={user} />
+  return <GroupsManagement user={principal.user} />
 }

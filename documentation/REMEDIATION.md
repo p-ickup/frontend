@@ -44,6 +44,42 @@ npm test -- --testPathPattern=studentCommands.test.ts
 
 ---
 
+## Remediation Issue #10
+
+**Audit item:** Middleware performed Supabase session refresh work across nearly all routes without enforcing route access. Authorization was distributed across pages, API helpers, server commands, RLS policies, and RPCs, increasing the risk of missed checks.
+
+**Status:** Completed
+
+**Summary:** Authentication and route access are now centrally defined and consistently enforced. Middleware runs only on protected pages, validates sessions with Supabase, and redirects unauthenticated users safely. Every API handler uses an authenticated or admin wrapper, while role, admin-scope, ownership, membership, RLS, and RPC controls remain enforced at the API/database boundary.
+
+**Remediation completed:**
+
+- Added a central public, authenticated, and admin page policy in `src/config/routeAccess.ts`; tests fail if a page is unclassified or middleware coverage drifts.
+- Limited middleware to protected pages and replaced `getSession()` with server-validated `getUser()`. Public pages, APIs, OAuth callbacks, and static assets no longer incur middleware session refresh work.
+- Preserved internal return destinations and copied cookies from Supabase's final refreshed response during sign-in redirects. OAuth redirects use the configured production origin, and external, protocol-relative, malformed, and backslash-based return URLs are rejected.
+- Consolidated API and server-rendered admin authorization in `src/lib/server/auth.ts` and removed the duplicate `adminGuard.ts` implementation.
+- Added `withAuthenticatedRoute` and `withAdminRoute`; all 23 API handlers use the required wrapper. Missing sessions return `401`; authenticated non-admin users return `403`.
+- Retained role, school-based admin scope, record ownership, ride membership, RLS, and RPC checks at the API/database boundary. Service-role operations remain server-only and execute only after explicit scope or ownership validation.
+- Reviewed production RLS for seven browser-accessed tables, `profile_picture` storage policies, and relevant security-definer RPCs. The reviewed policies enforce self, shared-ride, ride-member, scoped-admin, or admin access. No database policies or functions were changed.
+- Added negative coverage for public/protected routing, unsafe return URLs, missing or invalid sessions, non-admin users, out-of-scope admins, cross-user flight access, and cookie refresh propagation.
+
+**Supporting documentation:**
+
+- `documentation/SERVICE_ROLE_AUTHORIZATION.md` records each service-role operation and its authorization gate.
+- `documentation/RLS_POLICY_EVIDENCE.md` records the production RLS, storage-policy, and RPC evidence reviewed on June 12, 2026.
+- `documentation/RLS_POLICY_AUDIT.sql` and `documentation/RLS_POLICY_FOLLOWUP.sql` provide read-only policy, grant, storage, and RPC evidence queries.
+
+**Test results:**
+
+- `pnpm type-check` - passed.
+- `pnpm knip` and `pnpm knip:production` - passed.
+- `pnpm lint` - passed with three pre-existing React hook dependency warnings.
+- `pnpm test:ci --passWithNoTests --runInBand` - 10 suites and 101 tests passed.
+- `pnpm build` - passed; all 42 routes generated and middleware bundled successfully.
+- Production smoke tests passed for all 7 public pages and 13 protected/admin route cases. Protected routes preserved their complete return destination, representative APIs rejected missing sessions with `401`, and no browser console errors occurred.
+
+---
+
 ## Remediation Issue #12
 
 **Audit item:**

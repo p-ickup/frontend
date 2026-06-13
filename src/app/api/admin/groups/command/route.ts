@@ -1,7 +1,7 @@
 import {
   badRequestJson,
-  requireAdminRoute,
   routeErrorJson,
+  withAdminRoute,
 } from '@/lib/server/auth'
 import {
   assertAdminScopeForChangeLogIds,
@@ -32,12 +32,7 @@ import {
 } from '@/lib/server/adminGroupsCommands'
 import { NextResponse } from 'next/server'
 
-export async function POST(request: Request) {
-  const auth = await requireAdminRoute()
-  if (auth.error || !auth.user || !auth.profile) {
-    return auth.error
-  }
-
+export const POST = withAdminRoute(async (request, auth) => {
   try {
     const body = await request.json()
     const action = String(body?.action || '')
@@ -336,4 +331,4 @@ export async function POST(request: Request) {
   } catch (error: any) {
     return routeErrorJson(error, 'Failed to process admin group command.')
   }
-}
+})

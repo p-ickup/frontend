@@ -1,17 +1,12 @@
 import {
   badRequestJson,
-  requireAuthenticatedRoute,
   routeErrorJson,
+  withAuthenticatedRoute,
 } from '@/lib/server/auth'
 import { getAspcReadyData } from '@/lib/server/studentCommands'
 import { NextResponse } from 'next/server'
 
-export async function GET(request: Request) {
-  const auth = await requireAuthenticatedRoute()
-  if (auth.error || !auth.user) {
-    return auth.error
-  }
-
+export const GET = withAuthenticatedRoute(async (request, auth) => {
   try {
     const { searchParams } = new URL(request.url)
     const rideIdParam = searchParams.get('rideId')
@@ -32,4 +27,4 @@ export async function GET(request: Request) {
   } catch (error: any) {
     return routeErrorJson(error, 'Failed to load ready-for-pickup data.')
   }
-}
+})

@@ -1,7 +1,7 @@
 import {
   badRequestJson,
-  requireAuthenticatedRoute,
   routeErrorJson,
+  withAuthenticatedRoute,
 } from '@/lib/server/auth'
 import { createServiceRoleClient } from '@/lib/server/serviceRole'
 import { getAspcDelayData } from '@/lib/server/studentCommands'
@@ -12,12 +12,7 @@ import {
 } from '@/lib/server/aspcDelayCommands'
 import { NextResponse } from 'next/server'
 
-export async function GET(request: Request) {
-  const auth = await requireAuthenticatedRoute()
-  if (auth.error || !auth.user) {
-    return auth.error
-  }
-
+export const GET = withAuthenticatedRoute(async (request, auth) => {
   try {
     const { searchParams } = new URL(request.url)
     const rideIdParam = searchParams.get('rideId')
@@ -38,14 +33,9 @@ export async function GET(request: Request) {
   } catch (error: any) {
     return routeErrorJson(error, 'Failed to load delay data.')
   }
-}
+})
 
-export async function POST(request: Request) {
-  const auth = await requireAuthenticatedRoute()
-  if (auth.error || !auth.user) {
-    return auth.error
-  }
-
+export const POST = withAuthenticatedRoute(async (request, auth) => {
   try {
     const body = await request.json()
     const action = String(body?.action || '')
@@ -108,4 +98,4 @@ export async function POST(request: Request) {
   } catch (error: any) {
     return routeErrorJson(error, 'Failed to process delay request.')
   }
-}
+})

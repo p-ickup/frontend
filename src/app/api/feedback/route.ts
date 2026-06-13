@@ -1,17 +1,12 @@
 import {
   badRequestJson,
-  requireAuthenticatedRoute,
   routeErrorJson,
+  withAuthenticatedRoute,
 } from '@/lib/server/auth'
 import { getFeedbackRides, submitFeedback } from '@/lib/server/studentCommands'
 import { NextResponse } from 'next/server'
 
-export async function GET() {
-  const auth = await requireAuthenticatedRoute()
-  if (auth.error || !auth.user) {
-    return auth.error
-  }
-
+export const GET = withAuthenticatedRoute(async (_request, auth) => {
   try {
     const result = await getFeedbackRides({
       supabase: auth.supabase,
@@ -22,14 +17,9 @@ export async function GET() {
   } catch (error: any) {
     return routeErrorJson(error, 'Failed to load feedback options.')
   }
-}
+})
 
-export async function POST(request: Request) {
-  const auth = await requireAuthenticatedRoute()
-  if (auth.error || !auth.user) {
-    return auth.error
-  }
-
+export const POST = withAuthenticatedRoute(async (request, auth) => {
   try {
     const body = await request.json()
     const flightId = Number(body?.flightId)
@@ -58,4 +48,4 @@ export async function POST(request: Request) {
   } catch (error: any) {
     return routeErrorJson(error, 'Failed to submit feedback.')
   }
-}
+})
