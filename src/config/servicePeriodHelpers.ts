@@ -164,10 +164,6 @@ export function isInSubsidizedWindow(
   return isDateCovered(date, toAirport)
 }
 
-export function isDateInAnySubsidizedWindow(date: string): boolean {
-  return getAllowedDirectionsForDate(date).length > 0
-}
-
 export function isFlightPastDeadline(
   flightDate: string,
   now: Date = new Date(),
