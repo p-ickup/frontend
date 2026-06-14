@@ -88,62 +88,7 @@ export function validateFlightNumber(
   }
 }
 
-/**
- * Service periods with their corresponding request deadlines
- */
-interface ServicePeriod {
-  start: string // YYYY-MM-DD
-  end: string // YYYY-MM-DD
-  deadline: string // YYYY-MM-DDTHH:MM:SS-08:00 (PST)
-  name: string
-}
-
-const SERVICE_PERIODS: ServicePeriod[] = [
-  // Thanksgiving Break (Combined outbound Nov 21-26 + return Nov 29-Dec 1)
-  // With 5-day buffer: Nov 16 - Dec 6
-  // Deadline: Nov 14 @ 11:59 PM PT
-  {
-    start: '2025-11-16', // 5 days before Nov 21
-    end: '2025-12-01', // 0 days after Dec 1
-    deadline: '2025-11-14T23:59:59-08:00',
-    name: 'Thanksgiving Break',
-  },
-  // Winter Break Outbound (Dec 9-13)
-  // With 5-day buffer: Dec 4 - Dec 18
-  // Deadline: Dec 3 @ 11:59 PM PT
-  {
-    start: '2025-12-02', // 5 days before Dec 9
-    end: '2025-12-18', // 5 days after Dec 13
-    deadline: '2025-12-03T23:59:59-08:00',
-    name: 'Winter Break (Outbound)',
-  },
-  // Winter Break Return (Jan 17-21)
-  // With 5-day buffer: Jan 12 - Jan 26
-  // Deadline: Jan 9 @ 11:59 PM PT
-  {
-    start: '2026-01-12', // 5 days before Jan 17
-    end: '2026-01-26', // 5 days after Jan 21
-    deadline: '2026-01-09T23:59:59-08:00',
-    name: 'Winter Break (Return)',
-  },
-  // Spring Break (Mar 13-15 departure + Mar 21-22 return)
-  // With 5-day start buffer, 4-day end buffer: Mar 8 - Mar 26
-  // Deadline: Mar 6 @ 11:59 PM PT
-  {
-    start: '2026-03-08', // 5 days before Mar 13
-    end: '2026-03-26', // 4 days after Mar 22
-    deadline: '2026-03-06T23:59:59-08:00',
-    name: 'Spring Break',
-  },
-  // Summer Break (5/12-5/19 departure)
-  //
-  {
-    start: '2026-05-07', // 5 days before 5/12
-    end: '2026-05-21', // 2 days after 5/19
-    deadline: '2026-05-06T23:59:59-07:00', // it's 7:00 due to daylight savings in the spring
-    name: 'Summer Break',
-  },
-]
+import { isFlightPastDeadline as isFlightPastDeadlineFromPeriods } from '@/config/servicePeriodHelpers'
 
 /**
  * Check if a flight date is past its deadline for requests
@@ -155,36 +100,7 @@ export function isFlightPastDeadline(flightDate: string): {
   periodName?: string
   deadline?: Date
 } {
-  if (!flightDate) {
-    return { isPastDeadline: false }
-  }
-
-  const flight = new Date(flightDate)
-  flight.setHours(0, 0, 0, 0)
-
-  // Find the service period this flight falls into
-  for (const period of SERVICE_PERIODS) {
-    const periodStart = new Date(period.start)
-    const periodEnd = new Date(period.end)
-    periodStart.setHours(0, 0, 0, 0)
-    periodEnd.setHours(23, 59, 59, 999)
-
-    // Check if flight date is within this service period
-    if (flight >= periodStart && flight <= periodEnd) {
-      const deadlineDate = new Date(period.deadline)
-      const now = new Date()
-
-      return {
-        isPastDeadline: now > deadlineDate,
-        periodName: period.name,
-        deadline: deadlineDate,
-      }
-    }
-  }
-
-  // If flight date doesn't match any service period, it's not eligible
-  // (but we'll allow it - just no deadline enforcement)
-  return { isPastDeadline: false }
+  return isFlightPastDeadlineFromPeriods(flightDate)
 }
 
 /**

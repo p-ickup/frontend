@@ -29,17 +29,21 @@ If the project is not linked, use `--project-id <ref>` instead of `--linked`. Se
 
 Run this checklist before each break (Thanksgiving, winter, spring, summer, etc.).
 
-| Step                      | File                                                                                        | What to change                                                                                                                                                                                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Subsidized travel dates   | [`src/config/subsidyConfig.ts`](../src/config/subsidyConfig.ts)                             | Add `MM-DD` entries to `COVERED_DATES_OUTBOUND` and/or `COVERED_DATES_INBOUND`                                                                                                                                                 |
-| Deadlines + edit windows  | [`src/utils/flightValidation.ts`](../src/utils/flightValidation.ts)                         | Extend `SERVICE_PERIODS`: buffered `start`/`end` (~3 days beyond subsidized dates), PST `deadline` (`YYYY-MM-DDTHH:MM:SS-08:00`), human-readable `name` (e.g. “Summer Break”). Powers `isFlightPastDeadline` / `canEditFlight` |
-| In-form ASPC messaging    | [`src/components/forms/FlightForm.tsx`](../src/components/forms/FlightForm.tsx)             | In `checkASPCSubsidyEligibility`, append windows to `operationalPeriods` with `type: 'departure'` (campus → airport) or `'return'` (airport → campus)                                                                          |
-| Optional deadline summary | [`FEATURE_STATUS.md`](./FEATURE_STATUS.md)                                                  | The old hard-coded banner was removed. Any future summary must derive its dates from `SERVICE_PERIODS`                                                                                                                         |
-| Optional public copy      | [`src/app/aspc-policy/page.tsx`](../src/app/aspc-policy/page.tsx) and other ASPC info pages | Align published dates with what you coded                                                                                                                                                                                      |
+| Step | File | What to change |
+| ---- | ---- | -------------- |
+| **All break dates, deadlines, directions** | [`src/config/servicePeriods.ts`](../src/config/servicePeriods.ts) | Add or edit period rows: `subsidized` outbound/inbound ranges, `buffered` window, `deadline` (ISO with correct PT offset), `allowedDirections`. Short breaks = one dual-direction row; long winter gap = separate outbound/return rows. |
+| Airport mins + school | [`src/config/subsidyConfig.ts`](../src/config/subsidyConfig.ts) | `AIRPORT_MIN_RIDERS`, `ALLOWED_SCHOOL` only — covered date lists are derived automatically. |
+| Optional deadline summary | [`FEATURE_STATUS.md`](./FEATURE_STATUS.md) | Any future banner must use `getBufferedPeriods()` from `servicePeriodHelpers.ts`. |
 
-**Buffer rationale:** Service periods use a buffer beyond subsidized dates so riders who submit slightly outside covered dates still fall in the correct period and share the same request deadline / edit eligibility.
+**Auto-updated consumers** (no manual edits needed after `servicePeriods.ts` changes):
 
-**Backend sync:** `subsidyConfig.ts` notes keeping dates in sync with backend `config.py` if the ML/matching service uses the same rules.
+- Flight form direction gating, deadline checks, ASPC warnings — [`FlightForm.tsx`](../src/components/forms/FlightForm.tsx)
+- Admin subsidy/voucher logic — [`useSubsidyLogic.ts`](../src/hooks/useSubsidyLogic.ts) via derived `COVERED_DATES_*`
+- Public policy page — [`aspc-policy/page.tsx`](../src/app/aspc-policy/page.tsx) shows the **last** period in the array (append new breaks at the end)
+
+**Buffer rationale:** Buffered windows extend beyond subsidized dates so riders near the edge of a break share the same request deadline and edit eligibility. These dates are still unsubsidized but this allows students the opportunity to be possibly matched with others for that school break.
+
+**Backend sync:** The ML batch service uses a separate `config.py` (different repo, batch-only). When breaks change, update `servicePeriods.ts` first, then align `config.py` manually (or add a JSON export script later).
 
 ---
 

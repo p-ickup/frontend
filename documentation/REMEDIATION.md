@@ -44,6 +44,126 @@ npm test -- --testPathPattern=studentCommands.test.ts
 
 ---
 
+## Item 5 — `Flights.matched` → `matching_status` cutover
+
+**Audit item:** Flight lifecycle was encoded in a legacy boolean `Flights.matched` (`null` / `false` / `true`) while newer code and `commit_matching_run` already wrote `matching_status`. Dual columns drifted and made filters ambiguous (e.g. student unmatched pool vs admin “unmatched forms” count).
+
+**Status:** Completed
+
+**Summary:** Replaced boolean semantics with a single enum-like text column: `submitted` | `unmatched` | `matched`. Eight Postgres RPCs were rewritten; the frontend and admin tools read/write the new column `matching_status` only. Canonical helpers in [`matchingStatus.ts`](src/utils/matchingStatus.ts) centralize status checks. Edge functions required no redeploy for this column.
+
+### Status semantics
+
+| `matching_status` | Replaces `matched` | Meaning |
+| ----------------- | ------------------ | ------- |
+| `submitted` | `null` | Filed; awaiting batch matcher |
+| `unmatched` | `false` | Post-matcher; no group |
+| `matched` | `true` | In a group (`Matches` row exists) |
+
+**Filter rules (unchanged product behavior, new column):**
+
+| Surface | Filter |
+| ------- | ------ |
+| Student `/unmatched` coordination pool | `unmatched` only |
+| `/questionnaires` Upcoming | `submitted` |
+| `/questionnaires` Unmatched section | `unmatched` |
+| Admin dashboard unmatched count + CSV | `submitted` + `unmatched` |
+| Admin groups unmatched riders panel | `matching_status <> 'matched'` |
+
+### Database
+
+`CREATE OR REPLACE` on eight RPCs that read or wrote `matched`:
+
+| RPC | Change |
+| --- | ------ |
+| `accept_match_request` | Guards and sets `matching_status = 'matched'` |
+| `cancel_own_match` | Sets `matching_status = 'unmatched'` |
+| `create_group_records` | Sets `matching_status = 'matched'` for group riders |
+| `delete_group_records` | Optional `matching_status = 'unmatched'` |
+| `aspc_delay_move_to_unmatched` | Sets `matching_status = 'unmatched'` |
+| `aspc_delay_decline_groups` | Sets `matching_status = 'unmatched'` |
+| `update_own_flight_tx` | 409 guard uses `matching_status = 'matched'` (with Item 4) |
+| `delete_own_flight_tx` | Same read guard |
+
+### Deferred (Phase 4) - STILL TODO
+
+- `p_cancelled_after_deadline` on `cancel_own_match` + TS pre-fetch in `cancelOwnMatch` (today RPC still hardcodes `cancelled_after_deadline = true`).
+- `DROP COLUMN matched` after soak.
+
+### Files
+
+| File | Change |
+| ---- | ------ |
+| `supabase-migrations/2026-06-11_matching_status_cutover.sql` | RPC cutover |
+| `src/utils/matchingStatus.ts` | Canonical status helpers |
+| `src/utils/matchingStatus.test.ts` | Helper tests |
+| `src/lib/server/studentCommands.ts` | Reads/writes `matching_status`; FK-qualified embeds |
+| `src/lib/server/adminGroupsCommands.ts` | `matching_status` updates |
+| `src/lib/server/aspcDelayCommands.ts` | FK-qualified embeds |
+| `src/app/questionnaires/page.tsx` | Status-based sections |
+| `src/components/forms/FlightForm.tsx` | `matching_status` on load |
+| `src/components/admin/AdminDashboard.tsx` | Dashboard count filter |
+| `src/components/admin/GroupsManagement.tsx` | Admin mark-matched API |
+| `src/app/api/admin/groups/command/route.ts` | `matchingStatus` in payload |
+| `src/lib/server/studentCommands.test.ts` | RPC/status mocks updated |
+| `src/lib/server/adminGroupsCommands.test.ts` | Update payload tests |
+
+**Tests**
+
+```bash
+pnpm test -- src/utils/matchingStatus.test.ts src/lib/server/studentCommands.test.ts src/lib/server/adminGroupsCommands.test.ts
+```
+
+---
+
+## Item 7 — Canonical `servicePeriods` config
+
+**Audit item:** Subsidized dates, buffered windows, deadlines, and trip-direction rules were split across `subsidyConfig.ts`, `flightValidation.ts` `SERVICE_PERIODS`, and inline `FlightForm` `operationalPeriods`.
+
+**Status:** Completed (frontend)
+
+**Summary:** One coder-edited config in `src/config/servicePeriods.ts` drives subsidy lists, deadline enforcement, flight-form direction gating, and the ASPC policy page. Pure helpers in `servicePeriodHelpers.ts` are covered by golden tests. The flight form wizard was **reordered** so students pick **ride date first**; **To Airport / To Campus** buttons on step 2 are enabled or disabled from `getAllowedDirectionsForDate(date)` instead of a hardcoded summer disable or a union of “open” periods.
+
+**What changed:**
+
+| Area | Behavior |
+| ---- | -------- |
+| Canonical data | `servicePeriods.ts` — dual-direction rows (Thanksgiving, Spring), split winter outbound/return rows, summer outbound-only |
+| Derived lists | `subsidyConfig.ts` re-exports `COVERED_DATES_*` from subsidized ranges (fixes Summer `05-12` format) |
+| Deadlines | `flightValidation.ts` delegates to helpers; display uses **PT** labels |
+| Flight form | See **Flight form step order** below |
+| Policy page | Shows the **last** `SERVICE_PERIODS` entry (current break) |
+| Ops | Edit `servicePeriods.ts` only — see [`OPERATIONS.md`](./OPERATIONS.md) |
+
+**Flight form step order**
+
+Previously step 1 was trip direction + airport and step 2 was date + flight details. Direction was not tied to the selected date (e.g. “To Campus” was hard-disabled for all of summer).
+
+| Step | Before | After |
+| ---- | ------ | ----- |
+| 1 | Trip direction + airport | **Ride date** + airport (deadline check runs here) |
+| 2 | Date + times + flight info | **Trip direction** + times + flight info |
+
+On step 2, each direction button is enabled only if the ride date falls in that direction’s **subsidized** range for a period in `servicePeriods.ts` (via `getAllowedDirectionsForDate`). Examples: Summer May 15 → outbound only; Spring Mar 14 → outbound only; Spring Mar 21 → inbound only. If the date is outside subsidized windows but still submittable (non-subsidized path), both directions stay selectable. Changing the date clears a direction selection that is no longer valid.
+
+**Reasonable fix for the audit:** frontend canonical config + tests + helpers + wired consumers is complete for Item 7. We also improved the flight form so that users are limited to choosing the correct trip direction for their date.
+
+**Tests:**
+
+```bash
+pnpm test -- src/config/servicePeriodHelpers.test.ts src/utils/flightValidation.test.ts
+```
+**Why ML `config.py` was not unified in this item**
+
+The audit finding was **frontend drift**: the same break dates lived in three TypeScript files (`subsidyConfig.ts`, `flightValidation.ts`, `FlightForm` inline `operationalPeriods`). Item 7 closes that by making [`servicePeriods.ts`](src/config/servicePeriods.ts) the single source for everything the **web app** reads — form deadlines, direction gating, admin subsidy lists, and the policy page — with 58+ tests locking behavior.
+
+The ML matching service is a **separate repo** with its own `config.py`, runs on a **batch schedule** (not on student request paths), and does **not** read `servicePeriods.ts`, Postgres, or the frontend subsidy exports today. 
+
+- Drift risk is minimal now and is **documented** in [`OPERATIONS.md`](./OPERATIONS.md). Now with **one** TS file instead of three.
+- A shared artifact is **possible to add later** without redoing this work: e.g. `pnpm export:service-periods` → `service_periods.json` for the ML repo to use, or a shared Supabase table if multi-runtime sync becomes painful.
+
+---
+
 ## Remediation Issue #9
 
 **Audit item:** Page loads perform duplicate client-side authentication/profile requests, broad Supabase reads, blocking Results writes, and expensive client-side admin aggregation.
@@ -83,7 +203,6 @@ npm test -- --testPathPattern=studentCommands.test.ts
 - Production-build route smoke tests confirmed Results, Unmatched, Admin, and Admin Groups reject missing sessions and preserve their complete return destinations. The Admin Groups snapshot and command endpoints returned `401 Unauthorized` without a session, and local browser smoke testing reported no console errors.
 - Authenticated warm-reload measurements against the local production build reached principal content at median times of 710 ms for Results, 646 ms for Unmatched, 672 ms for Admin, and 790 ms for Admin Groups. A representative Group #736 rider mutation became visible in 404 ms when removed and 703 ms when re-added from the Corral; the complete Unmatched-to-Corral-to-group re-add work took 1.34 seconds. `documentation/PERFORMANCE_BASELINE.md` records the tested rider, restoration, raw page runs, capture procedures, payload evidence, and measurement limitations.
 - Follow-up changelog verification: `pnpm exec jest --runInBand src/components/admin/groups-management/services/groupsWriteService.test.ts src/lib/server/adminGroupsCommands.test.ts src/app/api/admin/groups/command/route.test.ts`, `pnpm exec jest --runInBand src/components/admin/GroupsManagement.test.tsx`, and `pnpm type-check` passed after adding incremental audit-entry merging.
-
 ---
 
 ## Remediation Issue #10
