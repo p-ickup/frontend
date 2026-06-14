@@ -1,5 +1,6 @@
 'use client'
 
+import { isDateCovered as isDateCoveredForPeriod } from '@/config/servicePeriodHelpers'
 import {
   AIRPORT_MIN_RIDERS,
   ALLOWED_SCHOOL,
@@ -9,24 +10,6 @@ import {
   DEFAULT_AIRPORT_MIN_RIDERS,
 } from '@/config/subsidyConfig'
 import { useCallback, useMemo } from 'react'
-
-/**
- * Covered = ride's date + direction are in the allowed list.
- * date: YYYY-MM-DD; we use MM-DD for year-agnostic check.
- * toAirport true = outbound, false = inbound.
- */
-function isDateCovered(
-  date: string,
-  toAirport: boolean,
-  explicit: boolean,
-  outboundDates: string[],
-  inboundDates: string[],
-): boolean {
-  if (!explicit) return true
-  const mmdd = date.includes('-') ? date.slice(5, 10) : date // YYYY-MM-DD -> MM-DD
-  const list = toAirport ? outboundDates : inboundDates
-  return list.includes(mmdd)
-}
 
 export interface ComputeSubsidyInput {
   /** Ride date YYYY-MM-DD */
@@ -62,30 +45,19 @@ export interface ComputeSubsidyResult {
  * Connect rides never get vouchers.
  */
 export function useSubsidyLogic() {
-  const isDateCoveredFn = useCallback(
-    (date: string, toAirport: boolean) =>
-      isDateCovered(
-        date,
-        toAirport,
-        COVERED_DATES_EXPLICIT,
-        COVERED_DATES_OUTBOUND,
-        COVERED_DATES_INBOUND,
-      ),
-    [],
-  )
+  const isDateCoveredFn = useCallback((date: string, toAirport: boolean) => {
+    if (!COVERED_DATES_EXPLICIT) {
+      return true
+    }
+    return isDateCoveredForPeriod(date, toAirport)
+  }, [])
 
   const computeGroupSubsidized = useCallback(
     (input: ComputeSubsidyInput): ComputeSubsidyResult => {
       const { date, toAirport, airport, riderCount, riderSchools, uberType } =
         input
 
-      const covered = isDateCovered(
-        date,
-        toAirport,
-        COVERED_DATES_EXPLICIT,
-        COVERED_DATES_OUTBOUND,
-        COVERED_DATES_INBOUND,
-      )
+      const covered = isDateCoveredFn(date, toAirport)
 
       const minRiders =
         AIRPORT_MIN_RIDERS[airport] ?? DEFAULT_AIRPORT_MIN_RIDERS
@@ -131,7 +103,7 @@ export function useSubsidyLogic() {
 
       return { subsidized, covered, assignVoucher, voucherBlockers }
     },
-    [],
+    [isDateCoveredFn],
   )
 
   return useMemo(

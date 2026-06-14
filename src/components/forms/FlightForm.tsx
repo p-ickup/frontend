@@ -17,6 +17,11 @@ import {
   isFlightPastDeadline,
 } from '@/utils/flightValidation'
 import {
+  getAllowedDirectionsForDate,
+  isDirectionAllowedForDate,
+  isInSubsidizedWindow,
+} from '@/config/servicePeriodHelpers'
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -92,6 +97,16 @@ export default function FlightForm({
   const carryOnBagsTooltip = useClickTooltip()
   const checkedLuggageTooltip = useClickTooltip()
   const timeRangeTooltip = useClickTooltip()
+
+  const allowedDirections = useMemo(
+    () => (dateOfFlight ? getAllowedDirectionsForDate(dateOfFlight) : []),
+    [dateOfFlight],
+  )
+  const hasSubsidizedDirections = allowedDirections.length > 0
+  const outboundAllowed = allowedDirections.includes('outbound')
+  const inboundAllowed = allowedDirections.includes('inbound')
+  const outboundSelectable = hasSubsidizedDirections ? outboundAllowed : true
+  const inboundSelectable = hasSubsidizedDirections ? inboundAllowed : true
 
   // Mobile info modal state
   const [showMobileInfo, setShowMobileInfo] = useState(false)
@@ -178,6 +193,21 @@ export default function FlightForm({
     }
   }, [dateOfFlight])
 
+  // Clear direction when ride date no longer supports the prior selection
+  useEffect(() => {
+    if (tripType === null || !dateOfFlight) {
+      return
+    }
+
+    const directions = getAllowedDirectionsForDate(dateOfFlight)
+    if (
+      directions.length > 0 &&
+      !isDirectionAllowedForDate(dateOfFlight, tripType)
+    ) {
+      setTripType(null)
+    }
+  }, [dateOfFlight, tripType])
+
   // Check for duplicate flights in real-time when date, airport, or trip type changes
   useEffect(() => {
     const checkForDuplicates = async () => {
@@ -241,35 +271,10 @@ export default function FlightForm({
       return
     }
 
-    // ASPC operational periods for 2025-2026
-    const operationalPeriods = [
-      // Thanksgiving Break Departures: November 21-26, 2025
-      { start: '2025-11-21', end: '2025-11-26', type: 'departure' },
-      // Thanksgiving Break Returns: November 29 - December 1, 2025
-      { start: '2025-11-29', end: '2025-12-01', type: 'return' },
-      // Winter Break Departure: December 9-13, 2025
-      { start: '2025-12-09', end: '2025-12-13', type: 'departure' },
-      // Winter Break Return: January 17-21, 2026
-      { start: '2026-01-17', end: '2026-01-21', type: 'return' },
-      // Spring Break Departure: March 13-15, 2026
-      { start: '2026-03-13', end: '2026-03-15', type: 'departure' },
-      // Spring Break Return: March 20-22, 2026
-      { start: '2026-03-20', end: '2026-03-22', type: 'return' },
-      // Summer Break Departure: May 12 - May 19, 2026
-      { start: '2026-05-12', end: '2026-05-19', type: 'departure' },
-    ]
-
-    // Check if date is within any operational period
-    const flightDate = new Date(dateOfFlight)
-    let isWithinOperationalPeriod = false
-    for (const period of operationalPeriods) {
-      const startDate = new Date(period.start)
-      const endDate = new Date(period.end)
-      if (flightDate >= startDate && flightDate <= endDate) {
-        isWithinOperationalPeriod = true
-        break
-      }
-    }
+    const isWithinOperationalPeriod =
+      tripType !== null
+        ? isInSubsidizedWindow(dateOfFlight, tripType)
+        : getAllowedDirectionsForDate(dateOfFlight).length > 0
 
     if (!isWithinOperationalPeriod) {
       setAspcWarningMessage(
@@ -279,14 +284,12 @@ export default function FlightForm({
       return
     }
 
-    // Don't show warning until times are entered
+    // Don't show subsidy details until times are entered
     if (!earliestArrival || !latestArrival) {
       setShowASPCWarning(false)
       return
     }
 
-    // New policy: No guaranteed times, only grouping requirements
-    // LAX requires 3+ riders, ONT requires 2+ riders
     let warningMessage = ''
 
     if (airport === 'LAX') {
@@ -302,7 +305,14 @@ export default function FlightForm({
 
     setAspcWarningMessage(warningMessage)
     setShowASPCWarning(true)
-  }, [airport, dateOfFlight, earliestArrival, latestArrival, userSchool])
+  }, [
+    airport,
+    dateOfFlight,
+    earliestArrival,
+    latestArrival,
+    tripType,
+    userSchool,
+  ])
 
   // Check ASPC subsidy eligibility when date, airport, or times change
   useEffect(() => {
@@ -315,6 +325,7 @@ export default function FlightForm({
     dateOfFlight,
     earliestArrival,
     latestArrival,
+    tripType,
     userSchool,
   ])
 
@@ -456,7 +467,18 @@ export default function FlightForm({
     }
 
     if (tripType === null) {
-      setMessage('Please select your trip direction (step 1).')
+      setMessage('Please select your trip direction (step 2).')
+      setIsValidationError(true)
+      return
+    }
+
+    if (
+      getAllowedDirectionsForDate(dateOfFlight).length > 0 &&
+      !isDirectionAllowedForDate(dateOfFlight, tripType)
+    ) {
+      setMessage(
+        'The selected trip direction is not available for this ride date.',
+      )
       setIsValidationError(true)
       return
     }
@@ -500,7 +522,19 @@ export default function FlightForm({
     }
 
     if (tripType === null) {
-      setMessage('Please select your trip direction (step 1).')
+      setMessage('Please select your trip direction (step 2).')
+      setIsValidationError(true)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
+    if (
+      getAllowedDirectionsForDate(dateOfFlight).length > 0 &&
+      !isDirectionAllowedForDate(dateOfFlight, tripType)
+    ) {
+      setMessage(
+        'The selected trip direction is not available for this ride date.',
+      )
       setIsValidationError(true)
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
@@ -760,9 +794,14 @@ export default function FlightForm({
 
   const validateCurrentStep = (): boolean => {
     switch (currentStep) {
-      case 1: // Trip direction
-        if (tripType === null) {
-          setMessage('Please select trip direction (to airport or to campus)')
+      case 1: // Ride date and airport
+        if (!dateOfFlight) {
+          setMessage('Please enter your ride date')
+          setIsValidationError(true)
+          return false
+        }
+        if (isPastDeadline) {
+          setMessage('The deadline for this date has passed')
           setIsValidationError(true)
           return false
         }
@@ -772,14 +811,19 @@ export default function FlightForm({
           return false
         }
         return true
-      case 2: // Date, times, and flight details
-        if (!dateOfFlight) {
-          setMessage('Please enter your flight date')
+      case 2: // Trip direction, times, and flight details
+        if (tripType === null) {
+          setMessage('Please select trip direction (to airport or to campus)')
           setIsValidationError(true)
           return false
         }
-        if (isPastDeadline) {
-          setMessage('The deadline for this date has passed')
+        if (
+          hasSubsidizedDirections &&
+          !isDirectionAllowedForDate(dateOfFlight, tripType)
+        ) {
+          setMessage(
+            'The selected trip direction is not available for this ride date.',
+          )
           setIsValidationError(true)
           return false
         }
@@ -833,9 +877,9 @@ export default function FlightForm({
   const getStepTitle = (): string => {
     switch (currentStep) {
       case 1:
-        return 'Trip Direction & Airport'
+        return 'Ride Date & Airport'
       case 2:
-        return 'Flight Details'
+        return 'Trip Direction & Flight Details'
       case 3:
         return 'Luggage Information'
       case 4:
@@ -932,7 +976,7 @@ export default function FlightForm({
 
         <div className="px-4 py-6 md:px-8 md:py-8">
           <div className="space-y-6">
-            {/* Step 1: Trip Direction & Airport */}
+            {/* Step 1: Ride Date & Airport */}
             {currentStep === 1 && (
               <div className="space-y-6">
                 <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
@@ -940,56 +984,49 @@ export default function FlightForm({
                     Let&apos;s start with the basics:
                   </p>
                   <p>
-                    Tell us whether you&apos;re traveling to the airport or
-                    returning to campus.
+                    Choose the day you need a ride and which airport you&apos;re
+                    using. Trip direction comes next.
                   </p>
                 </div>
 
                 <div className="space-y-4">
-                  <label className="block">
-                    <span className="mb-3 block text-lg font-bold text-gray-800">
-                      Trip Direction
-                    </span>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <button
-                        type="button"
-                        onClick={() => setTripType(true)}
-                        className={`rounded-xl border-2 p-6 text-center transition-all ${
-                          tripType === true
-                            ? 'border-teal-500 bg-teal-50'
-                            : 'border-gray-300 bg-white hover:border-gray-400'
-                        }`}
-                      >
-                        <div className="mb-2 text-3xl">✈️</div>
-                        <div
-                          className={`text-lg font-bold ${
-                            tripType === true
-                              ? 'text-teal-700'
-                              : 'text-gray-700'
-                          }`}
-                        >
-                          To Airport
-                        </div>
-                        <div className="mt-1 text-sm text-gray-600">
-                          Departing from Claremont
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        disabled
-                        aria-disabled="true"
-                        className="cursor-not-allowed rounded-xl border-2 border-gray-200 bg-gray-100 p-6 text-center opacity-60"
-                      >
-                        <div className="mb-2 text-3xl">🏫</div>
-                        <div className="text-lg font-bold text-gray-600">
-                          To Campus
-                        </div>
-                        <div className="mt-1 text-sm text-gray-500">
-                          (Unavailable for Summer Break departures)
-                        </div>
-                      </button>
+                  <div>
+                    <label className="mb-2 block text-lg font-bold text-gray-800">
+                      Date You Need the Ride
+                    </label>
+                    <p className="mb-2 text-sm text-gray-600">
+                      This might be different from your flight date if traveling
+                      overnight or early morning.
+                    </p>
+                    <input
+                      type="date"
+                      value={dateOfFlight}
+                      onChange={(e) => setDateOfFlight(e.target.value)}
+                      className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                      required
+                    />
+                  </div>
+
+                  {isPastDeadline && deadlineErrorMessage && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                      <p className="font-medium text-red-800">
+                        ⚠️ {deadlineErrorMessage}
+                      </p>
                     </div>
-                  </label>
+                  )}
+
+                  {dateOfFlight &&
+                    !isPastDeadline &&
+                    !outboundAllowed &&
+                    !inboundAllowed && (
+                      <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                        <p className="text-sm text-orange-800">
+                          This date is outside subsidized ASPC RideLink travel
+                          windows. You can still continue with a non-subsidized
+                          request.
+                        </p>
+                      </div>
+                    )}
 
                   <label className="block">
                     <span className="mb-2 block text-lg font-bold text-gray-800">
@@ -1030,46 +1067,103 @@ export default function FlightForm({
               </div>
             )}
 
-            {/* Step 2: Flight Details (Date, Times, Flight Info) */}
+            {/* Step 2: Trip Direction & Flight Details */}
             {currentStep === 2 && (
               <div className="space-y-6">
                 <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
                   <p className="mb-2 font-medium">Flight Information:</p>
                   <p>
-                    Enter your flight date, time range when you can{' '}
-                    {tripType === true
-                      ? 'leave to'
-                      : tripType === false
-                        ? 'leave from'
-                        : 'travel to or from'}{' '}
-                    the airport, and flight details.
+                    Select your trip direction, then enter your time range and
+                    flight details.
                   </p>
                 </div>
 
                 <div className="space-y-4">
-                  {/* Ride Date */}
-                  <div>
-                    <label className="mb-2 block text-lg font-bold text-gray-800">
-                      Date You Need the Ride
-                    </label>
-                    <p className="mb-2 text-sm text-gray-600">
-                      Choose the day you want to{' '}
-                      {tripType === true
-                        ? 'leave campus'
-                        : tripType === false
-                          ? 'be picked up from the airport'
-                          : 'travel'}
-                      . This might be different from your flight date if
-                      traveling overnight or early morning.
-                    </p>
-                    <input
-                      type="date"
-                      value={dateOfFlight}
-                      onChange={(e) => setDateOfFlight(e.target.value)}
-                      className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
-                      required
-                    />
-                  </div>
+                  <label className="block">
+                    <span className="mb-3 block text-lg font-bold text-gray-800">
+                      Trip Direction
+                    </span>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => outboundSelectable && setTripType(true)}
+                        disabled={!outboundSelectable}
+                        aria-disabled={!outboundSelectable}
+                        className={`rounded-xl border-2 p-6 text-center transition-all ${
+                          !outboundSelectable
+                            ? 'cursor-not-allowed border-gray-200 bg-gray-100 opacity-60'
+                            : tripType === true
+                              ? 'border-teal-500 bg-teal-50'
+                              : 'border-gray-300 bg-white hover:border-gray-400'
+                        }`}
+                      >
+                        <div className="mb-2 text-3xl">✈️</div>
+                        <div
+                          className={`text-lg font-bold ${
+                            !outboundSelectable
+                              ? 'text-gray-600'
+                              : tripType === true
+                                ? 'text-teal-700'
+                                : 'text-gray-700'
+                          }`}
+                        >
+                          To Airport
+                        </div>
+                        <div
+                          className={`mt-1 text-sm ${
+                            !outboundSelectable
+                              ? 'text-gray-500'
+                              : 'text-gray-600'
+                          }`}
+                        >
+                          {outboundSelectable
+                            ? outboundAllowed
+                              ? 'Departing from Claremont'
+                              : 'Non-subsidized departure'
+                            : 'Not available for this ride date'}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => inboundSelectable && setTripType(false)}
+                        disabled={!inboundSelectable}
+                        aria-disabled={!inboundSelectable}
+                        className={`rounded-xl border-2 p-6 text-center transition-all ${
+                          !inboundSelectable
+                            ? 'cursor-not-allowed border-gray-200 bg-gray-100 opacity-60'
+                            : tripType === false
+                              ? 'border-teal-500 bg-teal-50'
+                              : 'border-gray-300 bg-white hover:border-gray-400'
+                        }`}
+                      >
+                        <div className="mb-2 text-3xl">🏫</div>
+                        <div
+                          className={`text-lg font-bold ${
+                            !inboundSelectable
+                              ? 'text-gray-600'
+                              : tripType === false
+                                ? 'text-teal-700'
+                                : 'text-gray-700'
+                          }`}
+                        >
+                          To Campus
+                        </div>
+                        <div
+                          className={`mt-1 text-sm ${
+                            !inboundSelectable
+                              ? 'text-gray-500'
+                              : 'text-gray-600'
+                          }`}
+                        >
+                          {inboundSelectable
+                            ? inboundAllowed
+                              ? 'Returning to Claremont'
+                              : 'Non-subsidized return'
+                            : 'Not available for this ride date'}
+                        </div>
+                      </button>
+                    </div>
+                  </label>
 
                   {/* Earliest Time */}
                   <div>
@@ -1175,31 +1269,20 @@ export default function FlightForm({
                     </div>
                   )}
 
-                  {/* Deadline Error */}
-                  {isPastDeadline && deadlineErrorMessage && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-                      <p className="font-medium text-red-800">
-                        ⚠️ {deadlineErrorMessage}
+                  {/* Duplicate Flight Warning */}
+                  {isDuplicateError && duplicateErrorMessage && (
+                    <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                      <p className="mb-2 font-medium text-orange-800">
+                        ⚠️ {duplicateErrorMessage}
                       </p>
+                      <a
+                        href="/questionnaires"
+                        className="inline-block rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-orange-700"
+                      >
+                        Go to Your Flights
+                      </a>
                     </div>
                   )}
-
-                  {/* Duplicate Flight Warning */}
-                  {!isPastDeadline &&
-                    isDuplicateError &&
-                    duplicateErrorMessage && (
-                      <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
-                        <p className="mb-2 font-medium text-orange-800">
-                          ⚠️ {duplicateErrorMessage}
-                        </p>
-                        <a
-                          href="/questionnaires"
-                          className="inline-block rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-orange-700"
-                        >
-                          Go to Your Flights
-                        </a>
-                      </div>
-                    )}
 
                   <div className="grid gap-4 md:grid-cols-3">
                     <label className="block">

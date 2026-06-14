@@ -1,9 +1,15 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { SERVICE_PERIODS } from '@/config/servicePeriods'
+import {
+  formatDeadlineForDisplay,
+  formatSubsidizedWindowsForDisplay,
+} from '@/config/servicePeriodHelpers'
 
 export default function ASPCPolicy() {
   const router = useRouter()
+  const activePeriod = SERVICE_PERIODS[SERVICE_PERIODS.length - 1]
 
   return (
     <div className="from-slate-50 relative min-h-screen overflow-hidden bg-gradient-to-br via-blue-50 to-indigo-100">
@@ -78,30 +84,35 @@ export default function ASPCPolicy() {
                 📅 Operational Periods
               </h2>
 
-              {/* Spring Break */}
-              <div className="mb-6 rounded-xl bg-gradient-to-r from-orange-50 to-amber-50 p-6">
-                <h3 className="mb-3 text-xl font-semibold text-gray-800">
-                  Summer Break
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="font-semibold text-gray-800">
-                      Deadline to request:
-                    </p>
-                    <p className="text-gray-700">
-                      Wednesday, May 6, 2026 at 11:59 PM PST
-                    </p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-800">
-                      Service Window:
-                    </p>
-                    <ul className="ml-5 list-disc space-y-1 text-gray-700">
-                      <li>Departures: May 12-19</li>
-                    </ul>
+              {activePeriod && (
+                <div className="mb-6 rounded-xl bg-gradient-to-r from-orange-50 to-amber-50 p-6">
+                  <h3 className="mb-3 text-xl font-semibold text-gray-800">
+                    {activePeriod.name}
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="font-semibold text-gray-800">
+                        Deadline to request:
+                      </p>
+                      <p className="text-gray-700">
+                        {formatDeadlineForDisplay(activePeriod.deadline)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-800">
+                        Service Window:
+                      </p>
+                      <ul className="ml-5 list-disc space-y-1 text-gray-700">
+                        {formatSubsidizedWindowsForDisplay(activePeriod).map(
+                          (line) => (
+                            <li key={line}>{line}</li>
+                          ),
+                        )}
+                      </ul>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* How Matching Works */}
