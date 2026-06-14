@@ -136,6 +136,22 @@ describe('server authorization', () => {
     expect(handler).not.toHaveBeenCalled()
   })
 
+  it('fails closed when the admin profile cannot be read', async () => {
+    queueUser(baseUser)
+    queueProfile(null, new Error('Profile lookup failed'))
+    const handler = jest.fn()
+    const route = withAdminRoute(handler)
+
+    const response = await route(
+      new Request('https://pickup.example/api/admin'),
+      {},
+    )
+
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toEqual({ error: 'Forbidden' })
+    expect(handler).not.toHaveBeenCalled()
+  })
+
   it('returns 401 for an admin route with no validated session', async () => {
     queueUser(null, new Error('Auth session missing'))
     const handler = jest.fn()

@@ -5,6 +5,7 @@ const assertAdminScopeForUserFlightPairMock = jest
   .fn()
   .mockResolvedValue(undefined)
 const removeRiderToUnmatchedMock = jest.fn().mockResolvedValue(undefined)
+const moveRiderToGroupMock = jest.fn().mockResolvedValue(undefined)
 const serviceRoleClient = { serviceRole: true }
 
 jest.mock('@/lib/server/auth', () => ({
@@ -46,6 +47,7 @@ jest.mock('@/lib/server/adminGroupsCommands', () => ({
   deleteGroupRecords: jest.fn(),
   deleteRiderMatches: jest.fn(),
   logChangeLogEntry: jest.fn(),
+  moveRiderToGroup: (...args: unknown[]) => moveRiderToGroupMock(...args),
   removeGroupMatch: jest.fn(),
   removeRiderToUnmatched: (...args: unknown[]) =>
     removeRiderToUnmatchedMock(...args),
@@ -120,5 +122,72 @@ describe('POST /api/admin/groups/command remove_rider_to_unmatched', () => {
 
     expect(response.status).toBe(403)
     expect(removeRiderToUnmatchedMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST /api/admin/groups/command move_rider_to_group', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    assertAdminScopeForRideMock.mockResolvedValue(undefined)
+    assertAdminScopeForUserFlightPairMock.mockResolvedValue(undefined)
+    moveRiderToGroupMock.mockResolvedValue({ changeLogEntries: [] })
+  })
+
+  const moveRequest = () =>
+    new Request('http://localhost/api/admin/groups/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'move_rider_to_group',
+        payload: {
+          destinationGroupId: 55,
+          userId: 'student-1',
+          flightId: 101,
+          date: '2026-06-20',
+          time: '10:00:00',
+          voucher: '',
+          isSubsidized: false,
+          uberType: 'XL',
+          destinationGroupUpdates: { is_verified: false },
+          changeLogIds: [],
+          destinationMetadata: { from: 'unmatched', to_group: 55 },
+          changeBatchId: 'batch-1',
+        },
+      }),
+    })
+
+  it('checks destination and rider ownership scope before re-adding a rider', async () => {
+    const response = await POST(moveRequest(), undefined as never)
+
+    expect(response.status).toBe(200)
+    expect(assertAdminScopeForRideMock).toHaveBeenCalledWith({
+      supabase: serviceRoleClient,
+      profile: { role: 'Admin', admin_scope: 'Pomona' },
+      rideId: 55,
+    })
+    expect(assertAdminScopeForUserFlightPairMock).toHaveBeenCalledWith({
+      supabase: serviceRoleClient,
+      profile: { role: 'Admin', admin_scope: 'Pomona' },
+      userId: 'student-1',
+      flightId: 101,
+    })
+    expect(moveRiderToGroupMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destinationGroupId: 55,
+        userId: 'student-1',
+        flightId: 101,
+      }),
+    )
+  })
+
+  it('does not re-add a rider when destination scope is denied', async () => {
+    assertAdminScopeForRideMock.mockRejectedValue(
+      Object.assign(new Error('Forbidden'), { status: 403 }),
+    )
+
+    const response = await POST(moveRequest(), undefined as never)
+
+    expect(response.status).toBe(403)
+    expect(moveRiderToGroupMock).not.toHaveBeenCalled()
   })
 })

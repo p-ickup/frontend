@@ -5,9 +5,33 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
-  frontend-pull-request:
+  dependency-review:
+    name: Dependency Review
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
+        with:
+          fail-on-severity: high
+          fail-on-scopes: runtime
+          warn-only: false
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,7 +49,33 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm i --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        run: pnpm audit:security
+
+  tests:
+    name: Tests and Static Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: package.json
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Run type check
         run: pnpm type-check
@@ -41,6 +91,55 @@ jobs:
 
       - name: Run tests
         run: pnpm test:ci --passWithNoTests
+
+  database-compatibility:
+    name: Database Contract (Static)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: package.json
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check application table and RPC names against generated database types
+        run: pnpm test:database-contract
+
+  production-build:
+    name: Production Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: package.json
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Build production application
         run: pnpm build

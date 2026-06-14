@@ -32,7 +32,7 @@ type ApiHandler<TPrincipal, TContext> = (
 ) => Response | Promise<Response>
 
 const authenticateRequest = async () => {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const supabase = createServerClient(cookieStore)
 
   const {
