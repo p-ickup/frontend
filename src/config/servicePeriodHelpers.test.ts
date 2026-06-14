@@ -4,19 +4,13 @@ import {
   COVERED_DATES_INBOUND,
   COVERED_DATES_OUTBOUND,
 } from '@/config/subsidyConfig'
-import { SERVICE_PERIODS, type ServicePeriod } from '@/config/servicePeriods'
+import { SERVICE_PERIODS } from '@/config/servicePeriods'
 import {
-  expandDateRangeToMMDD,
   formatDeadlineForDisplay,
   formatSubsidizedWindowsForDisplay,
   getAllowedDirectionsForDate,
-  getAllowedDirectionsForPeriodAndDate,
-  getBufferedPeriods,
   getDerivedCoveredDates,
-  getPeriodForBufferedDate,
-  getServicePeriods,
   isDateCovered,
-  isDateInRange,
   isDirectionAllowedForDate,
   isFlightPastDeadline,
   isInSubsidizedWindow,
@@ -28,28 +22,10 @@ const springPeriod = SERVICE_PERIODS.find(
 const summerPeriod = SERVICE_PERIODS.find(
   (period) => period.id === 'summer-2026',
 )!
-const winterOutboundPeriod = SERVICE_PERIODS.find(
-  (period) => period.id === 'winter-2025-outbound',
-)!
-const winterReturnPeriod = SERVICE_PERIODS.find(
-  (period) => period.id === 'winter-2026-return',
-)!
 
-const overlapFixturePeriod: ServicePeriod = {
-  id: 'overlap-fixture',
-  name: 'Overlap Fixture',
-  allowedDirections: ['outbound', 'inbound'],
-  subsidized: {
-    outbound: { start: '2026-04-10', end: '2026-04-12' },
-    inbound: { start: '2026-04-11', end: '2026-04-14' },
-  },
-  buffered: { start: '2026-04-08', end: '2026-04-16' },
-  deadline: '2026-04-08T23:59:59-07:00',
-}
-
-describe('getServicePeriods', () => {
+describe('SERVICE_PERIODS', () => {
   it('exposes all canonical breaks including split winter rows', () => {
-    expect(getServicePeriods().map((period) => period.id)).toEqual([
+    expect(SERVICE_PERIODS.map((period) => period.id)).toEqual([
       'thanksgiving-2025',
       'winter-2025-outbound',
       'winter-2026-return',
@@ -57,11 +33,16 @@ describe('getServicePeriods', () => {
       'summer-2026',
     ])
   })
-})
 
-describe('getBufferedPeriods', () => {
-  it('mirrors buffered windows and deadlines from servicePeriods', () => {
-    expect(getBufferedPeriods()).toEqual([
+  it('mirrors buffered windows and deadlines for operational summaries', () => {
+    expect(
+      SERVICE_PERIODS.map((period) => ({
+        start: period.buffered.start,
+        end: period.buffered.end,
+        deadline: period.deadline,
+        name: period.name,
+      })),
+    ).toEqual([
       {
         start: '2025-11-16',
         end: '2025-12-01',
@@ -93,33 +74,6 @@ describe('getBufferedPeriods', () => {
         name: 'Summer Break',
       },
     ])
-  })
-})
-
-describe('isDateInRange', () => {
-  it('treats range boundaries as inclusive', () => {
-    expect(isDateInRange('2026-03-13', springPeriod.subsidized.outbound)).toBe(
-      true,
-    )
-    expect(isDateInRange('2026-03-15', springPeriod.subsidized.outbound)).toBe(
-      true,
-    )
-    expect(isDateInRange('2026-03-12', springPeriod.subsidized.outbound)).toBe(
-      false,
-    )
-  })
-
-  it('returns false for missing date or range', () => {
-    expect(isDateInRange('', springPeriod.subsidized.outbound)).toBe(false)
-    expect(isDateInRange('2026-03-14', undefined)).toBe(false)
-  })
-})
-
-describe('expandDateRangeToMMDD', () => {
-  it('expands contiguous ranges with zero-padded MM-DD values', () => {
-    expect(
-      expandDateRangeToMMDD({ start: '2026-05-12', end: '2026-05-14' }),
-    ).toEqual(['05-12', '05-13', '05-14'])
   })
 })
 
@@ -201,74 +155,6 @@ describe('isDateCovered / isInSubsidizedWindow', () => {
   ])('date %s toAirport=%s covered=%s', (date, toAirport, expected) => {
     expect(isDateCovered(date, toAirport)).toBe(expected)
     expect(isInSubsidizedWindow(date, toAirport)).toBe(expected)
-  })
-})
-
-describe('getPeriodForBufferedDate', () => {
-  it('maps dates to the buffered period that contains them', () => {
-    expect(getPeriodForBufferedDate('2025-11-25')?.id).toBe('thanksgiving-2025')
-    expect(getPeriodForBufferedDate('2025-12-10')?.id).toBe(
-      'winter-2025-outbound',
-    )
-    expect(getPeriodForBufferedDate('2026-01-18')?.id).toBe(
-      'winter-2026-return',
-    )
-    expect(getPeriodForBufferedDate('2026-03-14')?.id).toBe('spring-2026')
-    expect(getPeriodForBufferedDate('2026-05-15')?.id).toBe('summer-2026')
-  })
-
-  it('returns undefined for dates outside all buffered windows', () => {
-    expect(getPeriodForBufferedDate('2026-02-01')).toBeUndefined()
-    expect(getPeriodForBufferedDate('')).toBeUndefined()
-  })
-
-  it('leaves the long winter gap outside all buffered windows', () => {
-    expect(getPeriodForBufferedDate('2025-12-20')).toBeUndefined()
-    expect(getPeriodForBufferedDate('2026-01-05')).toBeUndefined()
-  })
-})
-
-describe('getAllowedDirectionsForPeriodAndDate', () => {
-  it('enables outbound only on spring departure days', () => {
-    expect(
-      getAllowedDirectionsForPeriodAndDate('2026-03-14', springPeriod),
-    ).toEqual(['outbound'])
-  })
-
-  it('enables inbound only on spring return days', () => {
-    expect(
-      getAllowedDirectionsForPeriodAndDate('2026-03-21', springPeriod),
-    ).toEqual(['inbound'])
-  })
-
-  it('returns no directions in spring gap days inside buffered window', () => {
-    expect(
-      getAllowedDirectionsForPeriodAndDate('2026-03-18', springPeriod),
-    ).toEqual([])
-  })
-
-  it('supports overlapping outbound and inbound ranges', () => {
-    expect(
-      getAllowedDirectionsForPeriodAndDate('2026-04-10', overlapFixturePeriod),
-    ).toEqual(['outbound'])
-    expect(
-      getAllowedDirectionsForPeriodAndDate('2026-04-11', overlapFixturePeriod),
-    ).toEqual(['outbound', 'inbound'])
-    expect(
-      getAllowedDirectionsForPeriodAndDate('2026-04-14', overlapFixturePeriod),
-    ).toEqual(['inbound'])
-  })
-
-  it('respects single-direction winter rows', () => {
-    expect(
-      getAllowedDirectionsForPeriodAndDate('2025-12-10', winterOutboundPeriod),
-    ).toEqual(['outbound'])
-    expect(
-      getAllowedDirectionsForPeriodAndDate('2025-12-10', winterReturnPeriod),
-    ).toEqual([])
-    expect(
-      getAllowedDirectionsForPeriodAndDate('2026-01-18', winterReturnPeriod),
-    ).toEqual(['inbound'])
   })
 })
 

@@ -5,32 +5,12 @@ import {
   type TripDirection,
 } from '@/config/servicePeriods'
 
-export interface BufferedPeriod {
-  start: string
-  end: string
-  deadline: string
-  name: string
-}
-
-export function getServicePeriods(): ServicePeriod[] {
-  return SERVICE_PERIODS
-}
-
-export function getBufferedPeriods(): BufferedPeriod[] {
-  return SERVICE_PERIODS.map((period) => ({
-    start: period.buffered.start,
-    end: period.buffered.end,
-    deadline: period.deadline,
-    name: period.name,
-  }))
-}
-
 function parseCalendarDate(date: string): Date {
   const [year, month, day] = date.split('-').map(Number)
   return new Date(year, month - 1, day)
 }
 
-export function isDateInRange(date: string, range?: DateRange): boolean {
+function isDateInRange(date: string, range?: DateRange): boolean {
   if (!date || !range) {
     return false
   }
@@ -42,7 +22,7 @@ export function isDateInRange(date: string, range?: DateRange): boolean {
   return target >= start && target <= end
 }
 
-export function expandDateRangeToMMDD(range: DateRange): string[] {
+function expandDateRangeToMMDD(range: DateRange): string[] {
   const dates: string[] = []
   const cursor = parseCalendarDate(range.start)
   const end = parseCalendarDate(range.end)
@@ -95,9 +75,7 @@ export function isDateCovered(date: string, toAirport: boolean): boolean {
   return toAirport ? outbound.includes(mmdd) : inbound.includes(mmdd)
 }
 
-export function getPeriodForBufferedDate(
-  date: string,
-): ServicePeriod | undefined {
+function getPeriodForBufferedDate(date: string): ServicePeriod | undefined {
   if (!date) {
     return undefined
   }
@@ -105,7 +83,7 @@ export function getPeriodForBufferedDate(
   return SERVICE_PERIODS.find((period) => isDateInRange(date, period.buffered))
 }
 
-export function getAllowedDirectionsForPeriodAndDate(
+function getAllowedDirectionsForPeriodAndDate(
   date: string,
   period: ServicePeriod,
 ): TripDirection[] {
