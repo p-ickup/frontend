@@ -24,56 +24,65 @@ const summerPeriod = SERVICE_PERIODS.find(
 )!
 
 describe('SERVICE_PERIODS', () => {
-  it('exposes all canonical breaks including split winter rows', () => {
-    expect(SERVICE_PERIODS.map((period) => period.id)).toEqual([
-      'thanksgiving-2025',
-      'winter-2025-outbound',
-      'winter-2026-return',
-      'spring-2026',
-      'summer-2026',
-    ])
+  it('has unique ids and required fields on every row', () => {
+    const ids = SERVICE_PERIODS.map((period) => period.id)
+    expect(ids.length).toBeGreaterThan(0)
+    expect(new Set(ids).size).toBe(ids.length)
+
+    for (const period of SERVICE_PERIODS) {
+      expect(period.name).toBeTruthy()
+      expect(period.allowedDirections.length).toBeGreaterThan(0)
+      expect(period.buffered.start).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(period.buffered.end).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(period.deadline).toMatch(/T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/)
+    }
   })
 
-  it('mirrors buffered windows and deadlines for operational summaries', () => {
+  it('includes split winter outbound and return rows', () => {
     expect(
-      SERVICE_PERIODS.map((period) => ({
-        start: period.buffered.start,
-        end: period.buffered.end,
-        deadline: period.deadline,
-        name: period.name,
-      })),
-    ).toEqual([
-      {
-        start: '2025-11-16',
-        end: '2025-12-01',
-        deadline: '2025-11-14T23:59:59-08:00',
-        name: 'Thanksgiving Break',
-      },
-      {
-        start: '2025-12-02',
-        end: '2025-12-18',
-        deadline: '2025-12-03T23:59:59-08:00',
-        name: 'Winter Break (Outbound)',
-      },
-      {
-        start: '2026-01-12',
-        end: '2026-01-26',
-        deadline: '2026-01-09T23:59:59-08:00',
-        name: 'Winter Break (Return)',
-      },
-      {
-        start: '2026-03-08',
-        end: '2026-03-26',
-        deadline: '2026-03-06T23:59:59-08:00',
-        name: 'Spring Break',
-      },
-      {
-        start: '2026-05-07',
-        end: '2026-05-21',
-        deadline: '2026-05-06T23:59:59-07:00',
-        name: 'Summer Break',
-      },
-    ])
+      SERVICE_PERIODS.some((period) => period.id === 'winter-2025-outbound'),
+    ).toBe(true)
+    expect(
+      SERVICE_PERIODS.some((period) => period.id === 'winter-2026-return'),
+    ).toBe(true)
+  })
+
+  it('keeps golden buffered windows and deadlines for anchor breaks', () => {
+    expect(
+      SERVICE_PERIODS.find((period) => period.id === 'thanksgiving-2025'),
+    ).toMatchObject({
+      name: 'Thanksgiving Break',
+      buffered: { start: '2025-11-16', end: '2025-12-01' },
+      deadline: '2025-11-14T23:59:59-08:00',
+    })
+    expect(
+      SERVICE_PERIODS.find((period) => period.id === 'winter-2025-outbound'),
+    ).toMatchObject({
+      name: 'Winter Break (Outbound)',
+      buffered: { start: '2025-12-02', end: '2025-12-18' },
+      deadline: '2025-12-03T23:59:59-08:00',
+    })
+    expect(
+      SERVICE_PERIODS.find((period) => period.id === 'winter-2026-return'),
+    ).toMatchObject({
+      name: 'Winter Break (Return)',
+      buffered: { start: '2026-01-12', end: '2026-01-26' },
+      deadline: '2026-01-09T23:59:59-08:00',
+    })
+    expect(
+      SERVICE_PERIODS.find((period) => period.id === 'spring-2026'),
+    ).toMatchObject({
+      name: 'Spring Break',
+      buffered: { start: '2026-03-08', end: '2026-03-26' },
+      deadline: '2026-03-06T23:59:59-08:00',
+    })
+    expect(
+      SERVICE_PERIODS.find((period) => period.id === 'summer-2026'),
+    ).toMatchObject({
+      name: 'Summer Break',
+      buffered: { start: '2026-05-07', end: '2026-05-21' },
+      deadline: '2026-05-06T23:59:59-07:00',
+    })
   })
 })
 
