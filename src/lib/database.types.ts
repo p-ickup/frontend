@@ -204,7 +204,6 @@ export type Database = {
           last_status: string | null
           latest_date: string | null
           latest_time: string | null
-          matched: boolean | null
           matching_status: string
           max_dropoff: number | null
           max_price: number | null
@@ -233,7 +232,6 @@ export type Database = {
           last_status?: string | null
           latest_date?: string | null
           latest_time?: string | null
-          matched?: boolean | null
           matching_status?: string
           max_dropoff?: number | null
           max_price?: number | null
@@ -262,7 +260,6 @@ export type Database = {
           last_status?: string | null
           latest_date?: string | null
           latest_time?: string | null
-          matched?: boolean | null
           matching_status?: string
           max_dropoff?: number | null
           max_price?: number | null
@@ -769,7 +766,7 @@ export type Database = {
         Returns: Json
       }
       cancel_own_match: {
-        Args: { p_ride_id: number; p_cancelled_after_deadline: boolean }
+        Args: { p_cancelled_after_deadline: boolean; p_ride_id: number }
         Returns: Json
       }
       commit_matching_run: {

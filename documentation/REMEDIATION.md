@@ -97,9 +97,6 @@ npm test -- --testPathPattern=studentCommands.test.ts
 
 Migration: [`supabase-migrations/2026-06-14_cancel_own_match_deadline.sql`](../supabase-migrations/2026-06-14_cancel_own_match_deadline.sql). Deploy SQL before frontend.
 
-### Deferred
-
-- `DROP COLUMN matched` after soak.
 
 ### Files
 
@@ -221,6 +218,27 @@ The ML matching service is a **separate repo** with its own `config.py`, runs on
 
 - Drift risk is minimal now and is **documented** in [`OPERATIONS.md`](./OPERATIONS.md). Now with **one** TS file instead of three.
 - A shared artifact is **possible to add later** without redoing this work: e.g. `pnpm export:service-periods` → `service_periods.json` for the ML repo to use, or a shared Supabase table if multi-runtime sync becomes painful.
+
+
+---
+
+## Item 8 — Ride-member `Flights` privacy (coordination-only selects)
+
+**Audit item:** The `flights_select_ride_member` RLS policy allows users on the same ride to read each other's `Flights` rows. The app previously requested full rows via `Flights (*)` on shared-ride reads, which could expose more than coordination requires (bags, flight number, terminal, etc.).
+
+**Status:** Completed (via Item 9 query narrowing)
+
+**Summary:** The only offending query was `getResultsMatches` in [`src/lib/server/studentCommands.ts`](../src/lib/server/studentCommands.ts). It previously embedded `Flights!matches_flight_id_fk (*)` when loading all riders on the user's rides. Item 9 replaced that with explicit coordination columns — `airport`, `date`, `to_airport` — and maps results through `toResultMatchDto` in [`src/contracts/readModels.ts`](../src/contracts/readModels.ts) before they reach the browser. Other shared-ride paths (`getAspcReadyData`, `buildRideEntries`) already used narrow `Flights` embeds.
+
+**RLS unchanged:** `flights_select_ride_member` still grants row-level access for ride-mates. The fix is at the query layer — we only request fields needed for coordination. Pickup time on Results comes from `Matches.date` / `Matches.time`, not peer flight time windows.
+
+**Broad selects:** Production TypeScript has no remaining `select('*')`, empty `.select()`, or `Flights (*)` embeds on any table. [`src/contracts/readModelCoverage.test.ts`](../src/contracts/readModelCoverage.test.ts) scans all of `src/` and fails if either pattern is reintroduced.
+
+**Tests:**
+
+```bash
+pnpm test -- src/contracts/readModelCoverage.test.ts src/contracts/readModels.test.ts src/lib/server/studentCommands.test.ts
+```
 
 ---
 
