@@ -80,7 +80,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@typescript-eslint/parser": "8.61.0"
+      "@typescript-eslint/parser": "8.61.0",
+      "postcss": "8.5.15"
     }
   },
   "packageManager": "pnpm@9.15.2+sha256.022309bb31359142b65bfa889e0406d2eebd5acfffca47e6944acf29d9d6a66b"

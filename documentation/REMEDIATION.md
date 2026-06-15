@@ -297,7 +297,7 @@ The ML matching service is a **separate repo** with its own `config.py`, runs on
 
 - **Frozen lockfile:** Replaced `--no-frozen-lockfile` with `pnpm install --frozen-lockfile`; manifest and lockfile drift now fail CI.
 - **Production build:** Added a separate blocking `Production Build` job using non-production compile-time values and no database credentials.
-- **Security audit and dependency review:** Added blocking high/critical `pnpm audit` and dependency-review checks. Updated affected dependencies, enabled Dependabot security alerts and automatic fixes, and added scheduled pnpm and GitHub Actions updates.
+- **Security audit and dependency review:** Added blocking high/critical `pnpm audit` and dependency-review checks. Updated affected dependencies, enabled Dependabot security alerts and automatic fixes, and added scheduled pnpm and GitHub Actions updates. Dependabot alert #27 was resolved by overriding Next.js's vulnerable PostCSS `8.4.31` pin with patched PostCSS `8.5.15`.
 - **Schema/RPC compatibility:** Added a full-source static contract test for every public table referenced by production code and all 12 application RPC names and arguments. Generated types were reconciled with read-only production metadata; no database changes were made.
 - **API authorization tests:** Covered invalid sessions, non-admin users, unreadable profiles, admin scope, cross-user access, protected-handler short-circuiting, and route-wide authorization-wrapper enforcement.
 - **Matching-transition tests:** Covered request eligibility, matched-flight rejection, acceptance and cancellation failures, removal to unmatched, re-addition to a group, admin-created unmatched flights, and failed-transition audit behavior.
@@ -307,11 +307,13 @@ The ML matching service is a **separate repo** with its own `config.py`, runs on
 **Security audit results:**
 
 - Before: 8 high, 11 moderate, and 3 low advisories.
-- After: zero high or critical advisories. Two visible moderate transitive findings remain in Next.js/PostCSS and Jest/jsdom test tooling.
+- After: no known production dependency vulnerabilities and zero high or critical advisories. One moderate transitive advisory remains in Jest/jsdom's development-only `ws` dependency.
 
 **Current verification:**
 
 - `pnpm install --frozen-lockfile` - passed.
+- `pnpm why postcss --recursive` - all application and Next.js paths resolve to PostCSS `8.5.15`; vulnerable PostCSS `8.4.31` is absent from `pnpm-lock.yaml`.
+- `pnpm audit --prod --audit-level moderate` - passed with no known production vulnerabilities.
 - `pnpm audit:security` - passed with zero high or critical findings.
 - `pnpm test:database-contract` - passed; 10 production-referenced public tables and all 12 application RPC contracts matched generated database types.
 - `pnpm type-check`, `pnpm knip`, `pnpm knip:production`, and `pnpm lint` - passed.
