@@ -28,7 +28,7 @@ Defined in `supabase-migrations/` (and must exist in production).
 | RPC | Called from | Purpose |
 |-----|-------------|---------|
 | `accept_match_request(p_request_id uuid)` | `studentCommands.acceptMatchRequest` | Atomically accept request and form/join group |
-| `cancel_own_match(p_ride_id bigint)` | `studentCommands.cancelOwnMatch` | User leaves a ride group |
+| `cancel_own_match(p_ride_id bigint, p_cancelled_after_deadline boolean)` | `studentCommands.cancelOwnMatch` | User leaves a ride group |
 | `report_ready_status(p_ride_id, p_status, p_user_ids)` | `studentCommands` (ASPC ready) | Record group readiness |
 
 ### Service role only (`revoke` from `authenticated`; API uses `SUPABASE_SECRET_KEY`)
