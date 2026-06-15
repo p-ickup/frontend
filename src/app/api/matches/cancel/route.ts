@@ -17,6 +17,7 @@ export const POST = withAuthenticatedRoute(async (request, auth) => {
 
     const result = await cancelOwnMatch({
       supabase: auth.supabase,
+      userId: auth.user.id,
       rideId,
     })
 
