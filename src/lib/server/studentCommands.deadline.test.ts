@@ -119,7 +119,10 @@ describe('student flight deadline enforcement at the server boundary', () => {
 
   it('rejects changing an editable flight to a period past its deadline', async () => {
     jest.setSystemTime(new Date('2026-05-07T00:00:00-07:00'))
-    const from = jest.fn().mockReturnValueOnce(flightLookup('2099-01-20'))
+    const from = jest
+      .fn()
+      .mockReturnValueOnce(flightLookup('2099-01-20'))
+      .mockReturnValueOnce(profileQuery())
     const rpc = jest.fn()
 
     await expect(
@@ -135,7 +138,7 @@ describe('student flight deadline enforcement at the server boundary', () => {
       status: 403,
     })
 
-    expect(from).toHaveBeenCalledTimes(1)
+    expect(from).toHaveBeenCalledTimes(2)
     expect(rpc).not.toHaveBeenCalled()
   })
 

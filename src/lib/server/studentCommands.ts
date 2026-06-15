@@ -462,6 +462,16 @@ export async function updateOwnFlight({
     throw createError('At least one editable flight field is required.', 400)
   }
 
+  if (
+    typeof normalizedPayload.date === 'string' &&
+    !canEditFlight(normalizedPayload.date)
+  ) {
+    throw createError(
+      'The submission deadline for the updated service period has passed.',
+      403,
+    )
+  }
+
   const { data, error } = await supabase.rpc('update_own_flight_tx', {
     p_flight_id: flightId,
     p_fields: normalizedPayload,
