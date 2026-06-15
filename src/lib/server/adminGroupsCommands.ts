@@ -458,30 +458,42 @@ export const updateFlightRecord = async ({
     time_range?: string
   }
 }) => {
-  const flightUpdates: any = {}
+  const candidateUpdates: Record<string, unknown> = {}
 
   if (updates.flight_no !== undefined)
-    flightUpdates.flight_no = updates.flight_no
+    candidateUpdates.flight_no = updates.flight_no
   if (updates.airline_iata !== undefined) {
-    flightUpdates.airline_iata = updates.airline_iata
+    candidateUpdates.airline_iata = updates.airline_iata
   }
-  if (updates.airport !== undefined) flightUpdates.airport = updates.airport
+  if (updates.airport !== undefined) candidateUpdates.airport = updates.airport
   if (updates.to_airport !== undefined) {
-    flightUpdates.to_airport = updates.to_airport
+    candidateUpdates.to_airport = updates.to_airport
   }
-  if (updates.date !== undefined) flightUpdates.date = updates.date
+  if (updates.date !== undefined) candidateUpdates.date = updates.date
 
   if (updates.time_range !== undefined) {
     const [earliest, latest] = updates.time_range
       .split(' - ')
       .map((time) => time.trim())
-    if (earliest) flightUpdates.earliest_time = earliest
-    if (latest) flightUpdates.latest_time = latest
+    if (!earliest || !latest) {
+      throw Object.assign(
+        new Error('Time range must contain two valid times.'),
+        {
+          status: 400,
+          code: 'INVALID_TIME_RANGE',
+          field: 'time_range',
+        },
+      )
+    }
+    candidateUpdates.earliest_time = earliest
+    candidateUpdates.latest_time = latest
   }
 
-  if (Object.keys(flightUpdates).length === 0) {
+  if (Object.keys(candidateUpdates).length === 0) {
     return
   }
+
+  const flightUpdates = normalizeFlightWritePayload(candidateUpdates)
 
   const { error } = await supabase
     .from('Flights')
@@ -489,7 +501,9 @@ export const updateFlightRecord = async ({
     .eq('flight_id', flightId)
 
   if (error) {
-    throw createError(error, 'Failed to update rider details')
+    throw Object.assign(new Error('The flight could not be updated.'), {
+      status: 500,
+    })
   }
 }
 
@@ -808,7 +822,6 @@ export const addUnmatchedFlight = async ({
   supabase: GroupsSupabaseClient
   payload: Record<string, unknown>
 }) => {
-  const normalizedPayload = normalizeFlightWritePayload(payload)
   const userId =
     typeof payload.user_id === 'string' && payload.user_id.trim() !== ''
       ? payload.user_id
@@ -821,6 +834,11 @@ export const addUnmatchedFlight = async ({
     )
   }
 
+  const { user_id: _userId, ...flightPayload } = payload
+  const normalizedPayload = normalizeFlightWritePayload(flightPayload, {
+    mode: 'create',
+  })
+
   const { data, error } = await supabase
     .from('Flights')
     .insert({
@@ -832,7 +850,9 @@ export const addUnmatchedFlight = async ({
     .single()
 
   if (error) {
-    throw createError(error, 'Failed to create flight')
+    throw Object.assign(new Error('The flight could not be saved.'), {
+      status: error.code === '23505' ? 409 : 500,
+    })
   }
 
   return {

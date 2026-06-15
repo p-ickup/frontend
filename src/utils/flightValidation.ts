@@ -12,6 +12,46 @@ export interface FlightNumberValidationResult {
   errorMessage?: string
 }
 
+const FLIGHT_DATE_WINDOW_DAYS = 365
+export const MAX_BAG_COUNT = 10
+export const MAX_TERMINAL_LENGTH = 50
+export const SUPPORTED_AIRPORTS = ['LAX', 'ONT'] as const
+export const isSupportedAirport = (value: string) =>
+  SUPPORTED_AIRPORTS.includes(value as (typeof SUPPORTED_AIRPORTS)[number])
+export const isValidFlightTime = (value: string) =>
+  /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value)
+
+const APP_TIME_ZONE = 'America/Los_Angeles'
+
+const formatCalendarDate = (date: Date) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: APP_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  )
+  return `${values.year}-${values.month}-${values.day}`
+}
+
+export const getFlightDateBounds = (now = new Date()) => {
+  const today = formatCalendarDate(now)
+  const [year, month, day] = today.split('-').map(Number)
+  const center = Date.UTC(year, month - 1, day)
+  const dayMs = 24 * 60 * 60 * 1000
+
+  return {
+    min: new Date(center - FLIGHT_DATE_WINDOW_DAYS * dayMs)
+      .toISOString()
+      .slice(0, 10),
+    max: new Date(center + FLIGHT_DATE_WINDOW_DAYS * dayMs)
+      .toISOString()
+      .slice(0, 10),
+  }
+}
+
 /**
  * Validates airline IATA code
  * Format: 2 alphanumeric characters with at least one letter
@@ -29,27 +69,11 @@ export function validateAirlineCode(
 
   const cleanInput = input.trim().toUpperCase()
 
-  // Must be exactly 2 characters
-  if (cleanInput.length !== 2) {
+  if (!/^(?=.*[A-Z])[A-Z0-9]{2}$/.test(cleanInput)) {
     return {
       isValid: false,
-      errorMessage: 'Airline code must be exactly 2 characters',
-    }
-  }
-
-  // Must be alphanumeric
-  if (!/^[A-Z0-9]{2}$/.test(cleanInput)) {
-    return {
-      isValid: false,
-      errorMessage: 'Airline code must contain only letters and numbers',
-    }
-  }
-
-  // Must have at least one letter
-  if (!/[A-Z]/.test(cleanInput)) {
-    return {
-      isValid: false,
-      errorMessage: 'Airline code must contain at least one letter',
+      errorMessage:
+        'Airline code must be exactly two letters or numbers and include at least one letter',
     }
   }
 

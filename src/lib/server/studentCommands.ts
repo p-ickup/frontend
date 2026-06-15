@@ -70,7 +70,7 @@ const assertCompleteProfileForFlight = async (
     .maybeSingle()
 
   if (error) {
-    throw createError(error.message, 400, error)
+    throw createError('Unable to verify your profile at this time.', 500)
   }
 
   if (!profile) {
@@ -377,7 +377,9 @@ export async function createOwnFlight({
   userId: string
   payload: Record<string, unknown>
 }) {
-  const normalizedPayload = normalizeFlightWritePayload(payload)
+  const normalizedPayload = normalizeFlightWritePayload(payload, {
+    mode: 'create',
+  })
 
   if (normalizedPayload.date && !canEditFlight(normalizedPayload.date)) {
     throw createError(
@@ -401,7 +403,12 @@ export async function createOwnFlight({
     .single()
 
   if (error) {
-    throw createError(error.message, error.code === '23505' ? 409 : 400, error)
+    throw createError(
+      error.code === '23505'
+        ? 'A flight with these details already exists.'
+        : 'The flight could not be saved.',
+      error.code === '23505' ? 409 : 500,
+    )
   }
 
   return {
@@ -428,7 +435,7 @@ export async function updateOwnFlight({
     .maybeSingle()
 
   if (fetchError) {
-    throw createError(fetchError.message, 400, fetchError)
+    throw createError('The flight could not be loaded.', 500)
   }
 
   if (!existingFlight || existingFlight.user_id !== userId) {
@@ -459,19 +466,7 @@ export async function updateOwnFlight({
   })
 
   if (error) {
-    const message = error.message || 'Failed to update flight.'
-    const normalizedMessage = message.toLowerCase()
-    const status = normalizedMessage.includes('not found')
-      ? 404
-      : normalizedMessage.includes('not allowed') ||
-          normalizedMessage.includes('authentication')
-        ? 403
-        : normalizedMessage.includes('match') ||
-            normalizedMessage.includes('stale')
-          ? 409
-          : 400
-
-    throw createError(message, status, error)
+    throw createError('The flight could not be updated.', 500)
   }
 
   if (!data || data.success !== true) {

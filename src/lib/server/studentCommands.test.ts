@@ -631,6 +631,26 @@ describe('markGroupsReadyIfEligible', () => {
 })
 
 describe('createOwnFlight', () => {
+  const validPayload = (overrides: Record<string, unknown> = {}) => ({
+    to_airport: true,
+    airport: 'LAX',
+    flight_no: 123,
+    airline_iata: 'AA',
+    date: '2026-06-20',
+    bag_no_personal: 0,
+    bag_no: 0,
+    bag_no_large: 0,
+    earliest_time: '08:00',
+    latest_time: '09:00',
+    ...overrides,
+  })
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-06-15T12:00:00-07:00'))
+  })
+
+  afterEach(() => jest.useRealTimers())
+
   it('narrows the write payload before inserting a flight', async () => {
     const profileMaybeSingle = jest.fn().mockResolvedValue({
       data: {
@@ -660,9 +680,6 @@ describe('createOwnFlight', () => {
         supabase: { from },
         userId: 'student-1',
         payload: {
-          user_id: 'evil-user',
-          matched: true,
-          created_at: '2020-01-01T00:00:00Z',
           to_airport: 'true',
           airport: ' lax ',
           flight_no: '123',
@@ -675,7 +692,6 @@ describe('createOwnFlight', () => {
           latest_time: '09:00',
           opt_in: 'false',
           terminal: ' 4 ',
-          injected: 'nope',
         },
       }),
     ).resolves.toEqual({
@@ -711,16 +727,72 @@ describe('createOwnFlight', () => {
       createOwnFlight({
         supabase: { from },
         userId: 'student-1',
-        payload: {
-          flight_no: 'AA12',
-        },
+        payload: validPayload({ flight_no: 'AA12' }),
       }),
     ).rejects.toMatchObject({
-      message: 'flight_no must be a non-negative integer.',
+      message: 'Flight number must be an integer from 1 to 9999.',
       status: 400,
     })
 
     expect(insert).not.toHaveBeenCalled()
+  })
+
+  it('rejects unsupported fields instead of silently discarding them', async () => {
+    const from = jest.fn()
+
+    await expect(
+      createOwnFlight({
+        supabase: { from },
+        userId: 'student-1',
+        payload: { user_id: 'other-user' },
+      }),
+    ).rejects.toMatchObject({
+      message: 'Unsupported flight field: user_id.',
+      code: 'UNSUPPORTED_FIELD',
+      field: 'user_id',
+    })
+
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('does not expose database internals when creation fails', async () => {
+    const profileMaybeSingle = jest.fn().mockResolvedValue({
+      data: {
+        firstname: 'Taylor',
+        lastname: 'Student',
+        school: 'Pomona',
+        email: 'taylor@example.com',
+        phonenumber: '9095551234',
+      },
+      error: null,
+    })
+    const profileEq = jest.fn(() => ({ maybeSingle: profileMaybeSingle }))
+    const profileSelect = jest.fn(() => ({ eq: profileEq }))
+    const single = jest.fn().mockResolvedValue({
+      data: null,
+      error: {
+        code: '23514',
+        message: 'new row violates check constraint flights_internal_check',
+        hint: 'sensitive database hint',
+      },
+    })
+    const select = jest.fn(() => ({ single }))
+    const insert = jest.fn(() => ({ select }))
+    const from = jest
+      .fn()
+      .mockReturnValueOnce({ select: profileSelect })
+      .mockReturnValueOnce({ insert })
+
+    await expect(
+      createOwnFlight({
+        supabase: { from },
+        userId: 'student-1',
+        payload: validPayload(),
+      }),
+    ).rejects.toMatchObject({
+      message: 'The flight could not be saved.',
+      status: 500,
+    })
   })
 })
 
@@ -792,14 +864,11 @@ describe('updateOwnFlight', () => {
         userId: 'student-1',
         flightId: 77,
         payload: {
-          user_id: 'evil-user',
-          matched: true,
           flight_no: '456',
           airport: ' ont ',
           opt_in: 'true',
           bag_no_large: '2',
           latest_time: '17:30',
-          junk: 'ignore-me',
         },
       }),
     ).resolves.toEqual({ success: true })
@@ -814,8 +883,6 @@ describe('updateOwnFlight', () => {
         latest_time: '17:30',
       },
     })
-    expect(rpc.mock.calls[0][1].p_fields).not.toHaveProperty('matched')
-    expect(rpc.mock.calls[0][1].p_fields).not.toHaveProperty('matching_status')
   })
 
   it('surfaces structured matched-flight failures with status 409', async () => {

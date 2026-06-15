@@ -116,6 +116,53 @@ pnpm test -- src/utils/matchingStatus.test.ts src/lib/server/studentCommands.tes
 
 ---
 
+## Remediation Issue #6
+
+**Audit item:** Server-side flight validation allowed incomplete or unrealistic values to reach database writes.
+
+**Status:** Completed
+
+**Summary:** Implemented one server-side validation contract for student and Admin Groups flight creation/editing. All flight-detail payloads are validated before database writes, malformed direct API requests are rejected with safe field-level errors, and browser controls enforce the same limits.
+
+### Remediation completed
+
+- Applied the shared validator to `POST /api/flights`, `PATCH /api/flights/[flightId]`, Admin Groups `add_unmatched_flight`, and Admin Groups `update_flight_record`.
+- Required complete creation payloads and rejected unsupported fields. Partial edits validate every supplied field before the update or RPC call.
+- Replaced PostgreSQL messages and hints on flight submission, lookup, and update failures with user-safe responses containing a stable validation code and field where applicable.
+- Aligned `FlightForm`, Admin Add Rider, and Admin Edit Rider controls with the server contract.
+
+### Validation contract
+
+| Field                  | Server requirement                                                                     |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| Date                   | Real `YYYY-MM-DD` date within 365 calendar days before or after the current date       |
+| Airport                | Normalized to uppercase; `LAX` or `ONT` only                                           |
+| Flight number          | Integer from `1` through `9999`                                                        |
+| Airline code           | Two alphanumeric characters with at least one letter                                   |
+| Personal/carry/checked | Each bag count must be an integer from `0` through `10`                                |
+| Times                  | Valid 24-hour values; an earlier latest time represents an intentional next-day window |
+| Terminal               | Optional; maximum 50 characters and no control characters                              |
+
+Service-period eligibility remains in the matching workflow because valid non-subsidized requests may be submitted outside subsidized travel periods.
+
+### Testing and evidence
+
+`flightWritePayload.test.ts` covers required fields, invalid formats and years, impossible dates, inclusive date boundaries, all bag fields, airports, flight and airline formats, terminal limits, invalid times, overnight windows, unsupported fields, and partial edits. Student and admin command tests confirm invalid payloads do not reach database writes and database internals are not returned.
+
+```bash
+pnpm type-check
+pnpm lint
+pnpm test -- --runInBand
+pnpm knip:production
+pnpm build
+```
+
+**Results:** Type checking passed; lint passed with no warnings or errors; Knip reported no unused production findings; the production build completed successfully; all 27 test suites passed with 236 tests.
+
+No database schema, policy, trigger, function, or RPC changes were required.
+
+---
+
 ## Item 7 — Canonical `servicePeriods` config
 
 **Audit item:** Subsidized dates, buffered windows, deadlines, and trip-direction rules were split across `subsidyConfig.ts`, `flightValidation.ts` `SERVICE_PERIODS`, and inline `FlightForm` `operationalPeriods`.
