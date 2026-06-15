@@ -16,6 +16,19 @@ const completeProfile = {
   phonenumber: '9095551234',
 }
 
+const completeFlightPayload = (date: string) => ({
+  to_airport: true,
+  airport: 'LAX',
+  flight_no: 123,
+  airline_iata: 'AA',
+  date,
+  bag_no_personal: 0,
+  bag_no: 0,
+  bag_no_large: 0,
+  earliest_time: '08:00',
+  latest_time: '09:00',
+})
+
 const profileQuery = () => {
   const maybeSingle = jest.fn().mockResolvedValue({
     data: completeProfile,
@@ -66,7 +79,7 @@ describe('student flight deadline enforcement at the server boundary', () => {
       createOwnFlight({
         supabase: { from },
         userId: 'student-1',
-        payload: { date: '2026-03-13', airport: 'LAX' },
+        payload: completeFlightPayload('2026-03-13'),
       }),
     ).resolves.toEqual({ success: true, flightId: 321 })
 
@@ -87,7 +100,7 @@ describe('student flight deadline enforcement at the server boundary', () => {
       createOwnFlight({
         supabase: { from },
         userId: 'student-1',
-        payload: { date: '2026-03-13', airport: 'LAX' },
+        payload: completeFlightPayload('2026-03-13'),
       }),
     ).rejects.toMatchObject({
       message: 'The submission deadline for this service period has passed.',

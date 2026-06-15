@@ -9,6 +9,13 @@ import {
 } from '@/components/admin/services/adminLookupService'
 import { Plane, Search, User, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  getFlightDateBounds,
+  isValidFlightTime,
+  MAX_BAG_COUNT,
+  validateAirlineCode,
+  validateFlightNumber,
+} from '@/utils/flightValidation'
 
 type ChangeLogAction =
   | 'RUN_ALGORITHM'
@@ -59,13 +66,15 @@ export default function AddRider({
   // Flight form state
   const [flightNo, setFlightNo] = useState('')
   const [airlineIata, setAirlineIata] = useState('')
-  const [airport, setAirport] = useState('')
+  const [airport, setAirport] = useState<'LAX' | 'ONT'>('LAX')
   const [toAirport, setToAirport] = useState(true)
   const [date, setDate] = useState('')
   const [timeRange, setTimeRange] = useState('')
   const [checkedBags, setCheckedBags] = useState(0)
   const [carryOnBags, setCarryOnBags] = useState(0)
+  const [personalItems, setPersonalItems] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  const flightDateBounds = useMemo(() => getFlightDateBounds(), [])
 
   const fetchSchools = useCallback(async () => {
     setLoading(true)
@@ -176,8 +185,31 @@ export default function AddRider({
     }
 
     // Validate required fields
-    if (!date || !timeRange) {
-      setError('Date and time range are required')
+    if (!date || !timeRange || !airlineIata) {
+      setError('Date, time range, and airline code are required')
+      return
+    }
+
+    const airlineValidation = validateAirlineCode(airlineIata)
+    if (!airlineValidation.isValid) {
+      setError(airlineValidation.errorMessage || 'Invalid airline code')
+      return
+    }
+
+    if (flightNo) {
+      const flightValidation = validateFlightNumber(flightNo)
+      if (!flightValidation.isValid) {
+        setError(flightValidation.errorMessage || 'Invalid flight number')
+        return
+      }
+    }
+
+    if (
+      personalItems > MAX_BAG_COUNT ||
+      carryOnBags > MAX_BAG_COUNT ||
+      checkedBags > MAX_BAG_COUNT
+    ) {
+      setError(`Each luggage count must be between 0 and ${MAX_BAG_COUNT}`)
       return
     }
 
@@ -200,10 +232,9 @@ export default function AddRider({
     }
 
     // Validate time format (HH:MM)
-    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/
     if (
-      !timeRegex.test(timeRangeParts[0]) ||
-      !timeRegex.test(timeRangeParts[1])
+      !isValidFlightTime(timeRangeParts[0]) ||
+      !isValidFlightTime(timeRangeParts[1])
     ) {
       setError('Times must be in 24-hour format: HH:MM (e.g., 12:00, 16:00)')
       return
@@ -258,16 +289,15 @@ export default function AddRider({
         flight: {
           user_id: selectedUser.user_id,
           flight_no: finalFlightNo,
-          airline_iata: airlineIata || null,
-          airport: airport || 'LAX',
+          airline_iata: airlineIata,
+          airport,
           to_airport: toAirport,
           date: date,
           earliest_time: earliest,
           latest_time: latest,
-          bag_no: checkedBags,
+          bag_no: carryOnBags,
           bag_no_large: checkedBags,
-          bag_no_personal: carryOnBags,
-          matching_status: 'unmatched',
+          bag_no_personal: personalItems,
           opt_in: true,
         },
       })
@@ -298,8 +328,8 @@ export default function AddRider({
               flight_id: flightData.flightId,
               date: date,
               flight_no: finalFlightNo,
-              airline_iata: airlineIata || null,
-              airport: airport || 'LAX',
+              airline_iata: airlineIata,
+              airport,
               to_airport: toAirport,
               earliest_time: earliest,
               latest_time: latest,
@@ -341,12 +371,13 @@ export default function AddRider({
     setSearchQuery('')
     setFlightNo('')
     setAirlineIata('')
-    setAirport('')
+    setAirport('LAX')
     setToAirport(true)
     setDate('')
     setTimeRange('')
     setCheckedBags(0)
     setCarryOnBags(0)
+    setPersonalItems(0)
     setError(null)
   }
 
@@ -373,7 +404,7 @@ export default function AddRider({
 
         {/* Content */}
         <div className="max-h-[70vh] overflow-y-auto px-6 py-4">
-          {error && (
+          {error && step !== 'flight-info' && (
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
               {error}
             </div>
@@ -520,6 +551,8 @@ export default function AddRider({
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
+                    min={flightDateBounds.min}
+                    max={flightDateBounds.max}
                     required
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
                   />
@@ -544,7 +577,24 @@ export default function AddRider({
                   </p>
                 </div>
 
-                {/* Flight Number - Optional */}
+                {/* Airline Code - Required */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Airline Code (IATA) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={airlineIata}
+                    onChange={(e) =>
+                      setAirlineIata(e.target.value.toUpperCase())
+                    }
+                    maxLength={2}
+                    required
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                  />
+                </div>
+
+                {/* Flight Number */}
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Flight Number
@@ -557,34 +607,21 @@ export default function AddRider({
                   />
                 </div>
 
-                {/* Airline Code - Optional */}
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
-                    Airline Code (IATA)
-                  </label>
-                  <input
-                    type="text"
-                    value={airlineIata}
-                    onChange={(e) =>
-                      setAirlineIata(e.target.value.toUpperCase())
-                    }
-                    maxLength={10}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                  />
-                </div>
-
-                {/* Airport - Optional */}
+                {/* Airport */}
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Airport
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={airport}
-                    onChange={(e) => setAirport(e.target.value)}
-                    placeholder="LAX"
+                    onChange={(e) =>
+                      setAirport(e.target.value as 'LAX' | 'ONT')
+                    }
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                  />
+                  >
+                    <option value="LAX">LAX</option>
+                    <option value="ONT">ONT</option>
+                  </select>
                 </div>
 
                 {/* Direction - Optional */}
@@ -602,8 +639,23 @@ export default function AddRider({
                   </select>
                 </div>
 
-                {/* Bags - Optional */}
-                <div className="grid grid-cols-2 gap-4">
+                {/* Bags */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                      Personal Items
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={MAX_BAG_COUNT}
+                      value={personalItems}
+                      onChange={(e) =>
+                        setPersonalItems(parseInt(e.target.value) || 0)
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                    />
+                  </div>
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-700">
                       Checked Bags
@@ -611,6 +663,7 @@ export default function AddRider({
                     <input
                       type="number"
                       min="0"
+                      max={MAX_BAG_COUNT}
                       value={checkedBags}
                       onChange={(e) =>
                         setCheckedBags(parseInt(e.target.value) || 0)
@@ -625,6 +678,7 @@ export default function AddRider({
                     <input
                       type="number"
                       min="0"
+                      max={MAX_BAG_COUNT}
                       value={carryOnBags}
                       onChange={(e) =>
                         setCarryOnBags(parseInt(e.target.value) || 0)
@@ -639,24 +693,33 @@ export default function AddRider({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
-          <button
-            onClick={handleClose}
-            disabled={submitting}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          {step === 'flight-info' && (
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={submitting || !date || !timeRange}
-              className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {submitting ? 'Adding...' : 'Create Flight'}
-            </button>
+        <div className="flex flex-col gap-3 border-t border-gray-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          {step === 'flight-info' && error ? (
+            <p className="text-sm font-medium text-red-700" role="alert">
+              {error}
+            </p>
+          ) : (
+            <span />
           )}
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={handleClose}
+              disabled={submitting}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            {step === 'flight-info' && (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting || !date || !timeRange}
+                className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting ? 'Adding...' : 'Create Flight'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

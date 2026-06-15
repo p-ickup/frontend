@@ -208,6 +208,12 @@ export const routeErrorJson = (
     {
       error: error?.message || fallbackMessage,
       details: error?.details,
+      code:
+        'code' in (error || {}) ? (error as { code?: string }).code : undefined,
+      field:
+        'field' in (error || {})
+          ? (error as { field?: string }).field
+          : undefined,
     },
     { status: error?.status || 500 },
   )

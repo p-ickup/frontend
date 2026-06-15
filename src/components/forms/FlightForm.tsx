@@ -12,6 +12,9 @@ import { ApiRouteError, patchJson, postJson } from '@/utils/api'
 import { createBrowserClient } from '@/utils/supabase'
 import { validateUserProfile } from '@/utils/profileValidation'
 import {
+  getFlightDateBounds,
+  MAX_BAG_COUNT,
+  MAX_TERMINAL_LENGTH,
   validateAirlineCode,
   validateFlightNumber,
   isFlightPastDeadline,
@@ -102,6 +105,7 @@ export default function FlightForm({
     () => (dateOfFlight ? getAllowedDirectionsForDate(dateOfFlight) : []),
     [dateOfFlight],
   )
+  const flightDateBounds = useMemo(() => getFlightDateBounds(), [])
   const hasSubsidizedDirections = allowedDirections.length > 0
   const outboundAllowed = allowedDirections.includes('outbound')
   const inboundAllowed = allowedDirections.includes('inbound')
@@ -491,8 +495,15 @@ export default function FlightForm({
       return
     }
 
-    if (bag_no_personal < 0 || bag_no < 0 || bag_no_large < 0) {
-      setMessage('Please enter a valid number of bags')
+    if (
+      bag_no_personal < 0 ||
+      bag_no_personal > MAX_BAG_COUNT ||
+      bag_no < 0 ||
+      bag_no > MAX_BAG_COUNT ||
+      bag_no_large < 0 ||
+      bag_no_large > MAX_BAG_COUNT
+    ) {
+      setMessage(`Each luggage count must be between 0 and ${MAX_BAG_COUNT}`)
       setIsValidationError(true)
       return
     }
@@ -861,8 +872,15 @@ export default function FlightForm({
         }
         return true
       case 3: // Luggage
-        if (bag_no_personal < 0 || bag_no < 0 || bag_no_large < 0) {
-          setMessage('Please enter valid luggage counts (0 or more)')
+        if (
+          bag_no_personal < 0 ||
+          bag_no_personal > MAX_BAG_COUNT ||
+          bag_no < 0 ||
+          bag_no > MAX_BAG_COUNT ||
+          bag_no_large < 0 ||
+          bag_no_large > MAX_BAG_COUNT
+        ) {
+          setMessage(`Please enter luggage counts from 0 to ${MAX_BAG_COUNT}`)
           setIsValidationError(true)
           return false
         }
@@ -1002,6 +1020,8 @@ export default function FlightForm({
                       type="date"
                       value={dateOfFlight}
                       onChange={(e) => setDateOfFlight(e.target.value)}
+                      min={flightDateBounds.min}
+                      max={flightDateBounds.max}
                       className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
                       required
                     />
@@ -1337,6 +1357,7 @@ export default function FlightForm({
                         onChange={(e) => setTerminal(e.target.value)}
                         className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
                         placeholder="e.g., TBIT, 2"
+                        maxLength={MAX_TERMINAL_LENGTH}
                         required
                       />
                     </label>
@@ -1426,6 +1447,7 @@ export default function FlightForm({
                     <input
                       type="number"
                       min="0"
+                      max={MAX_BAG_COUNT}
                       value={bag_no_personal}
                       onChange={(e) => setBagNoPersonal(Number(e.target.value))}
                       className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
@@ -1491,6 +1513,7 @@ export default function FlightForm({
                     <input
                       type="number"
                       min="0"
+                      max={MAX_BAG_COUNT}
                       value={bag_no}
                       onChange={(e) => setBagNo(Number(e.target.value))}
                       className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
@@ -1556,6 +1579,7 @@ export default function FlightForm({
                     <input
                       type="number"
                       min="0"
+                      max={MAX_BAG_COUNT}
                       value={bag_no_large}
                       onChange={(e) => setBagNoLarge(Number(e.target.value))}
                       className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"

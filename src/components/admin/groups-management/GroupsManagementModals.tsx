@@ -1,9 +1,10 @@
 'use client'
 
 import { Clock, Loader2, Lock, Unlock } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import AddRider from '../AddRider'
+import { getFlightDateBounds } from '@/utils/flightValidation'
 import { useGroupsActionsContext, useGroupsUiContext } from './context'
 import {
   calculateBagUnits,
@@ -15,6 +16,7 @@ import {
 
 export default function GroupsManagementModals() {
   const [isDeletingGroup, setIsDeletingGroup] = useState(false)
+  const flightDateBounds = useMemo(() => getFlightDateBounds(), [])
   const {
     closeDeleteGroupConfirmation,
     closeEditRider,
@@ -501,6 +503,7 @@ export default function GroupsManagementModals() {
                       flight_no: event.target.value,
                     })
                   }
+                  maxLength={4}
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                 />
               </div>
@@ -517,7 +520,7 @@ export default function GroupsManagementModals() {
                       airline_iata: event.target.value.toUpperCase(),
                     })
                   }
-                  maxLength={3}
+                  maxLength={2}
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                 />
               </div>
@@ -525,8 +528,7 @@ export default function GroupsManagementModals() {
                 <label className="mb-2 block text-sm font-medium text-gray-700">
                   Airport
                 </label>
-                <input
-                  type="text"
+                <select
                   value={editRiderForm.airport}
                   onChange={(event) =>
                     setEditRiderForm({
@@ -535,7 +537,10 @@ export default function GroupsManagementModals() {
                     })
                   }
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
-                />
+                >
+                  <option value="LAX">LAX</option>
+                  <option value="ONT">ONT</option>
+                </select>
               </div>
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -568,6 +573,8 @@ export default function GroupsManagementModals() {
                       date: event.target.value,
                     })
                   }
+                  min={flightDateBounds.min}
+                  max={flightDateBounds.max}
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                 />
               </div>

@@ -129,6 +129,53 @@ pnpm test -- src/utils/matchingStatus.test.ts src/lib/server/studentCommands.tes
 
 ---
 
+## Remediation Issue #6
+
+**Audit item:** Server-side flight validation allowed incomplete or unrealistic values to reach database writes.
+
+**Status:** Completed
+
+**Summary:** Implemented one server-side validation contract for student and Admin Groups flight creation/editing. All flight-detail payloads are validated before database writes, malformed direct API requests are rejected with safe field-level errors, and browser controls enforce the same limits.
+
+### Remediation completed
+
+- Applied the shared validator to `POST /api/flights`, `PATCH /api/flights/[flightId]`, Admin Groups `add_unmatched_flight`, and Admin Groups `update_flight_record`.
+- Required complete creation payloads and rejected unsupported fields. Partial edits validate every supplied field before the update or RPC call.
+- Replaced PostgreSQL messages and hints on flight submission, lookup, and update failures with user-safe responses containing a stable validation code and field where applicable.
+- Aligned `FlightForm`, Admin Add Rider, and Admin Edit Rider controls with the server contract.
+
+### Validation contract
+
+| Field                  | Server requirement                                                                     |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| Date                   | Real `YYYY-MM-DD` date within 365 calendar days before or after the current date       |
+| Airport                | Normalized to uppercase; `LAX` or `ONT` only                                           |
+| Flight number          | Integer from `1` through `9999`                                                        |
+| Airline code           | Two alphanumeric characters with at least one letter                                   |
+| Personal/carry/checked | Each bag count must be an integer from `0` through `10`                                |
+| Times                  | Valid 24-hour values; an earlier latest time represents an intentional next-day window |
+| Terminal               | Optional; maximum 50 characters and no control characters                              |
+
+Service-period eligibility remains in the matching workflow because valid non-subsidized requests may be submitted outside subsidized travel periods.
+
+### Testing and evidence
+
+`flightWritePayload.test.ts` covers required fields, invalid formats and years, impossible dates, inclusive date boundaries, all bag fields, airports, flight and airline formats, terminal limits, invalid times, overnight windows, unsupported fields, and partial edits. Student and admin command tests confirm invalid payloads do not reach database writes and database internals are not returned.
+
+```bash
+pnpm type-check
+pnpm lint
+pnpm test -- --runInBand
+pnpm knip:production
+pnpm build
+```
+
+**Results:** Type checking passed; lint passed with no warnings or errors; Knip reported no unused production findings; the production build completed successfully; all 27 test suites passed with 236 tests.
+
+No database schema, policy, trigger, function, or RPC changes were required.
+
+---
+
 ## Item 7 — Canonical `servicePeriods` config
 
 **Audit item:** Subsidized dates, buffered windows, deadlines, and trip-direction rules were split across `subsidyConfig.ts`, `flightValidation.ts` `SERVICE_PERIODS`, and inline `FlightForm` `operationalPeriods`.
@@ -170,7 +217,7 @@ pnpm test -- src/config/servicePeriodHelpers.test.ts src/utils/flightValidation.
 
 The audit finding was **frontend drift**: the same break dates lived in three TypeScript files (`subsidyConfig.ts`, `flightValidation.ts`, `FlightForm` inline `operationalPeriods`). Item 7 closes that by making [`servicePeriods.ts`](src/config/servicePeriods.ts) the single source for everything the **web app** reads — form deadlines, direction gating, admin subsidy lists, and the policy page — with 58+ tests locking behavior.
 
-The ML matching service is a **separate repo** with its own `config.py`, runs on a **batch schedule** (not on student request paths), and does **not** read `servicePeriods.ts`, Postgres, or the frontend subsidy exports today. 
+The ML matching service is a **separate repo** with its own `config.py`, runs on a **batch schedule** (not on student request paths), and does **not** read `servicePeriods.ts`, Postgres, or the frontend subsidy exports today.
 
 - Drift risk is minimal now and is **documented** in [`OPERATIONS.md`](./OPERATIONS.md). Now with **one** TS file instead of three.
 - A shared artifact is **possible to add later** without redoing this work: e.g. `pnpm export:service-periods` → `service_periods.json` for the ML repo to use, or a shared Supabase table if multi-runtime sync becomes painful.
@@ -253,6 +300,45 @@ The ML matching service is a **separate repo** with its own `config.py`, runs on
 - Middleware tests confirmed public routes perform no Supabase session work, protected routes reject missing sessions, return destinations remain internal, and refreshed cookies survive redirects.
 - Authorization tests confirmed `401` versus `403`, school-scope enforcement, user/flight ownership validation, and cross-user mutation denial before protected operations execute.
 - Production smoke tests passed for all 7 public pages and 13 protected/admin route cases. Protected routes preserved their complete return destination, representative APIs rejected missing sessions with `401`, and no browser console errors occurred.
+
+---
+
+## Remediation Issue #11
+
+**Audit item:** Pull-request CI did not guarantee lockfile reproducibility or provide dependency, database compatibility, and business-rule release assurance.
+
+**Status:** Completed
+
+**Summary:** Pull-request CI now uses frozen installs and separate blocking checks for the production build, security audit, dependency review, database contract, static analysis, and tests. Release-critical coverage verifies API authorization, matching transitions, and deadline enforcement. CI does not connect to or modify production.
+
+**Remediation completed:**
+
+- **Frozen lockfile:** Replaced `--no-frozen-lockfile` with `pnpm install --frozen-lockfile`; manifest and lockfile drift now fail CI.
+- **Production build:** Added a separate blocking `Production Build` job using non-production compile-time values and no database credentials.
+- **Security audit and dependency review:** Added blocking high/critical `pnpm audit` and dependency-review checks. Updated affected dependencies, enabled Dependabot security alerts and automatic fixes, and added scheduled pnpm and GitHub Actions updates. Dependabot alert #27 was resolved by overriding Next.js's vulnerable PostCSS `8.4.31` pin with patched PostCSS `8.5.15`.
+- **Schema/RPC compatibility:** Added a full-source static contract test for every public table referenced by production code and all 12 application RPC names and arguments. Generated types were reconciled with read-only production metadata; no database changes were made.
+- **API authorization tests:** Covered invalid sessions, non-admin users, unreadable profiles, admin scope, cross-user access, protected-handler short-circuiting, and route-wide authorization-wrapper enforcement.
+- **Matching-transition tests:** Covered request eligibility, matched-flight rejection, acceptance and cancellation failures, removal to unmatched, re-addition to a group, admin-created unmatched flights, and failed-transition audit behavior.
+- **Deadline-enforcement tests:** Covered create, update, and delete operations across winter, spring, and summer periods, PST/PDT offsets, exact and expired deadlines, and dates outside configured periods. Replacement dates are validated server-side to prevent API bypass.
+- **Workflow safeguards:** Checks have timeouts, read-only repository permissions, and cancellation of superseded pull-request runs.
+
+**Security audit results:**
+
+- Before: 8 high, 11 moderate, and 3 low advisories.
+- After: no known production dependency vulnerabilities and zero high or critical advisories. One moderate transitive advisory remains in Jest/jsdom's development-only `ws` dependency.
+
+**Current verification:**
+
+- `pnpm install --frozen-lockfile` - passed.
+- `pnpm why postcss --recursive` - all application and Next.js paths resolve to PostCSS `8.5.15`; vulnerable PostCSS `8.4.31` is absent from `pnpm-lock.yaml`.
+- `pnpm audit --prod --audit-level moderate` - passed with no known production vulnerabilities.
+- `pnpm audit:security` - passed with zero high or critical findings.
+- `pnpm test:database-contract` - passed; 10 production-referenced public tables and all 12 application RPC contracts matched generated database types.
+- `pnpm type-check`, `pnpm knip`, `pnpm knip:production`, and `pnpm lint` - passed.
+- `pnpm test:ci --passWithNoTests --runInBand` - 26 suites and 202 tests passed.
+- `pnpm build` - passed on Next.js 15.5.18 and generated 48 route entries.
+- Built-server smoke checks passed for public access, protected-page redirects, and `401` responses from protected Results, Admin, flight, match-request, and match-cancellation endpoints.
+- Production database structures and data were unchanged.
 
 ---
 
