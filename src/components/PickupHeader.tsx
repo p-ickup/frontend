@@ -53,30 +53,42 @@ export default function PickupHeader() {
           </div>
           {/* Dashboard button - always rendered to prevent layout shift, hidden on mobile */}
           <div
-            className={`hidden rounded-lg bg-white/10 px-1 py-1 backdrop-blur-sm transition-opacity duration-200 md:block ${
+            className={`hidden transition-opacity duration-200 md:block ${
               isAdmin
                 ? 'pointer-events-auto opacity-100'
                 : 'pointer-events-none opacity-0'
             }`}
           >
-            <SimpleRedirectButton label="Dashboard" route="/admin" />
+            <SimpleRedirectButton
+              label="Dashboard"
+              route="/admin"
+              variant="nav"
+            />
           </div>
         </div>
 
         {/* Desktop Navigation */}
         <nav className="hidden space-x-1 md:flex lg:space-x-3">
-          <div className="rounded-lg bg-white/10 px-1 py-1 backdrop-blur-sm">
-            <SimpleRedirectButton label="Forms" route="/questionnaires" />
-          </div>
-          <div className="rounded-lg bg-white/10 px-1 py-1 backdrop-blur-sm">
-            <SimpleRedirectButton label="Results" route="/results" />
-          </div>
-          <div className="rounded-lg bg-white/10 px-1 py-1 backdrop-blur-sm">
-            <SimpleRedirectButton label="Unmatched" route="/unmatched" />
-          </div>
-          <div className="rounded-lg bg-white/10 px-1 py-1 backdrop-blur-sm">
-            <SimpleRedirectButton label="Feedback" route="/feedback" />
-          </div>
+          <SimpleRedirectButton
+            label="Forms"
+            route="/questionnaires"
+            variant="nav"
+          />
+          <SimpleRedirectButton
+            label="Results"
+            route="/results"
+            variant="nav"
+          />
+          <SimpleRedirectButton
+            label="Unmatched"
+            route="/unmatched"
+            variant="nav"
+          />
+          <SimpleRedirectButton
+            label="Feedback"
+            route="/feedback"
+            variant="nav"
+          />
         </nav>
 
         {/* Mobile Navigation - Hamburger Menu */}
@@ -178,53 +190,38 @@ export default function PickupHeader() {
       {/* Mobile Dropdown Menu */}
       {isMobileMenuOpen && (
         <div className="border-t border-white/20 bg-gradient-to-r from-teal-500 to-yellow-100 md:hidden">
-          <div className="space-y-3 px-4 py-4">
-            <button
-              onClick={() => {
-                router.push('/questionnaires')
-                setIsMobileMenuOpen(false)
-              }}
-              className="block w-full py-2 text-left text-white transition-colors hover:text-yellow-200"
-            >
-              📋 Questionnaire
-            </button>
-            <button
-              onClick={() => {
-                router.push('/results')
-                setIsMobileMenuOpen(false)
-              }}
-              className="block w-full py-2 text-left text-white transition-colors hover:text-yellow-200"
-            >
-              🎯 Results
-            </button>
-            <button
-              onClick={() => {
-                router.push('/unmatched')
-                setIsMobileMenuOpen(false)
-              }}
-              className="block w-full py-2 text-left text-white transition-colors hover:text-yellow-200"
-            >
-              👥 Unmatched
-            </button>
-            <button
-              onClick={() => {
-                router.push('/feedback')
-                setIsMobileMenuOpen(false)
-              }}
-              className="block w-full py-2 text-left text-white transition-colors hover:text-yellow-200"
-            >
-              💬 Feedback
-            </button>
+          <div className="space-y-1 px-4 py-4">
+            <SimpleRedirectButton
+              label="📋 Questionnaire"
+              route="/questionnaires"
+              variant="mobile"
+              onNavigate={() => setIsMobileMenuOpen(false)}
+            />
+            <SimpleRedirectButton
+              label="🎯 Results"
+              route="/results"
+              variant="mobile"
+              onNavigate={() => setIsMobileMenuOpen(false)}
+            />
+            <SimpleRedirectButton
+              label="👥 Unmatched"
+              route="/unmatched"
+              variant="mobile"
+              onNavigate={() => setIsMobileMenuOpen(false)}
+            />
+            <SimpleRedirectButton
+              label="💬 Feedback"
+              route="/feedback"
+              variant="mobile"
+              onNavigate={() => setIsMobileMenuOpen(false)}
+            />
             {isAdmin && (
-              <button
-                onClick={() => {
-                  router.push('/admin')
-                  setIsMobileMenuOpen(false)
-                }}
-                className="block w-full py-2 text-left text-white transition-colors hover:text-yellow-200"
-              >
-                🔐 Dashboard
-              </button>
+              <SimpleRedirectButton
+                label="🔐 Dashboard"
+                route="/admin"
+                variant="mobile"
+                onNavigate={() => setIsMobileMenuOpen(false)}
+              />
             )}
           </div>
         </div>

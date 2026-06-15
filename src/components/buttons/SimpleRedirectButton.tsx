@@ -1,23 +1,101 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 interface SimpleRedirectButtonProps {
   label: string
   route: string
+  variant?: 'plain' | 'nav' | 'mobile'
+  onNavigate?: () => void
+  className?: string
+}
+
+function isRouteActive(pathname: string, route: string) {
+  return pathname === route || pathname.startsWith(`${route}/`)
 }
 
 const SimpleRedirectButton: React.FC<SimpleRedirectButtonProps> = ({
   label,
   route,
+  variant = 'plain',
+  onNavigate,
+  className = '',
 }) => {
-  const router = useRouter()
+  const pathname = usePathname()
+  const [isNavigating, setIsNavigating] = useState(false)
+  const isActive = isRouteActive(pathname, route)
 
-  return (
-    <button onClick={() => router.push(route)} className="hover:text-yellow-50">
+  useEffect(() => {
+    setIsNavigating(false)
+  }, [pathname])
+
+  const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (isActive) {
+      event.preventDefault()
+      return
+    }
+
+    setIsNavigating(true)
+    onNavigate?.()
+  }
+
+  const linkClassName = [
+    'items-center gap-1.5 transition-all duration-150',
+    variant === 'mobile' ? 'flex w-full' : 'inline-flex',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
+    variant === 'nav' && 'group-hover:text-yellow-100',
+    variant !== 'nav' && 'hover:text-yellow-50',
+    variant === 'mobile' &&
+      'rounded-lg px-2 py-2 text-left hover:bg-white/10 active:bg-white/20',
+    variant === 'plain' && 'hover:underline',
+    isActive && 'text-yellow-50',
+    isActive && variant === 'mobile' && 'bg-white/15',
+    isNavigating && 'pointer-events-none scale-[0.98] opacity-75',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  const link = (
+    <Link
+      href={route}
+      onClick={handleClick}
+      aria-current={isActive ? 'page' : undefined}
+      aria-busy={isNavigating}
+      className={linkClassName}
+    >
+      {isNavigating && (
+        <span
+          className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"
+          aria-hidden="true"
+        />
+      )}
       {label}
-    </button>
+    </Link>
   )
+
+  if (variant === 'nav') {
+    return (
+      <div
+        className={[
+          'group cursor-pointer rounded-lg bg-white/10 px-1 py-1 backdrop-blur-sm transition-all duration-150',
+          'hover:bg-white/25 hover:ring-1 hover:ring-white/40',
+          'active:scale-95',
+          isActive && 'bg-white/20 shadow-inner ring-1 ring-white/30',
+          isActive && 'hover:bg-white/30',
+          isNavigating && 'bg-white/25 opacity-75',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
+        {link}
+      </div>
+    )
+  }
+
+  return link
 }
 
 export default SimpleRedirectButton
