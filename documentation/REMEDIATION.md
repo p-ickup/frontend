@@ -97,9 +97,6 @@ npm test -- --testPathPattern=studentCommands.test.ts
 
 Migration: [`supabase-migrations/2026-06-14_cancel_own_match_deadline.sql`](../supabase-migrations/2026-06-14_cancel_own_match_deadline.sql). Deploy SQL before frontend.
 
-### Deferred
-
-- `DROP COLUMN matched` after soak.
 
 ### Files
 
