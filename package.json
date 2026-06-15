@@ -40,7 +40,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.1",
-    "@types/node": "20.3.1",
+    "@types/node": "25.9.3",
     "@types/react": "18.2.8",
     "@types/react-dom": "18.2.5",
     "autoprefixer": "10.4.15",
