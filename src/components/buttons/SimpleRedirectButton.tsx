@@ -7,13 +7,17 @@ import { useEffect, useState } from 'react'
 interface SimpleRedirectButtonProps {
   label: string
   route: string
-  variant?: 'plain' | 'nav' | 'mobile'
+  variant?: 'plain' | 'nav' | 'mobile' | 'cta'
   onNavigate?: () => void
   className?: string
 }
 
 function isRouteActive(pathname: string, route: string) {
   return pathname === route || pathname.startsWith(`${route}/`)
+}
+
+function isExactRoute(pathname: string, route: string) {
+  return pathname === route
 }
 
 const SimpleRedirectButton: React.FC<SimpleRedirectButtonProps> = ({
@@ -26,13 +30,14 @@ const SimpleRedirectButton: React.FC<SimpleRedirectButtonProps> = ({
   const pathname = usePathname()
   const [isNavigating, setIsNavigating] = useState(false)
   const isActive = isRouteActive(pathname, route)
+  const isCurrentPage = isExactRoute(pathname, route)
 
   useEffect(() => {
     setIsNavigating(false)
   }, [pathname])
 
   const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
-    if (isActive) {
+    if (isCurrentPage) {
       event.preventDefault()
       return
     }
@@ -42,16 +47,18 @@ const SimpleRedirectButton: React.FC<SimpleRedirectButtonProps> = ({
   }
 
   const linkClassName = [
-    'items-center gap-1.5 transition-all duration-150',
+    'items-center gap-2 transition-all duration-150',
     variant === 'mobile' ? 'flex w-full' : 'inline-flex',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50',
-    variant === 'nav' && 'group-hover:text-yellow-100',
-    variant !== 'nav' && 'hover:text-yellow-50',
+    variant === 'nav' &&
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 group-hover:text-yellow-100',
+    variant === 'cta' &&
+      'rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 px-6 py-3 font-medium text-white shadow-md hover:from-teal-600 hover:to-cyan-600 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 active:scale-95',
+    variant === 'plain' &&
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 hover:text-yellow-50 hover:underline',
     variant === 'mobile' &&
-      'rounded-lg px-2 py-2 text-left hover:bg-white/10 active:bg-white/20',
-    variant === 'plain' && 'hover:underline',
-    isActive && 'text-yellow-50',
-    isActive && variant === 'mobile' && 'bg-white/15',
+      'rounded-lg px-2 py-2 text-left hover:bg-white/10 hover:text-yellow-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 active:bg-white/20',
+    isActive && variant === 'nav' && 'text-yellow-50',
+    isActive && variant === 'mobile' && 'bg-white/15 text-yellow-50',
     isNavigating && 'pointer-events-none scale-[0.98] opacity-75',
     className,
   ]

@@ -28,6 +28,7 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({
     push: pushMock,
   }),
+  usePathname: () => '/admin',
 }))
 
 import AdminDashboard from '@/components/admin/AdminDashboard'
@@ -404,15 +405,15 @@ describe('AdminDashboard', () => {
     expect(await screen.findByText('Scheduled (All)')).toBeInTheDocument()
   })
 
-  it('navigates to groups management from the action button', async () => {
+  it('links to groups management from the action button', async () => {
     renderDashboard()
 
     await screen.findByText('Pickup Dashboard')
-    await userEvent.click(
-      screen.getByRole('button', { name: /View & Manage Groups/i }),
-    )
+    const groupsLink = screen.getByRole('link', {
+      name: /View & Manage Groups/i,
+    })
 
-    expect(pushMock).toHaveBeenCalledWith('/admin/groups')
+    expect(groupsLink).toHaveAttribute('href', '/admin/groups')
   })
 
   it('runs the match email dry run through the server route', async () => {
