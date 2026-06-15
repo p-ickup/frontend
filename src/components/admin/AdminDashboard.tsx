@@ -2,8 +2,8 @@
 
 import type { AdminSummaryDto } from '@/contracts/readModels'
 import type { NoShowRiderInfo } from '@/utils/adminMatchNoShows'
+import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
 import { postJson, requestJson } from '@/utils/api'
-import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 const formatDateTime = (dateString: string): string => {
@@ -45,7 +45,6 @@ const getDefaultUnmatchedDateWindow = () => {
 }
 
 export default function AdminDashboard() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [school, setSchool] = useState<string>('')
   const [matchRate, setMatchRate] = useState<number>(0)
@@ -420,10 +419,6 @@ export default function AdminDashboard() {
     }
   }
 
-  const handleViewGroups = () => {
-    router.push('/admin/groups')
-  }
-
   const fetchCancellations = async () => {
     if (!cancellationsDateStart || !cancellationsDateEnd) return
     setCancellationsLoading(true)
@@ -592,12 +587,11 @@ export default function AdminDashboard() {
         </div>
 
         <div className="mb-8 flex flex-wrap justify-center gap-4">
-          <button
-            onClick={handleViewGroups}
-            className="rounded-lg bg-gradient-to-r from-teal-500 to-cyan-500 px-6 py-3 font-medium text-white transition-all hover:from-teal-600 hover:to-cyan-600"
-          >
-            View & Manage Groups
-          </button>
+          <SimpleRedirectButton
+            label="View & Manage Groups"
+            route="/admin/groups"
+            variant="cta"
+          />
         </div>
 
         {/* Match no-shows — warm orange–yellow banner (Cancellations keeps red–orange) */}

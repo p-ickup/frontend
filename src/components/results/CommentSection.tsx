@@ -21,11 +21,18 @@ export default function CommentSection({ rideId }: { rideId: number }) {
   const { user } = useAuth()
   const [userDetails, setUserDetails] = useState<UserSummary | null>(null)
 
-  const bottomRef = useRef<HTMLDivElement | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const shouldAutoScrollRef = useRef(false)
 
-  // Auto-scroll to bottom when comments update
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (!shouldAutoScrollRef.current) return
+
+    const container = scrollContainerRef.current
+    if (container) {
+      container.scrollTop = container.scrollHeight
+    }
+
+    shouldAutoScrollRef.current = false
   }, [commentList])
 
   useEffect(() => {
@@ -62,6 +69,7 @@ export default function CommentSection({ rideId }: { rideId: number }) {
       user: userDetails,
     }
 
+    shouldAutoScrollRef.current = true
     setCommentList((prev) => [...prev, optimisticComment])
     setNewComment('')
 
@@ -87,7 +95,10 @@ export default function CommentSection({ rideId }: { rideId: number }) {
 
   return (
     <div className="mt-4 flex max-h-64 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-md">
-      <div className="space-y-2 overflow-y-auto p-3 text-sm text-gray-700">
+      <div
+        ref={scrollContainerRef}
+        className="space-y-2 overflow-y-auto p-3 text-sm text-gray-700"
+      >
         {commentList.length > 0 ? (
           commentList.map((comment) => (
             <div
@@ -103,7 +114,6 @@ export default function CommentSection({ rideId }: { rideId: number }) {
         ) : (
           <p className="text-sm text-gray-500">No messages yet.</p>
         )}
-        <div ref={bottomRef} /> {/* 👈 Auto-scroll target */}
       </div>
       <div className="mt-auto flex border-t border-gray-200 px-3 py-2">
         <input
