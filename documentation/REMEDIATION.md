@@ -54,36 +54,36 @@ npm test -- --testPathPattern=studentCommands.test.ts
 
 ### Status semantics
 
-| `matching_status` | Replaces `matched` | Meaning |
-| ----------------- | ------------------ | ------- |
-| `submitted` | `null` | Filed; awaiting batch matcher |
-| `unmatched` | `false` | Post-matcher; no group |
-| `matched` | `true` | In a group (`Matches` row exists) |
+| `matching_status` | Replaces `matched` | Meaning                           |
+| ----------------- | ------------------ | --------------------------------- |
+| `submitted`       | `null`             | Filed; awaiting batch matcher     |
+| `unmatched`       | `false`            | Post-matcher; no group            |
+| `matched`         | `true`             | In a group (`Matches` row exists) |
 
 **Filter rules (unchanged product behavior, new column):**
 
-| Surface | Filter |
-| ------- | ------ |
-| Student `/unmatched` coordination pool | `unmatched` only |
-| `/questionnaires` Upcoming | `submitted` |
-| `/questionnaires` Unmatched section | `unmatched` |
-| Admin dashboard unmatched count + CSV | `submitted` + `unmatched` |
-| Admin groups unmatched riders panel | `matching_status <> 'matched'` |
+| Surface                                | Filter                         |
+| -------------------------------------- | ------------------------------ |
+| Student `/unmatched` coordination pool | `unmatched` only               |
+| `/questionnaires` Upcoming             | `submitted`                    |
+| `/questionnaires` Unmatched section    | `unmatched`                    |
+| Admin dashboard unmatched count + CSV  | `submitted` + `unmatched`      |
+| Admin groups unmatched riders panel    | `matching_status <> 'matched'` |
 
 ### Database
 
 `CREATE OR REPLACE` on eight RPCs that read or wrote `matched`:
 
-| RPC | Change |
-| --- | ------ |
-| `accept_match_request` | Guards and sets `matching_status = 'matched'` |
-| `cancel_own_match` | Sets `matching_status = 'unmatched'` |
-| `create_group_records` | Sets `matching_status = 'matched'` for group riders |
-| `delete_group_records` | Optional `matching_status = 'unmatched'` |
-| `aspc_delay_move_to_unmatched` | Sets `matching_status = 'unmatched'` |
-| `aspc_delay_decline_groups` | Sets `matching_status = 'unmatched'` |
-| `update_own_flight_tx` | 409 guard uses `matching_status = 'matched'` (with Item 4) |
-| `delete_own_flight_tx` | Same read guard |
+| RPC                            | Change                                                     |
+| ------------------------------ | ---------------------------------------------------------- |
+| `accept_match_request`         | Guards and sets `matching_status = 'matched'`              |
+| `cancel_own_match`             | Sets `matching_status = 'unmatched'`                       |
+| `create_group_records`         | Sets `matching_status = 'matched'` for group riders        |
+| `delete_group_records`         | Optional `matching_status = 'unmatched'`                   |
+| `aspc_delay_move_to_unmatched` | Sets `matching_status = 'unmatched'`                       |
+| `aspc_delay_decline_groups`    | Sets `matching_status = 'unmatched'`                       |
+| `update_own_flight_tx`         | 409 guard uses `matching_status = 'matched'` (with Item 4) |
+| `delete_own_flight_tx`         | Same read guard                                            |
 
 ### Deferred (Phase 4) - STILL TODO
 
@@ -92,21 +92,21 @@ npm test -- --testPathPattern=studentCommands.test.ts
 
 ### Files
 
-| File | Change |
-| ---- | ------ |
-| `supabase-migrations/2026-06-11_matching_status_cutover.sql` | RPC cutover |
-| `src/utils/matchingStatus.ts` | Canonical status helpers |
-| `src/utils/matchingStatus.test.ts` | Helper tests |
-| `src/lib/server/studentCommands.ts` | Reads/writes `matching_status`; FK-qualified embeds |
-| `src/lib/server/adminGroupsCommands.ts` | `matching_status` updates |
-| `src/lib/server/aspcDelayCommands.ts` | FK-qualified embeds |
-| `src/app/questionnaires/page.tsx` | Status-based sections |
-| `src/components/forms/FlightForm.tsx` | `matching_status` on load |
-| `src/components/admin/AdminDashboard.tsx` | Dashboard count filter |
-| `src/components/admin/GroupsManagement.tsx` | Admin mark-matched API |
-| `src/app/api/admin/groups/command/route.ts` | `matchingStatus` in payload |
-| `src/lib/server/studentCommands.test.ts` | RPC/status mocks updated |
-| `src/lib/server/adminGroupsCommands.test.ts` | Update payload tests |
+| File                                                         | Change                                              |
+| ------------------------------------------------------------ | --------------------------------------------------- |
+| `supabase-migrations/2026-06-11_matching_status_cutover.sql` | RPC cutover                                         |
+| `src/utils/matchingStatus.ts`                                | Canonical status helpers                            |
+| `src/utils/matchingStatus.test.ts`                           | Helper tests                                        |
+| `src/lib/server/studentCommands.ts`                          | Reads/writes `matching_status`; FK-qualified embeds |
+| `src/lib/server/adminGroupsCommands.ts`                      | `matching_status` updates                           |
+| `src/lib/server/aspcDelayCommands.ts`                        | FK-qualified embeds                                 |
+| `src/app/questionnaires/page.tsx`                            | Status-based sections                               |
+| `src/components/forms/FlightForm.tsx`                        | `matching_status` on load                           |
+| `src/components/admin/AdminDashboard.tsx`                    | Dashboard count filter                              |
+| `src/components/admin/GroupsManagement.tsx`                  | Admin mark-matched API                              |
+| `src/app/api/admin/groups/command/route.ts`                  | `matchingStatus` in payload                         |
+| `src/lib/server/studentCommands.test.ts`                     | RPC/status mocks updated                            |
+| `src/lib/server/adminGroupsCommands.test.ts`                 | Update payload tests                                |
 
 **Tests**
 
@@ -126,23 +126,23 @@ pnpm test -- src/utils/matchingStatus.test.ts src/lib/server/studentCommands.tes
 
 **What changed:**
 
-| Area | Behavior |
-| ---- | -------- |
+| Area           | Behavior                                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Canonical data | `servicePeriods.ts` — dual-direction rows (Thanksgiving, Spring), split winter outbound/return rows, summer outbound-only |
-| Derived lists | `subsidyConfig.ts` re-exports `COVERED_DATES_*` from subsidized ranges (fixes Summer `05-12` format) |
-| Deadlines | `flightValidation.ts` delegates to helpers; display uses **PT** labels |
-| Flight form | See **Flight form step order** below |
-| Policy page | Shows the **last** `SERVICE_PERIODS` entry (current break) |
-| Ops | Edit `servicePeriods.ts` only — see [`OPERATIONS.md`](./OPERATIONS.md) |
+| Derived lists  | `subsidyConfig.ts` re-exports `COVERED_DATES_*` from subsidized ranges (fixes Summer `05-12` format)                      |
+| Deadlines      | `flightValidation.ts` delegates to helpers; display uses **PT** labels                                                    |
+| Flight form    | See **Flight form step order** below                                                                                      |
+| Policy page    | Shows the **last** `SERVICE_PERIODS` entry (current break)                                                                |
+| Ops            | Edit `servicePeriods.ts` only — see [`OPERATIONS.md`](./OPERATIONS.md)                                                    |
 
 **Flight form step order**
 
 Previously step 1 was trip direction + airport and step 2 was date + flight details. Direction was not tied to the selected date (e.g. “To Campus” was hard-disabled for all of summer).
 
-| Step | Before | After |
-| ---- | ------ | ----- |
-| 1 | Trip direction + airport | **Ride date** + airport (deadline check runs here) |
-| 2 | Date + times + flight info | **Trip direction** + times + flight info |
+| Step | Before                     | After                                              |
+| ---- | -------------------------- | -------------------------------------------------- |
+| 1    | Trip direction + airport   | **Ride date** + airport (deadline check runs here) |
+| 2    | Date + times + flight info | **Trip direction** + times + flight info           |
 
 On step 2, each direction button is enabled only if the ride date falls in that direction’s **subsidized** range for a period in `servicePeriods.ts` (via `getAllowedDirectionsForDate`). Examples: Summer May 15 → outbound only; Spring Mar 14 → outbound only; Spring Mar 21 → inbound only. If the date is outside subsidized windows but still submittable (non-subsidized path), both directions stay selectable. Changing the date clears a direction selection that is no longer valid.
 
@@ -153,11 +153,12 @@ On step 2, each direction button is enabled only if the ride date falls in that 
 ```bash
 pnpm test -- src/config/servicePeriodHelpers.test.ts src/utils/flightValidation.test.ts
 ```
+
 **Why ML `config.py` was not unified in this item**
 
 The audit finding was **frontend drift**: the same break dates lived in three TypeScript files (`subsidyConfig.ts`, `flightValidation.ts`, `FlightForm` inline `operationalPeriods`). Item 7 closes that by making [`servicePeriods.ts`](src/config/servicePeriods.ts) the single source for everything the **web app** reads — form deadlines, direction gating, admin subsidy lists, and the policy page — with 58+ tests locking behavior.
 
-The ML matching service is a **separate repo** with its own `config.py`, runs on a **batch schedule** (not on student request paths), and does **not** read `servicePeriods.ts`, Postgres, or the frontend subsidy exports today. 
+The ML matching service is a **separate repo** with its own `config.py`, runs on a **batch schedule** (not on student request paths), and does **not** read `servicePeriods.ts`, Postgres, or the frontend subsidy exports today.
 
 - Drift risk is minimal now and is **documented** in [`OPERATIONS.md`](./OPERATIONS.md). Now with **one** TS file instead of three.
 - A shared artifact is **possible to add later** without redoing this work: e.g. `pnpm export:service-periods` → `service_periods.json` for the ML repo to use, or a shared Supabase table if multi-runtime sync becomes painful.
@@ -170,39 +171,33 @@ The ML matching service is a **separate repo** with its own `config.py`, runs on
 
 **Status:** Completed
 
-**Summary:** A server-hydrated shared auth/profile provider removed duplicate Header, page, and nested-component identity queries; explicit Supabase field lists and response DTOs reduced payloads and prevent broad reads from returning. Results and Unmatched receive their initial data from the server, Results renders before one batched background readiness write, and the Admin dashboards use protected server aggregation, bounded pagination, deferred panels, consolidated mutations, visible progress, and reproducible timing/payload telemetry.
+**Summary:** Authentication and profile state are loaded once and shared across the application. Results and Unmatched receive server-loaded data, broad Supabase reads were replaced with explicit response contracts, Results no longer waits for readiness writes, and Admin dashboards now use paginated server aggregation with deferred panels and responsive mutation feedback.
 
 **Remediation completed:**
 
-- **Authentication and profile state:** Added one root `AuthProvider` for user, profile, role, admin scope, school, and avatar state. Results, Unmatched, and Admin layouts hydrate that provider from a server-validated principal. The Header, pages, forms, cards, and comments reuse the shared state instead of issuing independent `getUser()` or role/profile queries. Session changes, sign-out, OAuth return paths, profile refresh, and immediate avatar updates were preserved.
-- **Supabase query scope:** Replaced broad reads in the affected Results, Unmatched, profile-validation, Admin, Match Request, comment, and Admin Groups mutation paths with explicit field lists. Added DTO serializers for Results, Unmatched, profile completeness, Admin summary, and Admin Groups responses so undeclared fields are removed before reaching the browser. Automated coverage rejects both `select('*')` and empty `.select()` calls anywhere in production TypeScript and verifies exact response keys for the principal read models.
-- **Results rendering:** Results data is committed to the page and loading is cleared before readiness persistence begins. Eligible ride IDs are deduplicated into one background request instead of sequential per-ride writes. The server validates membership for the full batch before updating, preserves existing readiness timestamps, and writes only rows whose `group_ready_at` remains null. Background failure does not remove rendered match data.
-- **Server-loaded initial content:** Results and Unmatched layouts now load their minimal DTOs with the authenticated server principal and seed the client pages. Initial content no longer waits for a post-hydration browser fetch; later user-requested refreshes continue through the protected APIs.
-- **Main Admin dashboard:** Added admin-protected `GET /api/admin/dashboard-summary` and moved summary aggregation to the server. Algorithm status, schedule, and unmatched count begin concurrently; match-rate reads retain only their required dependency on the last completed run. The browser receives the nine values displayed by the dashboard. Cancellation and no-show reports remain date-bounded, user-triggered reads and do not block initial rendering. Initial loading now uses the same visible spinner treatment as Admin Groups so administrators receive immediate progress feedback while the summary loads.
-- **Admin Groups dashboard:** Added admin-protected `GET /api/admin/groups/snapshot` for the primary matched/unmatched read model. It applies a default seven-days-back through one-month-forward window, validates a maximum 366-day range, and paginates Flights at 200 records before related hydration. The snapshot and algorithm status run concurrently, user batches run concurrently, and complete groups use a stable anchor so they appear on only one page. Changelog is loaded on expansion in 100-entry pages; pending changes load only when the Changes tab is opened. Date and page refreshes retain the current dashboard while loading.
-- **Database read-model evaluation:** A reproducible 200-rider/50-group fixture produced one approximately 70.5 KiB browser response. The server performed six narrow reads including algorithm status and processed approximately 145 KiB across 801 selected rows. The bounded transfer and processing volume did not justify introducing a database view or read-only RPC. No view, RPC, index, schema, or policy change was made.
-- **Admin supporting reads:** Date-filtered reports, rider and contact lookups, school/user lists, duplicate-flight checks, deferred changelog/pending panels, and CSV exports now use admin-protected server endpoints. Active Admin and Admin Groups components no longer query Supabase directly for those reads.
-- **Admin Groups interaction latency:** Successful rider edits and group creation patch local state without reloading the full snapshot. Moving a rider to unmatched, the corral, or another group uses one protected browser command that performs match, flight-status, source/destination metadata, pending-change confirmation, and audit work server-side. Changelog writes return their inserted audit entries so an already-open changelog can merge only the new rows into its bounded local list, preserving deferred loading while avoiding stale entries after re-adding a rider to a group. Per-rider saving states prevent duplicate actions and provide immediate feedback. Authoritative snapshot reconciliation remains limited to failed writes, and hidden changelog/pending panels are not refreshed by mutations.
-- **Performance telemetry:** Critical Results, Unmatched, Admin summary, and Admin Groups snapshot responses include `Server-Timing` duration and `X-Response-Bytes` headers. This permits authenticated browser or monitoring captures against production-like data without logging sensitive response bodies; automated coverage preserves the header contract.
+- **Client-side auth and profile waterfalls:** Added one server-hydrated `AuthProvider` for user, profile, role, school, admin scope, and avatar state. The Header, pages, and nested components reuse this state instead of repeating authentication and profile queries. Results and Unmatched receive their initial data during server rendering.
+- **Over-fetching:** Replaced broad Supabase reads with explicit column lists and DTOs for Results, Unmatched, profile completeness, Admin summaries, and Admin Groups. Automated tests reject production `select('*')` or empty selections and verify exact API response fields.
+- **Results page blocking:** Results render as soon as match data is available. Readiness updates run afterward through one deduplicated, idempotent batch request; write failures do not hide the rendered results.
+- **Main Admin dashboard:** Moved displayed metrics to the protected `/api/admin/dashboard-summary` endpoint, parallelized independent reads, and kept date-filtered reports lazy. The dashboard shows a loading indicator while its summary is requested.
+- **Admin Groups:** Moved group and unmatched aggregation to protected server endpoints with a default date window and pagination. Algorithm status and the main snapshot load concurrently; changelog and pending changes load only when opened. Admin supporting reads no longer query Supabase directly from active client components.
+- **Admin mutation latency:** Rider and group changes use consolidated server commands and update local state immediately after success instead of reloading the full snapshot. Per-rider progress states prevent duplicate actions and make in-progress changes visible.
+- **Database read-model decision:** A 200-rider/50-group fixture produced an approximately 70.5 KiB browser response and approximately 145 KiB of bounded server reads. A database view or RPC was not necessary, and no schema or policy changes were made.
+- **Telemetry:** Results, Unmatched, Admin summary, and Admin Groups responses expose `Server-Timing` and `X-Response-Bytes` headers for repeatable production-like measurements.
 
 **Evidence and supporting materials:**
 
-- `documentation/PERFORMANCE_BASELINE.md` records the original request dependencies, remediated request paths, representative payload measurements, and database read-model decision.
-- `src/providers/AuthProvider.test.tsx` verifies one shared initialization, server hydration without client auth/profile reads, session changes, profile refresh, and avatar propagation.
-- `src/contracts/readModels.test.ts` and `src/contracts/readModelCoverage.test.ts` verify exact response shapes and prohibit production star or empty-column selections.
-- `src/app/results/page.test.tsx` and `src/lib/server/studentCommands.test.ts` verify render-before-write behavior, batching, membership validation, idempotency, and background-write failure handling.
-- Admin dashboard and Admin Groups tests verify concurrent reads, bounded dates and pages, admin-scope filtering/redaction, cross-page group behavior, and deferred changelog/pending panels.
-- Admin Groups mutation tests verify single-command browser contracts, ride and user/flight scope rejection, removal persistence and changelog behavior, returned audit entries for incremental open-panel updates, local-state updates after successful creation, and visible pending-state action blocking.
-- `src/lib/server/performanceResponse.test.ts` verifies the reproducible server-duration and serialized-payload telemetry headers.
+- `documentation/PERFORMANCE_BASELINE.md` records before/after request paths, payload measurements, authenticated timings, and the database read-model decision.
+- Auth provider, DTO, Results, Admin dashboard, Admin Groups, mutation, and performance-header tests cover the behaviors above.
 
 **Current verification:**
 
 - `pnpm type-check`, `pnpm lint`, `pnpm knip`, and `pnpm knip:production` - passed with no findings.
-- `pnpm exec jest --ci --runInBand` - 22 suites and 140 tests passed.
-- `pnpm build` - passed; 48 application route entries generated, including the protected Admin summary, groups snapshot/command, report, lookup, secondary-panel, and export endpoints.
-- Production-build route smoke tests confirmed Results, Unmatched, Admin, and Admin Groups reject missing sessions and preserve their complete return destinations. The Admin Groups snapshot and command endpoints returned `401 Unauthorized` without a session, and local browser smoke testing reported no console errors.
-- Authenticated warm-reload measurements against the local production build reached principal content at median times of 710 ms for Results, 646 ms for Unmatched, 672 ms for Admin, and 790 ms for Admin Groups. A representative Group #736 rider mutation became visible in 404 ms when removed and 703 ms when re-added from the Corral; the complete Unmatched-to-Corral-to-group re-add work took 1.34 seconds. `documentation/PERFORMANCE_BASELINE.md` records the tested rider, restoration, raw page runs, capture procedures, payload evidence, and measurement limitations.
-- Follow-up changelog verification: `pnpm exec jest --runInBand src/components/admin/groups-management/services/groupsWriteService.test.ts src/lib/server/adminGroupsCommands.test.ts src/app/api/admin/groups/command/route.test.ts`, `pnpm exec jest --runInBand src/components/admin/GroupsManagement.test.tsx`, and `pnpm type-check` passed after adding incremental audit-entry merging.
+- `pnpm exec jest --ci --runInBand` - passed.
+- `pnpm build` - passed; 48 routes generated.
+- Protected route and API smoke tests passed with no browser console errors.
+- Authenticated median time to principal content: Results 710 ms, Unmatched 646 ms, Admin 672 ms, and Admin Groups 790 ms.
+- Admin Groups rider removal became visible in 404 ms and re-addition in 703 ms; the full unmatched-to-group workflow completed in 1.34 seconds.
+
 ---
 
 ## Remediation Issue #10
@@ -240,6 +235,43 @@ The ML matching service is a **separate repo** with its own `config.py`, runs on
 - Middleware tests confirmed public routes perform no Supabase session work, protected routes reject missing sessions, return destinations remain internal, and refreshed cookies survive redirects.
 - Authorization tests confirmed `401` versus `403`, school-scope enforcement, user/flight ownership validation, and cross-user mutation denial before protected operations execute.
 - Production smoke tests passed for all 7 public pages and 13 protected/admin route cases. Protected routes preserved their complete return destination, representative APIs rejected missing sessions with `401`, and no browser console errors occurred.
+
+---
+
+## Remediation Issue #11
+
+**Audit item:** Pull-request CI did not guarantee lockfile reproducibility or provide dependency, database compatibility, and business-rule release assurance.
+
+**Status:** Completed
+
+**Summary:** Pull-request CI now uses frozen installs and separate blocking checks for the production build, security audit, dependency review, database contract, static analysis, and tests. Release-critical coverage verifies API authorization, matching transitions, and deadline enforcement. CI does not connect to or modify production.
+
+**Remediation completed:**
+
+- **Frozen lockfile:** Replaced `--no-frozen-lockfile` with `pnpm install --frozen-lockfile`; manifest and lockfile drift now fail CI.
+- **Production build:** Added a separate blocking `Production Build` job using non-production compile-time values and no database credentials.
+- **Security audit and dependency review:** Added blocking high/critical `pnpm audit` and dependency-review checks. Updated affected dependencies, enabled Dependabot security alerts and automatic fixes, and added scheduled pnpm and GitHub Actions updates.
+- **Schema/RPC compatibility:** Added a full-source static contract test for every public table referenced by production code and all 12 application RPC names and arguments. Generated types were reconciled with read-only production metadata; no database changes were made.
+- **API authorization tests:** Covered invalid sessions, non-admin users, unreadable profiles, admin scope, cross-user access, protected-handler short-circuiting, and route-wide authorization-wrapper enforcement.
+- **Matching-transition tests:** Covered request eligibility, matched-flight rejection, acceptance and cancellation failures, removal to unmatched, re-addition to a group, admin-created unmatched flights, and failed-transition audit behavior.
+- **Deadline-enforcement tests:** Covered create, update, and delete operations across winter, spring, and summer periods, PST/PDT offsets, exact and expired deadlines, and dates outside configured periods. Replacement dates are validated server-side to prevent API bypass.
+- **Workflow safeguards:** Checks have timeouts, read-only repository permissions, and cancellation of superseded pull-request runs.
+
+**Security audit results:**
+
+- Before: 8 high, 11 moderate, and 3 low advisories.
+- After: zero high or critical advisories. Two visible moderate transitive findings remain in Next.js/PostCSS and Jest/jsdom test tooling.
+
+**Current verification:**
+
+- `pnpm install --frozen-lockfile` - passed.
+- `pnpm audit:security` - passed with zero high or critical findings.
+- `pnpm test:database-contract` - passed; 10 production-referenced public tables and all 12 application RPC contracts matched generated database types.
+- `pnpm type-check`, `pnpm knip`, `pnpm knip:production`, and `pnpm lint` - passed.
+- `pnpm test:ci --passWithNoTests --runInBand` - 26 suites and 202 tests passed.
+- `pnpm build` - passed on Next.js 15.5.18 and generated 48 route entries.
+- Built-server smoke checks passed for public access, protected-page redirects, and `401` responses from protected Results, Admin, flight, match-request, and match-cancellation endpoints.
+- Production database structures and data were unchanged.
 
 ---
 

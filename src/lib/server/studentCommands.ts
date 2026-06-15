@@ -439,12 +439,19 @@ export async function updateOwnFlight({
     throw createError('This flight can no longer be edited.', 403)
   }
 
-  await assertCompleteProfileForFlight(supabase, userId)
-
   const normalizedPayload = normalizeFlightWritePayload(payload)
   if (Object.keys(normalizedPayload).length === 0) {
     throw createError('At least one editable flight field is required.', 400)
   }
+
+  if (normalizedPayload.date && !canEditFlight(normalizedPayload.date)) {
+    throw createError(
+      'The submission deadline for the updated service period has passed.',
+      403,
+    )
+  }
+
+  await assertCompleteProfileForFlight(supabase, userId)
 
   const { data, error } = await supabase.rpc('update_own_flight_tx', {
     p_flight_id: flightId,
