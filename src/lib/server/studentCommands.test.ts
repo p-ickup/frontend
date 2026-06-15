@@ -18,6 +18,7 @@ import {
   sendMatchRequest,
   updateOwnFlight,
 } from '@/lib/server/studentCommands'
+import { canEditFlight } from '@/utils/flightValidation'
 
 const createThenableEqChain = <T>(data: T, error: unknown = null) => {
   const eqCalls: Array<[string, unknown]> = []
@@ -51,6 +52,41 @@ const buildFlightLookupChain = (flight: {
   const eqFlightId = jest.fn(() => ({ maybeSingle }))
   const select = jest.fn(() => ({ eq: eqFlightId }))
   return { select, eqFlightId, maybeSingle }
+}
+
+const buildCancelMatchLookupChain = (
+  data: {
+    date?: string | null
+    Flights?: { date?: string } | { date?: string }[] | null
+  } | null,
+) => {
+  const maybeSingle = jest.fn().mockResolvedValue({ data, error: null })
+  const eqUserId = jest.fn(() => ({ maybeSingle }))
+  const eqRideId = jest.fn(() => ({ eq: eqUserId }))
+  const select = jest.fn(() => ({ eq: eqRideId }))
+  return { select, eqRideId, eqUserId, maybeSingle }
+}
+
+const buildCancelOwnMatchSupabase = ({
+  matchRow,
+  rpcResult,
+}: {
+  matchRow: {
+    date?: string | null
+    Flights?: { date?: string } | { date?: string }[] | null
+  } | null
+  rpcResult: { data: unknown; error: unknown }
+}) => {
+  const lookup = buildCancelMatchLookupChain(matchRow)
+  const rpc = jest.fn().mockResolvedValue(rpcResult)
+  const from = jest.fn((table: string) => {
+    if (table === 'Matches') {
+      return { select: lookup.select }
+    }
+    throw new Error(`Unexpected table: ${table}`)
+  })
+
+  return { supabase: { from, rpc }, rpc, lookup }
 }
 
 describe('acceptMatchRequest', () => {
@@ -119,39 +155,98 @@ describe('acceptMatchRequest', () => {
 })
 
 describe('cancelOwnMatch', () => {
-  it('calls the transactional RPC for match cancellation', async () => {
-    const rpc = jest.fn().mockResolvedValue({
-      data: { success: true },
-      error: null,
+  const mockedCanEditFlight = jest.mocked(canEditFlight)
+
+  beforeEach(() => {
+    mockedCanEditFlight.mockReturnValue(true)
+  })
+
+  it('calls the transactional RPC with deadline flag from canEditFlight', async () => {
+    mockedCanEditFlight.mockReturnValue(false)
+    const { supabase, rpc } = buildCancelOwnMatchSupabase({
+      matchRow: {
+        date: '2026-03-14',
+        Flights: { date: '2026-03-14' },
+      },
+      rpcResult: { data: { success: true }, error: null },
     })
 
     await expect(
       cancelOwnMatch({
-        supabase: { rpc },
+        supabase,
+        userId: 'user-1',
         rideId: 17,
       }),
     ).resolves.toEqual({
       success: true,
     })
 
+    expect(mockedCanEditFlight).toHaveBeenCalledWith('2026-03-14')
     expect(rpc).toHaveBeenCalledWith('cancel_own_match', {
       p_ride_id: 17,
+      p_cancelled_after_deadline: true,
+    })
+  })
+
+  it('passes cancelled_after_deadline false when canEditFlight is true', async () => {
+    mockedCanEditFlight.mockReturnValue(true)
+    const { supabase, rpc } = buildCancelOwnMatchSupabase({
+      matchRow: {
+        date: null,
+        Flights: { date: '2026-03-14' },
+      },
+      rpcResult: { data: { success: true }, error: null },
+    })
+
+    await cancelOwnMatch({
+      supabase,
+      userId: 'user-1',
+      rideId: 17,
+    })
+
+    expect(mockedCanEditFlight).toHaveBeenCalledWith('2026-03-14')
+    expect(rpc).toHaveBeenCalledWith('cancel_own_match', {
+      p_ride_id: 17,
+      p_cancelled_after_deadline: false,
+    })
+  })
+
+  it('defaults to false when no match row is found before RPC', async () => {
+    const { supabase, rpc } = buildCancelOwnMatchSupabase({
+      matchRow: null,
+      rpcResult: { data: { success: true }, error: null },
+    })
+
+    await cancelOwnMatch({
+      supabase,
+      userId: 'user-1',
+      rideId: 17,
+    })
+
+    expect(mockedCanEditFlight).toHaveBeenCalledWith('')
+    expect(rpc).toHaveBeenCalledWith('cancel_own_match', {
+      p_ride_id: 17,
+      p_cancelled_after_deadline: false,
     })
   })
 
   it('surfaces structured cancellation failures with status', async () => {
-    const rpc = jest.fn().mockResolvedValue({
-      data: {
-        success: false,
-        status: 404,
-        error: 'Match not found.',
+    const { supabase } = buildCancelOwnMatchSupabase({
+      matchRow: { date: '2026-02-01', Flights: { date: '2026-02-01' } },
+      rpcResult: {
+        data: {
+          success: false,
+          status: 404,
+          error: 'Match not found.',
+        },
+        error: null,
       },
-      error: null,
     })
 
     await expect(
       cancelOwnMatch({
-        supabase: { rpc },
+        supabase,
+        userId: 'user-1',
         rideId: 17,
       }),
     ).rejects.toMatchObject({

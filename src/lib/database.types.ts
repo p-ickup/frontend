@@ -768,7 +768,10 @@ export type Database = {
         }
         Returns: Json
       }
-      cancel_own_match: { Args: { p_ride_id: number }; Returns: Json }
+      cancel_own_match: {
+        Args: { p_ride_id: number; p_cancelled_after_deadline: boolean }
+        Returns: Json
+      }
       commit_matching_run: {
         Args: { p_payload: Json; p_run_id: string }
         Returns: Json

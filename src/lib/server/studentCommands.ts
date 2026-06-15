@@ -332,13 +332,29 @@ export async function listIncomingMatchRequests({
 
 export async function cancelOwnMatch({
   supabase,
+  userId,
   rideId,
 }: {
   supabase: SupabaseClient
+  userId: string
   rideId: number
 }) {
+  const { data: matchRow } = await supabase
+    .from('Matches')
+    .select('date, Flights!matches_flight_id_fk(date)')
+    .eq('ride_id', rideId)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const flightRecord = getFirst(
+    matchRow?.Flights as { date?: string } | { date?: string }[] | null,
+  )
+  const flightDate = matchRow?.date ?? flightRecord?.date ?? ''
+  const cancelledAfterDeadline = !canEditFlight(flightDate)
+
   const { data, error } = await supabase.rpc('cancel_own_match', {
     p_ride_id: rideId,
+    p_cancelled_after_deadline: cancelledAfterDeadline,
   })
 
   if (error) {
@@ -439,19 +455,22 @@ export async function updateOwnFlight({
     throw createError('This flight can no longer be edited.', 403)
   }
 
+  await assertCompleteProfileForFlight(supabase, userId)
+
   const normalizedPayload = normalizeFlightWritePayload(payload)
   if (Object.keys(normalizedPayload).length === 0) {
     throw createError('At least one editable flight field is required.', 400)
   }
 
-  if (normalizedPayload.date && !canEditFlight(normalizedPayload.date)) {
+  if (
+    typeof normalizedPayload.date === 'string' &&
+    !canEditFlight(normalizedPayload.date)
+  ) {
     throw createError(
       'The submission deadline for the updated service period has passed.',
       403,
     )
   }
-
-  await assertCompleteProfileForFlight(supabase, userId)
 
   const { data, error } = await supabase.rpc('update_own_flight_tx', {
     p_flight_id: flightId,
