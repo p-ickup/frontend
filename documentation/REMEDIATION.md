@@ -6,14 +6,15 @@ Each section describes the remediation completed, relevant repository updates, s
 
 ## Verification Metadata
 
-| Field                                | Value                                                                                                           |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| Repository                           | `p-ickup/frontend`                                                                                              |
-| Frontend remediation branch          | `remediations-francisco`                                                                                        |
-| Local documentation review timestamp | `2026-06-17 07:18:03 CST`                                                                                       |
-| Local HEAD at documentation review   | `5ce086b0a981364529528727e685553dfdb39238`                                                                      |
-| Pull-request workflow                | `.github/workflows/pull-request.yaml`                                                                           |
-| CI reference                         | Attach the final GitHub pull-request checks or merge commit when providing ASPC with the signed written notice. |
+| Field                                | Value                                                                                                      |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Repository                           | `p-ickup/frontend`                                                                                         |
+| Frontend remediation branch          | `remediations-francisco`                                                                                   |
+| Local documentation review timestamp | `2026-06-17 07:18:03 CST`                                                                                  |
+| Local HEAD at documentation review   | `5ce086b0a981364529528727e685553dfdb39238`                                                                 |
+| Pull request                         | [p-ickup/frontend#121](https://github.com/p-ickup/frontend/pull/121)                                       |
+| Pull-request workflow                | `.github/workflows/pull-request.yaml`                                                                      |
+| CI reference                         | Use the final checks from PR #121 and the merge commit when providing ASPC with the signed written notice. |
 
 ## Issue #4 - Matched Flight Data Can Become Inconsistent
 
@@ -321,6 +322,7 @@ Each section describes the remediation completed, relevant repository updates, s
 - Added high/critical `pnpm audit` enforcement and GitHub dependency review for manifest and lockfile changes.
 - Enabled Dependabot security alerts and scheduled dependency updates.
 - Resolved Dependabot alert #27 by forcing vulnerable transitive PostCSS paths to patched PostCSS `8.5.15`.
+- Resolved the pull-request security-audit failures by upgrading Jest and jsdom parents to `jest@30.4.2`, `jest-environment-jsdom@30.4.1`, and `@types/jest@30.0.0`; by patching the analyzer's transitive `ws` path to `7.5.11`; and by patching the Next/styled-jsx `@babel/core` path to `7.29.6`.
 - Added a static database contract test that reconciles production-referenced tables and all application RPC names/arguments against generated Supabase types.
 - Added release-critical tests for API authorization, matching transitions, and deadline enforcement.
 - Added workflow timeouts, least-privilege permissions, and cancellation of superseded pull-request runs.
@@ -331,6 +333,8 @@ Each section describes the remediation completed, relevant repository updates, s
 - `.github/dependabot.yml`
 - `package.json`
 - `pnpm-lock.yaml`
+- `jest@30.4.2`, `jest-environment-jsdom@30.4.1`, and `@types/jest@30.0.0`
+- `pnpm` overrides for `postcss@8.5.15`, `@babel/core@7.29.6`, and `webpack-bundle-analyzer > ws@7.5.11`
 - `src/__tests__/databaseContract.test.ts`
 - API authorization, matching-transition, and deadline-enforcement test files
 
@@ -340,15 +344,16 @@ Each section describes the remediation completed, relevant repository updates, s
 
 - `pnpm install --frozen-lockfile` - passed.
 - `pnpm why postcss --recursive` - all application and Next.js paths resolve to PostCSS `8.5.15`; vulnerable PostCSS `8.4.31` is absent from `pnpm-lock.yaml`.
-- `pnpm audit --prod --audit-level moderate` - passed with no known production vulnerabilities.
-- `pnpm audit:security` - passed with zero high or critical findings.
-- `pnpm test:database-contract` - passed; production-referenced public tables and all application RPC contracts matched generated database types.
+- `pnpm why ws form-data --recursive` - `ws` resolves to patched `7.5.11` for the analyzer and patched `8.21.0` for jsdom; `form-data` is no longer present in the jsdom dependency path.
+- `pnpm audit --prod --audit-level low` - passed with no known production dependency vulnerabilities.
+- `pnpm audit:security` - passed the high-severity gate; only three moderate development-dependency advisories remain below the configured blocking threshold.
+- `pnpm test:database-contract` - passed; 1 suite and 2 tests confirmed production-referenced public tables and all application RPC contracts matched generated database types.
 - `pnpm type-check` - passed.
-- `pnpm lint` - passed.
+- `pnpm lint` - passed with no warnings or errors.
 - `pnpm knip` - passed.
 - `pnpm knip:production` - passed.
-- `pnpm test:ci --passWithNoTests --runInBand` - passed.
-- `pnpm build` - passed.
+- `pnpm test:ci --passWithNoTests --runInBand` - passed; 27 suites and 239 tests.
+- `pnpm build` - passed; 48 route entries generated.
 - Built-server smoke checks passed for public access, protected-page redirects, and `401` responses from protected Results, Admin, flight, match-request, and match-cancellation endpoints.
 
 ## Issue #12 - Unused or Stale Components
