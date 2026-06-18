@@ -1,0 +1,542 @@
+SPDXVersion: SPDX-2.3
+DataLicense: CC0-1.0
+SPDXID: SPDXRef-DOCUMENT
+DocumentName: 62410/git@github.com:p-ickup/frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+DocumentNamespace: 62410/git@github.com:p-ickup/frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+Creator: Organization: PICKUP
+Creator: Tool: FOSSA 4.34.6
+Created: 2026-06-18T06:56:48Z
+LicenseListVersion: 3.23
+DocumentDescribes: SPDXRef-npm-material-tailwind-react-2.1.10
+DocumentDescribes: SPDXRef-npm-radix-ui-react-scroll-area-1.2.10
+DocumentDescribes: SPDXRef-npm-radix-ui-react-tooltip-1.2.8
+DocumentDescribes: SPDXRef-npm-supabase-ssr-0.12.0
+DocumentDescribes: SPDXRef-npm-supabase-supabase-js-2.108.1
+DocumentDescribes: SPDXRef-npm-types-node-20.3.1
+DocumentDescribes: SPDXRef-npm-types-react-18.2.8
+DocumentDescribes: SPDXRef-npm-types-react-dom-18.2.5
+DocumentDescribes: SPDXRef-npm-autoprefixer-10.4.15
+DocumentDescribes: SPDXRef-npm-clsx-2.1.1
+DocumentDescribes: SPDXRef-npm-geist-1.5.1
+DocumentDescribes: SPDXRef-npm-lucide-react-0.304.0
+DocumentDescribes: SPDXRef-npm-next-15.5.18
+DocumentDescribes: SPDXRef-npm-next-themes-0.2.1
+DocumentDescribes: SPDXRef-npm-nextjs-toploader-1.6.12
+DocumentDescribes: SPDXRef-npm-postcss-8.5.15
+DocumentDescribes: SPDXRef-npm-react-18.2.0
+DocumentDescribes: SPDXRef-npm-react-dom-18.2.0
+DocumentDescribes: SPDXRef-npm-tailwind-merge-2.6.0
+DocumentDescribes: SPDXRef-npm-tailwindcss-3.3.3
+DocumentDescribes: SPDXRef-npm-tailwindcss-animate-1.0.7
+DocumentDescribes: SPDXRef-npm-typescript-5.1.3
+DocumentDescribes: SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+
+#### Packages
+
+PackageName: @material-tailwind/react
+SPDXID: SPDXRef-npm-material-tailwind-react-2.1.10
+PackageVersion: 2.1.10
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: dragos@creative-tim.com,materialtailwind@gmail.com,nawabisajadahmad@gmail.com
+PackageSummary: @material-tailwind/react is an easy-to-use components library for ReactJS & Tailwind CSS inspired by Material Design.
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2024 Material Tailwind by [Creative Tim](https://www.creative-tim.com?ref=material-tailwind)
+PackageDownloadLocation: https://registry.npmjs.org/@material-tailwind/react/-/react-2.1.10.tgz
+PackageHomePage: https://material-tailwind.com/
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/%40material-tailwind/react@2.1.10
+PackageChecksum: MD5: 34cf04d37413404d44f0bde759612b6b
+PackageChecksum: SHA1: ada4c638ba0bce49ee570835bd8ccb33c4817856
+PackageChecksum: SHA256: 731213009194d4f0d97f4e1abe3732103872fdd2e43a612aa4ec6842adc474ae
+
+
+PackageName: @radix-ui/react-scroll-area
+SPDXID: SPDXRef-npm-radix-ui-react-scroll-area-1.2.10
+PackageVersion: 1.2.10
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: hallak.aa@gmail.com,hi@chance.dev,mark@workos.com,service+npm@workos.com
+PackageSummary: View docs [here](https://radix-ui.com/primitives/docs/components/scroll-area).
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2022 WorkOS
+PackageDownloadLocation: https://registry.npmjs.org/@radix-ui/react-scroll-area/-/react-scroll-area-1.2.10.tgz
+PackageHomePage: https://radix-ui.com/primitives
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/%40radix-ui/react-scroll-area@1.2.10
+PackageChecksum: MD5: ef7e6df867d632e8020fa56b072b7576
+PackageChecksum: SHA1: 44e95372f95d2b2d02e802b4cd4a41392be3b171
+PackageChecksum: SHA256: 1cf18d4b104b59866865f0b8d3956cd9b8fc064263d89d8e8e855985d3f9ffc6
+
+
+PackageName: @radix-ui/react-tooltip
+SPDXID: SPDXRef-npm-radix-ui-react-tooltip-1.2.8
+PackageVersion: 1.2.8
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: hallak.aa@gmail.com,hi@chance.dev,mark@workos.com,service+npm@workos.com
+PackageSummary: View docs [here](https://radix-ui.com/primitives/docs/components/tooltip).
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2022 WorkOS
+PackageDownloadLocation: https://registry.npmjs.org/@radix-ui/react-tooltip/-/react-tooltip-1.2.8.tgz
+PackageHomePage: https://radix-ui.com/primitives
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/%40radix-ui/react-tooltip@1.2.8
+PackageChecksum: MD5: 29bea0c78a5c60007f935f0be625e072
+PackageChecksum: SHA1: 78ba7e07e692db18af3fecb6c3825cc600e4a8f3
+PackageChecksum: SHA256: 82ae608b98966a8e745a06c6b5d268748d9df0e609d684d3aaa3f7baa6f2ab4d
+
+
+PackageName: @supabase/ssr
+SPDXID: SPDXRef-npm-supabase-ssr-0.12.0
+PackageVersion: 0.12.0
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: angelico.delosreyes@gmail.com,antwilson@hotmail.co.uk,charisxl@gmail.com,chase.cresgy@supabase.io,dennis.senn@gmx.ch,etienne@supabase.io,greg.nmr@gmail.com,inian1234@gmail.com,katerina.skroumpelou@supabase.io,kevin@supabase.com,matthewjonrossman@gmail.com,pcopplestone@gmail.com,phamhieu1998@gmail.com,sdimitrovski@gmail.com,tzeyiing@supabase.com
+PackageSummary: Use the Supabase JavaScript library in popular server-side rendering (SSR) frameworks.
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2022-2023 Supabase, Inc.
+PackageDownloadLocation: https://registry.npmjs.org/@supabase/ssr/-/ssr-0.12.0.tgz
+PackageHomePage: https://github.com/supabase/ssr#readme
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/%40supabase/ssr@0.12.0
+PackageChecksum: MD5: b5e6aac5dd970f356efa103dc9cd02b8
+PackageChecksum: SHA1: c76329b49f8a57f3cbf98f500ce4cafb3e844146
+PackageChecksum: SHA256: facb6e27df2a21769abb6516cb65a268307509a599bdbcb835864524379436aa
+
+
+PackageName: @supabase/supabase-js
+SPDXID: SPDXRef-npm-supabase-supabase-js-2.108.1
+PackageVersion: 2.108.1
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: etienne@supabase.io,katerina.skroumpelou@supabase.io
+PackageSummary: Isomorphic Javascript SDK for Supabase
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2020 Supabase
+PackageDownloadLocation: https://registry.npmjs.org/@supabase/supabase-js/-/supabase-js-2.108.1.tgz
+PackageHomePage: https://github.com/supabase/supabase-js/tree/master/packages/core/supabase-js
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/%40supabase/supabase-js@2.108.1
+PackageChecksum: MD5: c1bb27d44c3c85c6d2bfa5f15f879a47
+PackageChecksum: SHA1: c7168edf0d74191795833ec4e7f9cfcf0bf75f3b
+PackageChecksum: SHA256: 64427ceaa8ffebcef36eb42e9c30a20809798ffd49690dec4ebea78a0dfa3df6
+
+
+PackageName: @types/node
+SPDXID: SPDXRef-npm-types-node-20.3.1
+PackageVersion: 20.3.1
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: ts-npm-types@microsoft.com
+PackageSummary: TypeScript definitions for node
+PackageLicenseDeclared: MIT
+PackageCopyrightText:  Microsoft Corporation.
+PackageDownloadLocation: https://registry.npmjs.org/@types/node/-/node-20.3.1.tgz
+PackageHomePage: https://github.com/definitelytyped/definitelytyped/tree/master/types/node
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/%40types/node@20.3.1
+PackageChecksum: MD5: d3324464e8f933ab6b05e569412db025
+PackageChecksum: SHA1: 82efdb58c6eb6d9479c54e97a9eb58e4d4771ddf
+PackageChecksum: SHA256: 7baa37e33e3735ed98d9f0334cef14320e98e8c83360e529867ba6ea09f4e1f7
+
+
+PackageName: @types/react
+SPDXID: SPDXRef-npm-types-react-18.2.8
+PackageVersion: 18.2.8
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: ts-npm-types@microsoft.com
+PackageSummary: TypeScript definitions for react
+PackageLicenseDeclared: MIT
+PackageCopyrightText:  Microsoft Corporation.
+PackageDownloadLocation: https://registry.npmjs.org/@types/react/-/react-18.2.8.tgz
+PackageHomePage: https://github.com/definitelytyped/definitelytyped/tree/master/types/react
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/%40types/react@18.2.8
+PackageChecksum: MD5: aed0a930731146b7aaef5761bbf5dbe3
+PackageChecksum: SHA1: f34ebf4ae26ba0cd26917ac9dfd2c0c4499a79e1
+PackageChecksum: SHA256: 703bc941cc6c9db3cd9c4c0167f8334da131d4e56ac57231795f835c03daf77a
+
+
+PackageName: @types/react-dom
+SPDXID: SPDXRef-npm-types-react-dom-18.2.5
+PackageVersion: 18.2.5
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: ts-npm-types@microsoft.com
+PackageSummary: TypeScript definitions for react-dom
+PackageLicenseDeclared: MIT
+PackageCopyrightText:  Microsoft Corporation.
+PackageDownloadLocation: https://registry.npmjs.org/@types/react-dom/-/react-dom-18.2.5.tgz
+PackageHomePage: https://github.com/definitelytyped/definitelytyped/tree/master/types/react-dom
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/%40types/react-dom@18.2.5
+PackageChecksum: MD5: 09e531240022ddfb73e7629f4f82a2db
+PackageChecksum: SHA1: 23fae2c8c8b4761ce6421f75c322ba025d6e7351
+PackageChecksum: SHA256: 781172d46bd6a22a0cb05c7519fd438839cbbca92d67b1b6fd767b89a539b607
+
+
+PackageName: autoprefixer
+SPDXID: SPDXRef-npm-autoprefixer-10.4.15
+PackageVersion: 10.4.15
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: andrey@sitnik.es
+PackageSummary: Parse CSS and add vendor prefixes to CSS rules using values from the Can I Use website
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2013 Andrey Sitnik <andrey@sitnik.ru>
+PackageDownloadLocation: https://registry.npmjs.org/autoprefixer/-/autoprefixer-10.4.15.tgz
+PackageHomePage: https://github.com/postcss/autoprefixer#readme
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/autoprefixer@10.4.15
+PackageChecksum: MD5: 27ff152a97629f50f9ff8ad938242422
+PackageChecksum: SHA1: 0a1092c74776be44b6ca40994995dfd188d4cb00
+PackageChecksum: SHA256: 487e82d79351db8ed83f247f5786278177601f4186a14aa699cabc46bd266d01
+
+
+PackageName: clsx
+SPDXID: SPDXRef-npm-clsx-2.1.1
+PackageVersion: 2.1.1
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: luke@lukeed.com
+PackageSummary: A tiny (239B) utility for constructing className strings conditionally.
+PackageLicenseDeclared: MIT
+PackageCopyrightText:  Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
+PackageDownloadLocation: https://registry.npmjs.org/clsx/-/clsx-2.1.1.tgz
+PackageHomePage: https://github.com/lukeed/clsx#readme
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/clsx@2.1.1
+PackageChecksum: MD5: 210916af55f128b26b67e558eb6cc1a8
+PackageChecksum: SHA1: a62adb041d80e3bffbbe4f48e4b1b429ef2844f1
+PackageChecksum: SHA256: c11605d034992206619a19395ad726d6fb0bf246c7509dba8b6aa165ba781619
+
+
+PackageName: geist
+SPDXID: SPDXRef-npm-geist-1.5.1
+PackageVersion: 1.5.1
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: infra+release@vercel.com,team@zeit.co
+PackageSummary: Geist is a new font family for Vercel, created by Vercel in collaboration with Basement Studio.
+PackageLicenseDeclared: OFL-1.1
+PackageCopyrightText: 2023 Vercel, in collaboration with basement.studio
+PackageDownloadLocation: https://registry.npmjs.org/geist/-/geist-1.5.1.tgz
+PackageHomePage: https://vercel.com/font
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/geist@1.5.1
+PackageChecksum: MD5: 4953e9c543eef2af589aa36f288ea475
+PackageChecksum: SHA1: 447df5d650d32fc5d99547f5ae63c3a74b4cb44f
+PackageChecksum: SHA256: 69deb673e3ba009b447059bb98a36297f01d376e8b3061004f74d48c6feef824
+
+
+PackageName: lucide-react
+SPDXID: SPDXRef-npm-lucide-react-0.304.0
+PackageVersion: 0.304.0
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: eric.fennis@gmail.com
+PackageSummary: A Lucide icon library package for React applications.
+PackageLicenseDeclared: ISC
+PackageCopyrightText:  for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held by Lucide Contributors 2022.
+PackageDownloadLocation: https://registry.npmjs.org/lucide-react/-/lucide-react-0.304.0.tgz
+PackageHomePage: https://lucide.dev/
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/lucide-react@0.304.0
+PackageChecksum: MD5: 768ab218105731e458ce0c265e461d1b
+PackageChecksum: SHA1: 476cb7902fe3e0367c98694aab7624ce7393f9ae
+PackageChecksum: SHA256: b8ed9ef8258ddbe12dfc29d6e2c09dbdbdcc3ab037d74bfc710092a102080819
+
+
+PackageName: next
+SPDXID: SPDXRef-npm-next-15.5.18
+PackageVersion: 15.5.18
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: infra+release@vercel.com,matheus.frndes@gmail.com,matt.j.straka@gmail.com,team@zeit.co
+PackageSummary: The React Framework
+PackageLicenseDeclared: MIT
+PackageCopyrightText: <text>2017 present James Kyle <me@thejameskyle.com>
+	2015 Google Inc.
+	2009-2011 Mozilla Foundation and contributors
+	2012-2018 c) Mihai Bazon <mihai.bazon@gmail.com>
+	 Isaac Z. Schlueter and Contributors
+	 jQuery Foundation and other contributors <https://jquery.org/></text>
+PackageLicenseInfoFromFiles: Apache-2.0 BSD-3-Clause BSD-2-Clause CC-BY-SA-4.0 ISC CC0-1.0 MPL-2.0
+PackageDownloadLocation: https://registry.npmjs.org/next/-/next-15.5.18.tgz
+PackageHomePage: https://nextjs.org/
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/next@15.5.18
+PackageChecksum: MD5: 166c7cbaf0b312cb31435a66a337e8f5
+PackageChecksum: SHA1: 3f94fbaef3fdde46b17e2cd3f9e02db51784562b
+PackageChecksum: SHA256: 629cf935bd6c663eda4d4678b45b058a1fa0688a5011314644289034fcb258cc
+
+
+PackageName: next-themes
+SPDXID: SPDXRef-npm-next-themes-0.2.1
+PackageVersion: 0.2.1
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: contact@tobiasmaier.dev,miners.keeps-0z@icloud.com
+PackageSummary: An abstraction for themes in your React app.
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2022 Paco Coursey
+PackageDownloadLocation: https://registry.npmjs.org/next-themes/-/next-themes-0.2.1.tgz
+PackageHomePage: https://www.npmjs.com/package/next-themes
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/next-themes@0.2.1
+PackageChecksum: MD5: fa2de0c16e952e8b26b3f487269a071f
+PackageChecksum: SHA1: 13e54c7f2a3a923d2ee7ab98d34be7154c5c15c7
+PackageChecksum: SHA256: 0c52273457dfe1cfb2d8bacb4dcfb8a6841fbea550548d4edbb0231140af9b42
+
+
+PackageName: nextjs-toploader
+SPDXID: SPDXRef-npm-nextjs-toploader-1.6.12
+PackageVersion: 1.6.12
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: realsgj@gmail.com
+PackageSummary: A Next.js Top Loading Bar component made using nprogress, works with Next.js 15 and Next.js 14 and React.
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2023 Shri Ganesh Jha
+PackageDownloadLocation: https://registry.npmjs.org/nextjs-toploader/-/nextjs-toploader-1.6.12.tgz
+PackageHomePage: https://github.com/thesgj/nextjs-toploader#readme
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/nextjs-toploader@1.6.12
+PackageChecksum: MD5: e5839954d30f5ef5dea56678849b0c7d
+PackageChecksum: SHA1: 66434b97a166da94dea0be73697c519ab5fa734c
+PackageChecksum: SHA256: c6f22f9e394ee6c6cc14bf207b2807f0593e2a47ed741c690e62464f000a9910
+
+
+PackageName: postcss
+SPDXID: SPDXRef-npm-postcss-8.5.15
+PackageVersion: 8.5.15
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: andrey@sitnik.es
+PackageSummary: Tool for transforming styles with JS plugins
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2013 Andrey Sitnik <andrey@sitnik.es>
+PackageDownloadLocation: https://registry.npmjs.org/postcss/-/postcss-8.5.15.tgz
+PackageHomePage: https://postcss.org/
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/postcss@8.5.15
+PackageChecksum: MD5: 2b680578bc7598e7fb244c8382042720
+PackageChecksum: SHA1: 5ba7c1a7f91511d68e9f6b86f8e984ff38b5fafd
+PackageChecksum: SHA256: 5f40f1c861e0525cd4aa0db81715833cda8800485802aeab31526b3a38fb72fa
+
+
+PackageName: react
+SPDXID: SPDXRef-npm-react-18.2.0
+PackageVersion: 18.2.0
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: opensource+npm@fb.com,react-core@meta.com
+PackageSummary: React is a JavaScript library for building user interfaces.
+PackageLicenseDeclared: MIT
+PackageCopyrightText:  Facebook, Inc. and its affiliates.
+PackageDownloadLocation: https://registry.npmjs.org/react/-/react-18.2.0.tgz
+PackageHomePage: https://react.dev/
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/react@18.2.0
+PackageChecksum: MD5: 4494fee6df999831377e77ed1d80e634
+PackageChecksum: SHA1: 715b824c6ffac4355d95bbff52b69e3bd7366f55
+PackageChecksum: SHA256: 01a0649c11311a92c10a4e50c679ac5a47eca311127fde6fe5306820cbd8f18e
+
+
+PackageName: react-dom
+SPDXID: SPDXRef-npm-react-dom-18.2.0
+PackageVersion: 18.2.0
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: opensource+npm@fb.com,react-core@meta.com
+PackageSummary: React package for working with the DOM.
+PackageLicenseDeclared: MIT
+PackageCopyrightText:  Facebook, Inc. and its affiliates.
+PackageDownloadLocation: https://registry.npmjs.org/react-dom/-/react-dom-18.2.0.tgz
+PackageHomePage: https://react.dev/
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/react-dom@18.2.0
+PackageChecksum: MD5: 630c1858537d2c984b9cf17c6791b1f1
+PackageChecksum: SHA1: 036b915ba8f6a2f631a2b7bfa6b5a59745f7f605
+PackageChecksum: SHA256: 43dae7902fa1282a2b5a136d284f4813b526f4aaeb787e2979db65fa3d12d6ed
+
+
+PackageName: tailwind-merge
+SPDXID: SPDXRef-npm-tailwind-merge-2.6.0
+PackageVersion: 2.6.0
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: tinge_07defunct@icloud.com
+PackageSummary: Merge Tailwind CSS classes without style conflicts
+PackageLicenseDeclared: MIT
+PackageCopyrightText: 2021 Dany Castillo
+PackageDownloadLocation: https://registry.npmjs.org/tailwind-merge/-/tailwind-merge-2.6.0.tgz
+PackageHomePage: https://github.com/dcastil/tailwind-merge
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/tailwind-merge@2.6.0
+PackageChecksum: MD5: 495be876981d1c037945873d21ec93f4
+PackageChecksum: SHA1: 67326266630cabfe854fa6b6c67d01443f1600d0
+PackageChecksum: SHA256: e81a1ecc4f86fb6ce3b0baf9e7173961b6e8d7f1f261d8895582ca39cd874072
+
+
+PackageName: tailwindcss
+SPDXID: SPDXRef-npm-tailwindcss-3.3.3
+PackageVersion: 3.3.3
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: adam@adamwathan.me,jonathan@reinink.ca,malfait.robin@gmail.com
+PackageSummary: A utility-first CSS framework for rapidly building custom user interfaces.
+PackageLicenseDeclared: MIT
+PackageCopyrightText:  Tailwind Labs, Inc.
+PackageDownloadLocation: https://registry.npmjs.org/tailwindcss/-/tailwindcss-3.3.3.tgz
+PackageHomePage: https://tailwindcss.com/
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/tailwindcss@3.3.3
+PackageChecksum: MD5: 5d172a2a41d2382bc40bc11f6684831e
+PackageChecksum: SHA1: 832eb95fcd1f358644854ae51c2fa4a78b740c03
+PackageChecksum: SHA256: 3f65ca53a27ba450934ea09ef8fdba15064c6474a22307c7d1442f905d492fc6
+
+
+PackageName: tailwindcss-animate
+SPDXID: SPDXRef-npm-tailwindcss-animate-1.0.7
+PackageVersion: 1.0.7
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: me@thejameskyle.com
+PackageSummary: A Tailwind CSS plugin for creating beautiful animations.
+PackageLicenseDeclared: MIT OR LicenseRef-jamie-kyle
+PackageCopyrightText: 2020 Jamie Kyle
+PackageDownloadLocation: https://registry.npmjs.org/tailwindcss-animate/-/tailwindcss-animate-1.0.7.tgz
+PackageHomePage: https://www.npmjs.com/package/tailwindcss-animate
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/tailwindcss-animate@1.0.7
+PackageChecksum: MD5: 9e754982ce247beecff5c14dd416b6e1
+PackageChecksum: SHA1: a6cd8d7a8794771401f878a0c329030ac87cb2f5
+PackageChecksum: SHA256: a2dba3ac03011f0cd17d37c18db2fc7e9236b67bc9f59be3f16d6065399c8f3c
+
+
+PackageName: typescript
+SPDXID: SPDXRef-npm-typescript-5.1.3
+PackageVersion: 5.1.3
+FilesAnalyzed: true
+PackageOriginator: Organization: NPM
+PackageSupplier: Person: andrew@wheream.io,jacob.b.bailey@gmail.com,npmjs@microsoft.com,typescript-design@microsoft.com,typescript@microsoft.com,wwigham@gmail.com
+PackageSummary: TypeScript is a language for application scale JavaScript development
+PackageLicenseDeclared: Apache-2.0
+PackageCopyrightText: <text> Microsoft Corporation. All rights reserved.
+	1991-2017 Unicode, Inc. All rights reserved.</text>
+PackageLicenseInfoFromFiles: W3C-20150513 MIT Unicode-DFS-2016 CC-BY-4.0
+PackageDownloadLocation: https://registry.npmjs.org/typescript/-/typescript-5.1.3.tgz
+PackageHomePage: https://www.typescriptlang.org/
+PackageLicenseConcluded: NOASSERTION
+ExternalRef: PACKAGE-MANAGER purl pkg:npm/typescript@5.1.3
+PackageChecksum: MD5: 90e3cc3e57101247fd34fa41e79d4138
+PackageChecksum: SHA1: 170d1a8d10f92bbb907af712512dd645004fd46f
+PackageChecksum: SHA256: 1d823fa206ac1a62223d27b209063069f00bac3a1397e5c8478128d72d707c53
+
+
+PackageName: pickup-frontend
+SPDXID: SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+PackageVersion: 8a5a3cd753b880780d2521d445e7bc221c025bae
+FilesAnalyzed: true
+PackageFileName: custom+62410/git@github.com:p-ickup/frontend.git$8a5a3cd753b880780d2521d445e7bc221c025bae
+PackageOriginator: NOASSERTION
+PackageSupplier: Organization: PICKUP
+PackageSummary: NOASSERTION
+PackageLicenseDeclared: NONE
+PackageCopyrightText: NONE
+PackageDownloadLocation: NOASSERTION
+PackageHomePage: NOASSERTION
+PackageLicenseConcluded: NOASSERTION
+PackageChecksum: MD5: 006ea416341c39e961cbdc9a296c98c7
+PackageChecksum: SHA1: 252342be110b1fd5f4962a7adfa2838afda0d5ec
+PackageChecksum: SHA256: 2f341f010f4ebb4c8462c3878f37d48f36e961d571cfe656d032fe714407b7af
+
+
+
+#### License Information
+
+LicenseID: LicenseRef-jamie-kyle
+LicenseName: jamie-kyle
+ExtractedText: Copyright (c) Jamie Kyle
+	
+	This license is granted to everyone except for the following entities and
+	any of their subsidiaries:
+	
+	- "Microsoft Corporation" (for working with ICE)
+	- "Palantir Technologies" (for working with ICE)
+	- "Amazon.com, Inc." (for abusive treatment of workers and for working with ICE)
+	- "Northeastern University" (for working with ICE)
+	- "Ernst & Young" (for working with ICE)
+	- "Thomson Reuters" (for working with ICE)
+	- "Motorola Solutions" (for working with ICE)
+	- "Deloitte Consulting LLP" (for working with ICE)
+	- "John Hopkins University" (for working with ICE)
+	- "Dell Inc" (for working with ICE)
+	- "Xerox Corporation" (for working with ICE)
+	- "Canon Inc" (for working with ICE)
+	- "Vermont State Colleges" (for working with ICE)
+	- "Charter Communications"/"Spectrum"/"Time Warner Cable" (for working with ICE)
+	- "LinkedIn Corporation" (for working with ICE)
+	- "United Parcel Service Co" (for working with ICE)
+	- "Walmart Inc" (for abusive treatment of workers)
+	- "Sears Holding Corporation" (for abusive treatment of workers)
+	- "Apple Inc" (for abusive treatment of workers)
+	- "Tyson Foods Inc" (for abusive treatment of workers)
+	- "Target Corporation" (for union busting and anti-union propaganda)
+	- "The H&M group" (for abusive treatment of workers)
+	- "Tesla, Inc" (for abusive treatment of workers)
+
+
+
+#### Relationships
+
+SPDXRef-DOCUMENT DESCRIBES SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-material-tailwind-react-2.1.10
+SPDXRef-npm-material-tailwind-react-2.1.10 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-radix-ui-react-scroll-area-1.2.10
+SPDXRef-npm-radix-ui-react-scroll-area-1.2.10 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-radix-ui-react-tooltip-1.2.8
+SPDXRef-npm-radix-ui-react-tooltip-1.2.8 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-supabase-ssr-0.12.0
+SPDXRef-npm-supabase-ssr-0.12.0 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-supabase-supabase-js-2.108.1
+SPDXRef-npm-supabase-supabase-js-2.108.1 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-types-node-20.3.1
+SPDXRef-npm-types-node-20.3.1 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-types-react-18.2.8
+SPDXRef-npm-types-react-18.2.8 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-types-react-dom-18.2.5
+SPDXRef-npm-types-react-dom-18.2.5 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-autoprefixer-10.4.15
+SPDXRef-npm-autoprefixer-10.4.15 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-clsx-2.1.1
+SPDXRef-npm-clsx-2.1.1 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-geist-1.5.1
+SPDXRef-npm-geist-1.5.1 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-lucide-react-0.304.0
+SPDXRef-npm-lucide-react-0.304.0 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-next-15.5.18
+SPDXRef-npm-next-15.5.18 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-next-themes-0.2.1
+SPDXRef-npm-next-themes-0.2.1 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-nextjs-toploader-1.6.12
+SPDXRef-npm-nextjs-toploader-1.6.12 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-postcss-8.5.15
+SPDXRef-npm-postcss-8.5.15 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-react-18.2.0
+SPDXRef-npm-react-18.2.0 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-react-dom-18.2.0
+SPDXRef-npm-react-dom-18.2.0 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-tailwind-merge-2.6.0
+SPDXRef-npm-tailwind-merge-2.6.0 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-tailwindcss-3.3.3
+SPDXRef-npm-tailwindcss-3.3.3 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-tailwindcss-animate-1.0.7
+SPDXRef-npm-tailwindcss-animate-1.0.7 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae DEPENDS_ON SPDXRef-npm-typescript-5.1.3
+SPDXRef-npm-typescript-5.1.3 DEPENDENCY_OF SPDXRef-custom-62410-git-github.com-p-ickup-frontend.git-8a5a3cd753b880780d2521d445e7bc221c025bae
+
+
