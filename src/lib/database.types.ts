@@ -320,6 +320,7 @@ export type Database = {
           ride_id: number
           to_airport: boolean
           user_id: string
+          waived: boolean
         }
         Insert: {
           airport: string
@@ -336,6 +337,7 @@ export type Database = {
           ride_id: number
           to_airport: boolean
           user_id: string
+          waived?: boolean
         }
         Update: {
           airport?: string
@@ -352,6 +354,7 @@ export type Database = {
           ride_id?: number
           to_airport?: boolean
           user_id?: string
+          waived?: boolean
         }
         Relationships: []
       }

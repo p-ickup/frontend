@@ -4,6 +4,10 @@ import type { AdminSummaryDto } from '@/contracts/readModels'
 import type { NoShowRiderInfo } from '@/utils/adminMatchNoShows'
 import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
 import { postJson, requestJson } from '@/utils/api'
+import {
+  estimateCancellationFee,
+  formatCancellationFee,
+} from '@/utils/cancellationFees'
 import { useEffect, useState } from 'react'
 
 const formatDateTime = (dateString: string): string => {
@@ -110,6 +114,12 @@ export default function AdminDashboard() {
     () => new Date().toISOString().split('T')[0],
   )
   const [cancellationsLoading, setCancellationsLoading] = useState(false)
+  const [cancellationsFetchTarget, setCancellationsFetchTarget] = useState<
+    'billable' | 'waived' | null
+  >(null)
+  const [cancellationsView, setCancellationsView] = useState<
+    'billable' | 'waived' | null
+  >(null)
   const [cancellations, setCancellations] = useState<
     Array<{
       id: number
@@ -125,6 +135,7 @@ export default function AdminDashboard() {
       cancelled_after_deadline: boolean
       cancelled_before_1hr: boolean
       cancellation_type: string | null
+      waived: boolean
       firstname?: string
       lastname?: string
       email?: string
@@ -419,19 +430,23 @@ export default function AdminDashboard() {
     }
   }
 
-  const fetchCancellations = async () => {
+  const fetchCancellations = async (waived: boolean) => {
     if (!cancellationsDateStart || !cancellationsDateEnd) return
     setCancellationsLoading(true)
+    setCancellationsFetchTarget(waived ? 'waived' : 'billable')
     try {
       const result = await requestJson<{ rows: typeof cancellations }>(
-        `/api/admin/reports?kind=cancellations&start=${encodeURIComponent(cancellationsDateStart)}&end=${encodeURIComponent(cancellationsDateEnd)}`,
+        `/api/admin/reports?kind=cancellations&start=${encodeURIComponent(cancellationsDateStart)}&end=${encodeURIComponent(cancellationsDateEnd)}&waived=${waived}`,
       )
       setCancellations(result.rows)
+      setCancellationsView(waived ? 'waived' : 'billable')
     } catch (err) {
       console.error('Error fetching cancellations:', err)
       setCancellations([])
+      setCancellationsView(null)
     } finally {
       setCancellationsLoading(false)
+      setCancellationsFetchTarget(null)
     }
   }
 
@@ -736,7 +751,8 @@ export default function AdminDashboard() {
               Match Cancellations (Fee Billing)
             </h2>
             <p className="mt-1 text-sm text-white/90">
-              View student-initiated cancellations for ASPC fee tracking
+              Billable = riders who were subsidized with a voucher or Connect
+              shuttle. Waived = unsubsidized riders.
             </p>
           </div>
           <div className="p-6">
@@ -764,13 +780,34 @@ export default function AdminDashboard() {
                 />
               </div>
               <button
-                onClick={fetchCancellations}
+                type="button"
+                onClick={() => fetchCancellations(false)}
                 disabled={cancellationsLoading}
                 className="rounded-lg bg-red-600 px-4 py-2 font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
-                {cancellationsLoading ? 'Loading...' : 'Load Cancellations'}
+                {cancellationsLoading && cancellationsFetchTarget === 'billable'
+                  ? 'Loading...'
+                  : 'Load billable cancellations'}
+              </button>
+              <button
+                type="button"
+                onClick={() => fetchCancellations(true)}
+                disabled={cancellationsLoading}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {cancellationsLoading && cancellationsFetchTarget === 'waived'
+                  ? 'Loading...'
+                  : 'Load waived cancellations'}
               </button>
             </div>
+
+            {cancellationsView && cancellations.length > 0 && (
+              <p className="mb-3 text-sm font-medium text-gray-600">
+                Viewing:{' '}
+                {cancellationsView === 'billable' ? 'Billable' : 'Waived'}{' '}
+                cancellations
+              </p>
+            )}
 
             {cancellations.length > 0 && (
               <div className="overflow-x-auto">
@@ -795,28 +832,21 @@ export default function AdminDashboard() {
                       <th className="px-4 py-2 text-left font-medium text-gray-600">
                         Before 1hr
                       </th>
-                      <th className="px-4 py-2 text-left font-medium text-gray-600">
-                        Est. Fee
-                      </th>
+                      {cancellationsView === 'billable' && (
+                        <th className="px-4 py-2 text-left font-medium text-gray-600">
+                          Est. Fee
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {cancellations.map((c) => {
-                      const isLAX = c.airport?.toUpperCase() === 'LAX'
-                      const isONT = c.airport?.toUpperCase() === 'ONT'
-                      const fee = !c.cancelled_before_1hr
-                        ? isLAX
-                          ? 40
-                          : isONT
-                            ? 15
-                            : 0
-                        : c.cancelled_after_deadline
-                          ? isLAX
-                            ? 20
-                            : isONT
-                              ? 8
-                              : 0
-                          : 0
+                      const fee = estimateCancellationFee({
+                        airport: c.airport,
+                        cancelled_after_deadline: c.cancelled_after_deadline,
+                        cancelled_before_1hr: c.cancelled_before_1hr,
+                        waived: c.waived,
+                      })
                       return (
                         <tr key={c.id} className="hover:bg-gray-50">
                           <td className="whitespace-nowrap px-4 py-2 text-gray-700">
@@ -857,9 +887,11 @@ export default function AdminDashboard() {
                               </span>
                             )}
                           </td>
-                          <td className="whitespace-nowrap px-4 py-2 font-medium">
-                            {fee > 0 ? `$${fee}` : '-'}
-                          </td>
+                          {cancellationsView === 'billable' && (
+                            <td className="whitespace-nowrap px-4 py-2 font-medium">
+                              {formatCancellationFee(fee)}
+                            </td>
+                          )}
                         </tr>
                       )
                     })}
@@ -872,35 +904,40 @@ export default function AdminDashboard() {
                   </span>
                   <button
                     onClick={() => {
+                      const csvHeaders =
+                        cancellationsView === 'billable'
+                          ? [
+                              'Cancelled At',
+                              'Name',
+                              'Email',
+                              'Match Date',
+                              'Match Time',
+                              'Airport',
+                              'After Deadline',
+                              'Before 1hr',
+                              'Est. Fee',
+                            ]
+                          : [
+                              'Cancelled At',
+                              'Name',
+                              'Email',
+                              'Match Date',
+                              'Match Time',
+                              'Airport',
+                              'After Deadline',
+                              'Before 1hr',
+                            ]
                       const csv = [
-                        [
-                          'Cancelled At',
-                          'Name',
-                          'Email',
-                          'Match Date',
-                          'Match Time',
-                          'Airport',
-                          'After Deadline',
-                          'Before 1hr',
-                          'Est. Fee',
-                        ],
+                        csvHeaders,
                         ...cancellations.map((c) => {
-                          const isLAX = c.airport?.toUpperCase() === 'LAX'
-                          const isONT = c.airport?.toUpperCase() === 'ONT'
-                          const fee = !c.cancelled_before_1hr
-                            ? isLAX
-                              ? 40
-                              : isONT
-                                ? 15
-                                : 0
-                            : c.cancelled_after_deadline
-                              ? isLAX
-                                ? 20
-                                : isONT
-                                  ? 8
-                                  : 0
-                              : 0
-                          return [
+                          const fee = estimateCancellationFee({
+                            airport: c.airport,
+                            cancelled_after_deadline:
+                              c.cancelled_after_deadline,
+                            cancelled_before_1hr: c.cancelled_before_1hr,
+                            waived: c.waived,
+                          })
+                          const row = [
                             formatDateTime(c.cancelled_at),
                             `${c.firstname || ''} ${c.lastname || ''}`.trim(),
                             c.email || '',
@@ -909,8 +946,11 @@ export default function AdminDashboard() {
                             c.airport,
                             c.cancelled_after_deadline ? 'Yes' : 'No',
                             c.cancelled_before_1hr ? 'Yes' : 'No',
-                            fee > 0 ? `$${fee}` : '-',
                           ]
+                          if (cancellationsView === 'billable') {
+                            row.push(formatCancellationFee(fee))
+                          }
+                          return row
                         }),
                       ]
                         .map((row) => row.join(','))
@@ -919,7 +959,9 @@ export default function AdminDashboard() {
                       const url = window.URL.createObjectURL(blob)
                       const a = document.createElement('a')
                       a.href = url
-                      a.download = `match-cancellations-${cancellationsDateStart}-to-${cancellationsDateEnd}.csv`
+                      const viewLabel =
+                        cancellationsView === 'waived' ? 'waived' : 'billable'
+                      a.download = `match-cancellations-${viewLabel}-${cancellationsDateStart}-to-${cancellationsDateEnd}.csv`
                       a.click()
                       window.URL.revokeObjectURL(url)
                     }}
@@ -933,7 +975,7 @@ export default function AdminDashboard() {
 
             {cancellations.length === 0 && !cancellationsLoading && (
               <p className="py-4 text-center text-gray-500">
-                Click &quot;Load Cancellations&quot; to view records
+                Choose a date range, then load billable or waived cancellations
               </p>
             )}
           </div>
