@@ -2,7 +2,10 @@
 
 import { Copy, Flag, Mail, Phone } from 'lucide-react'
 import { useState } from 'react'
-import { fetchAdminContacts } from '@/components/admin/services/adminLookupService'
+import {
+  fetchAdminContacts,
+  type AdminContact,
+} from '@/components/admin/services/adminLookupService'
 
 import {
   confirmChangeLogEntries,
@@ -29,7 +32,7 @@ function ChangedGroupCard({
   const [showContactInfo, setShowContactInfo] = useState(false)
   const [contactView, setContactView] = useState<'emails' | 'phones'>('emails')
   const [memberEmails, setMemberEmails] = useState<string[]>([])
-  const [memberPhones, setMemberPhones] = useState<string[]>([])
+  const [memberPhones, setMemberPhones] = useState<AdminContact[]>([])
   const [loadingEmails, setLoadingEmails] = useState(false)
   const [loadingPhones, setLoadingPhones] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -79,9 +82,7 @@ function ChangedGroupCard({
     try {
       const userIds = changedGroup.group.riders.map((r) => r.user_id)
       const { contacts } = await fetchAdminContacts(userIds)
-      const phones = contacts
-        .map((contact) => contact.phonenumber)
-        .filter((phone): phone is string => Boolean(phone))
+      const phones = contacts.filter((contact) => Boolean(contact.phonenumber))
       setMemberPhones(phones)
       setContactView('phones')
       setShowContactInfo(true)
@@ -96,7 +97,10 @@ function ChangedGroupCard({
     const textToCopy =
       contactView === 'emails'
         ? memberEmails.join('\n')
-        : memberPhones.join('\n')
+        : memberPhones
+            .map((contact) => contact.phonenumber)
+            .filter((phone): phone is string => Boolean(phone))
+            .join('\n')
 
     if (textToCopy.length === 0) return
 
@@ -299,9 +303,15 @@ function ChangedGroupCard({
               )
             ) : memberPhones.length > 0 ? (
               <div className="space-y-1">
-                {memberPhones.map((phone, index) => (
-                  <p key={index} className="break-words text-xs text-gray-600">
-                    {phone}
+                {memberPhones.map((contact) => (
+                  <p
+                    key={contact.user_id}
+                    className="break-words text-xs text-gray-600"
+                  >
+                    {contact.phonenumber}
+                    {contact.sms_opt_in !== true && (
+                      <span className="text-red-600"> (SMS opt-out)</span>
+                    )}
                   </p>
                 ))}
               </div>
@@ -328,6 +338,7 @@ function UnmatchedIndividualCard({
   const [contactView, setContactView] = useState<'emails' | 'phones'>('emails')
   const [email, setEmail] = useState<string>('')
   const [phone, setPhone] = useState<string>('')
+  const [smsOptIn, setSmsOptIn] = useState<boolean | null>(null)
   const [loadingEmail, setLoadingEmail] = useState(false)
   const [loadingPhone, setLoadingPhone] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -371,6 +382,7 @@ function UnmatchedIndividualCard({
     try {
       const { contacts } = await fetchAdminContacts([item.rider.user_id])
       setPhone(contacts[0]?.phonenumber || 'No phone number found')
+      setSmsOptIn(contacts[0]?.sms_opt_in ?? null)
       setContactView('phones')
       setShowContactInfo(true)
     } catch (error) {
@@ -493,7 +505,18 @@ function UnmatchedIndividualCard({
           </div>
           <div className="max-h-96 overflow-y-auto">
             <p className="break-words text-xs text-gray-600">
-              {contactView === 'emails' ? email : phone}
+              {contactView === 'emails' ? (
+                email
+              ) : (
+                <>
+                  {phone}
+                  {phone &&
+                    phone !== 'No phone number found' &&
+                    smsOptIn !== true && (
+                      <span className="text-red-600"> (SMS opt-out)</span>
+                    )}
+                </>
+              )}
             </p>
           </div>
         </div>

@@ -35,7 +35,9 @@ export const GET = withAdminRoute(async (request, auth) => {
 
       const { data, error } = await auth.supabase
         .from('Users')
-        .select('user_id, firstname, lastname, school, email, phonenumber')
+        .select(
+          'user_id, firstname, lastname, school, email, phonenumber, sms_opt_in',
+        )
         .eq('school', school)
         .order('firstname')
         .order('lastname')
@@ -78,7 +80,7 @@ export const GET = withAdminRoute(async (request, auth) => {
 
       const { data, error } = await auth.supabase
         .from('Users')
-        .select('user_id, email, phonenumber')
+        .select('user_id, email, phonenumber, sms_opt_in')
         .in('user_id', userIds)
 
       if (error) throw error

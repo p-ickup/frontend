@@ -620,6 +620,13 @@ export default function MatchedGroupsPanel() {
                                 </div>
                                 <p className="text-sm text-gray-600">
                                   {rider.phone}
+                                  {rider.phone !== '[Hidden]' &&
+                                    rider.sms_opt_in !== true && (
+                                      <span className="text-red-600">
+                                        {' '}
+                                        (SMS opt-out)
+                                      </span>
+                                    )}
                                 </p>
                                 <div className="mt-1 flex items-center gap-3 text-sm text-gray-600">
                                   {rider.airline_iata && rider.flight_no && (

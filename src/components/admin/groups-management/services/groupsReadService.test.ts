@@ -147,6 +147,7 @@ describe('fetchGroupsManagementSnapshot', () => {
               lastname: 'One',
               phonenumber: '1',
               school: 'Pomona',
+              sms_opt_in: false,
             },
             {
               user_id: 'student-2',
@@ -154,6 +155,7 @@ describe('fetchGroupsManagementSnapshot', () => {
               lastname: 'Two',
               phonenumber: '2',
               school: 'Pomona',
+              sms_opt_in: true,
             },
             {
               user_id: 'student-3',
@@ -161,6 +163,7 @@ describe('fetchGroupsManagementSnapshot', () => {
               lastname: 'Three',
               phonenumber: '3',
               school: 'Pomona',
+              sms_opt_in: null,
             },
           ],
           error: null,
@@ -198,8 +201,18 @@ describe('fetchGroupsManagementSnapshot', () => {
     expect(result.groups[0].riders.map((rider) => rider.flight_id)).toEqual([
       101, 102,
     ])
+    expect(result.groups[0].riders[0]).toEqual(
+      expect.objectContaining({ flight_id: 101, sms_opt_in: false }),
+    )
+    expect(result.groups[0].riders[1]).toEqual(
+      expect.objectContaining({ flight_id: 102, sms_opt_in: true }),
+    )
     expect(result.unmatchedRiders).toEqual([
-      expect.objectContaining({ flight_id: 201, name: 'Casey Three' }),
+      expect.objectContaining({
+        flight_id: 201,
+        name: 'Casey Three',
+        sms_opt_in: null,
+      }),
     ])
   })
 
