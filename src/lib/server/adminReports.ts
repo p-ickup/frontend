@@ -12,16 +12,19 @@ export async function getAdminCancellations({
   supabase,
   startDate,
   endDate,
+  waived,
 }: {
   supabase: SupabaseClient
   startDate: string
   endDate: string
+  waived: boolean
 }) {
   const { data: rows, error } = await supabase
     .from('match_cancellations')
     .select(
-      'id, ride_id, user_id, flight_id, cancelled_at, match_date, match_time, airport, to_airport, is_subsidized, cancelled_after_deadline, cancelled_before_1hr, cancellation_type',
+      'id, ride_id, user_id, flight_id, cancelled_at, match_date, match_time, airport, to_airport, is_subsidized, cancelled_after_deadline, cancelled_before_1hr, cancellation_type, waived',
     )
+    .eq('waived', waived)
     .gte('cancelled_at', `${startDate}T00:00:00`)
     .lte('cancelled_at', `${endDate}T23:59:59`)
     .order('cancelled_at', { ascending: false })

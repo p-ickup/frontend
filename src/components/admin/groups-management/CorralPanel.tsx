@@ -254,6 +254,13 @@ export default function CorralPanel({
                                 </p>
                                 <p className="text-xs text-gray-600">
                                   {rider.phone}
+                                  {rider.phone !== '[Hidden]' &&
+                                    rider.sms_opt_in !== true && (
+                                      <span className="text-red-600">
+                                        {' '}
+                                        (SMS opt-out)
+                                      </span>
+                                    )}
                                 </p>
                                 {rider.airline_iata && rider.flight_no && (
                                   <div className="group relative mt-1 flex items-center gap-1">

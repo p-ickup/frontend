@@ -92,7 +92,12 @@ export default function UnmatchedRidersPanel({
                   </span>
                 )}
               </div>
-              <p className="text-sm text-gray-600">{rider.phone}</p>
+              <p className="text-sm text-gray-600">
+                {rider.phone}
+                {rider.phone !== '[Hidden]' && rider.sms_opt_in !== true && (
+                  <span className="text-red-600"> (SMS opt-out)</span>
+                )}
+              </p>
               {rider.airline_iata && rider.flight_no && (
                 <div className="group relative mt-1 flex items-center gap-1">
                   <Plane className="h-4 w-4 text-gray-600" />

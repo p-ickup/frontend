@@ -109,6 +109,7 @@ export interface AdminGroupRiderDto {
   flight_id: number
   name: string
   phone: string
+  sms_opt_in?: boolean | null
   checked_bags: number
   carry_on_bags: number
   time_range: string
@@ -268,6 +269,7 @@ const toAdminGroupRiderDto = (
   flight_id: rider.flight_id,
   name: rider.name,
   phone: rider.phone,
+  ...(rider.sms_opt_in === undefined ? {} : { sms_opt_in: rider.sms_opt_in }),
   checked_bags: rider.checked_bags,
   carry_on_bags: rider.carry_on_bags,
   time_range: rider.time_range,

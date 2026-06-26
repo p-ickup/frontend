@@ -120,6 +120,7 @@ const buildUsersMap = (users: any[]) =>
         firstname: user.firstname,
         lastname: user.lastname,
         phonenumber: user.phonenumber,
+        sms_opt_in: user.sms_opt_in ?? null,
         school: user.school,
       },
     ]),
@@ -436,7 +437,7 @@ export const fetchGroupsManagementSnapshot = async ({
       ? await fetchUsersInBatches(
           supabase,
           userIds,
-          'user_id, firstname, lastname, phonenumber, school',
+          'user_id, firstname, lastname, phonenumber, school, sms_opt_in',
         )
       : []
 
@@ -474,6 +475,7 @@ export const fetchGroupsManagementSnapshot = async ({
             `${userData?.firstname || ''} ${userData?.lastname || ''}`.trim() ||
             'Unknown',
           phone: userData?.phonenumber || 'N/A',
+          sms_opt_in: userData?.sms_opt_in ?? null,
           checked_bags: flight.bag_no_large || 0,
           carry_on_bags: flight.bag_no || 0,
           time_range: `${flight.earliest_time} - ${flight.latest_time}`,
@@ -584,6 +586,7 @@ export const fetchGroupsManagementSnapshot = async ({
         `${userData?.firstname || ''} ${userData?.lastname || ''}`.trim() ||
         'Unknown',
       phone: userData?.phonenumber || 'N/A',
+      sms_opt_in: userData?.sms_opt_in ?? null,
       checked_bags: flight.bag_no_large || 0,
       carry_on_bags: flight.bag_no || 0,
       time_range: `${flight.earliest_time} - ${flight.latest_time}`,
@@ -688,6 +691,7 @@ export const fetchGroupsManagementSnapshot = async ({
           `${userData?.firstname || ''} ${userData?.lastname || ''}`.trim() ||
           'Unknown',
         phone: userData?.phonenumber || 'N/A',
+        sms_opt_in: userData?.sms_opt_in ?? null,
         checked_bags: flight.bag_no_large || 0,
         carry_on_bags: flight.bag_no || 0,
         time_range: `${flight.earliest_time} - ${flight.latest_time}`,

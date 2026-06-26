@@ -293,6 +293,7 @@ Recorded when users cancel a match (admin reporting / policy).
 | `cancelled_at` | `timestamptz` | When cancelled |
 | `cancelled_before_1hr` | `boolean` | Within 1 hour of pickup |
 | `cancelled_after_deadline` | `boolean` | After policy deadline |
+| `waived` | `boolean` | No fee applies (no voucher and not Connect at cancel time) |
 
 ---
 

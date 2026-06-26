@@ -162,27 +162,51 @@ describe('AdminDashboard', () => {
         })
       }
       if (url.includes('kind=cancellations')) {
+        const waived = url.includes('waived=true')
         return Promise.resolve({
-          rows: [
-            {
-              id: 1,
-              ride_id: 77,
-              user_id: 'student-1',
-              flight_id: 100,
-              cancelled_at: '2026-01-15T10:00:00Z',
-              match_date: '2026-01-15',
-              match_time: '10:00',
-              airport: 'LAX',
-              to_airport: true,
-              is_subsidized: true,
-              cancelled_after_deadline: true,
-              cancelled_before_1hr: false,
-              cancellation_type: 'late',
-              firstname: 'Taylor',
-              lastname: 'Student',
-              email: 'taylor@example.com',
-            },
-          ],
+          rows: waived
+            ? [
+                {
+                  id: 2,
+                  ride_id: 78,
+                  user_id: 'student-2',
+                  flight_id: 101,
+                  cancelled_at: '2026-01-16T10:00:00Z',
+                  match_date: '2026-01-16',
+                  match_time: '10:00',
+                  airport: 'LAX',
+                  to_airport: true,
+                  is_subsidized: false,
+                  cancelled_after_deadline: true,
+                  cancelled_before_1hr: false,
+                  cancellation_type: 'student_initiated',
+                  waived: true,
+                  firstname: 'Jordan',
+                  lastname: 'Student',
+                  email: 'jordan@example.com',
+                },
+              ]
+            : [
+                {
+                  id: 1,
+                  ride_id: 77,
+                  user_id: 'student-1',
+                  flight_id: 100,
+                  cancelled_at: '2026-01-15T10:00:00Z',
+                  match_date: '2026-01-15',
+                  match_time: '10:00',
+                  airport: 'LAX',
+                  to_airport: true,
+                  is_subsidized: true,
+                  cancelled_after_deadline: true,
+                  cancelled_before_1hr: false,
+                  cancellation_type: 'late',
+                  waived: false,
+                  firstname: 'Taylor',
+                  lastname: 'Student',
+                  email: 'taylor@example.com',
+                },
+              ],
         })
       }
       return Promise.resolve({
@@ -519,12 +543,12 @@ describe('AdminDashboard', () => {
     )
   })
 
-  it('loads and renders cancellation rows on demand', async () => {
+  it('loads and renders billable cancellation rows on demand', async () => {
     renderDashboard()
 
     await screen.findByText('Pickup Dashboard')
     await userEvent.click(
-      screen.getByRole('button', { name: /Load Cancellations/i }),
+      screen.getByRole('button', { name: /Load billable cancellations/i }),
     )
 
     expect(await screen.findByText('Taylor Student')).toBeInTheDocument()
@@ -532,7 +556,25 @@ describe('AdminDashboard', () => {
 
     expect(await screen.findByText('$40')).toBeInTheDocument()
     expect(requestJsonMock).toHaveBeenCalledWith(
-      expect.stringContaining('/api/admin/reports?kind=cancellations'),
+      expect.stringContaining('/api/admin/reports?kind=cancellations&start='),
+    )
+    expect(requestJsonMock).toHaveBeenCalledWith(
+      expect.stringContaining('waived=false'),
+    )
+  })
+
+  it('loads and renders waived cancellation rows on demand', async () => {
+    renderDashboard()
+
+    await screen.findByText('Pickup Dashboard')
+    await userEvent.click(
+      screen.getByRole('button', { name: /Load waived cancellations/i }),
+    )
+
+    expect(await screen.findByText('Jordan Student')).toBeInTheDocument()
+    expect(screen.queryByText('Est. Fee')).not.toBeInTheDocument()
+    expect(requestJsonMock).toHaveBeenCalledWith(
+      expect.stringContaining('waived=true'),
     )
   })
 })

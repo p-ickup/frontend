@@ -512,6 +512,9 @@ export default function AddRider({
                       {user.phonenumber && (
                         <div className="mt-1 text-xs text-gray-500">
                           {user.phonenumber}
+                          {user.sms_opt_in !== true && (
+                            <span className="text-red-600"> (SMS opt-out)</span>
+                          )}
                         </div>
                       )}
                     </button>

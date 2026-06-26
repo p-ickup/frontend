@@ -5,6 +5,7 @@ export interface Rider {
   flight_id: number
   name: string
   phone: string
+  sms_opt_in?: boolean | null
   checked_bags: number
   carry_on_bags: number
   time_range: string

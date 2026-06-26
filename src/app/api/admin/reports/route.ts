@@ -22,11 +22,19 @@ export const GET = withAdminRoute(async (request, auth) => {
     }
 
     if (kind === 'cancellations') {
+      const waivedParam = url.searchParams.get('waived')
+      if (waivedParam !== 'true' && waivedParam !== 'false') {
+        return badRequestJson(
+          'waived=true or waived=false is required for cancellations.',
+        )
+      }
+
       return NextResponse.json({
         rows: await getAdminCancellations({
           supabase: auth.supabase,
           startDate,
           endDate,
+          waived: waivedParam === 'true',
         }),
       })
     }

@@ -7,12 +7,14 @@ export interface AdminLookupUser {
   school: string
   email: string
   phonenumber: string
+  sms_opt_in: boolean | null
 }
 
 export interface AdminContact {
   user_id: string
   email: string | null
   phonenumber: string | null
+  sms_opt_in: boolean | null
 }
 
 export const fetchAdminSchools = async () =>
