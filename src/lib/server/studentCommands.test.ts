@@ -787,6 +787,10 @@ describe('createOwnFlight', () => {
           latest_time: '09:00',
           opt_in: 'false',
           terminal: ' 4 ',
+          itinerary_details: ' AA123 LAX to DFW ',
+          has_us_phone: 'true',
+          phone_works_in_us: null,
+          us_phone_number: ' (909) 555-1234 ',
         },
       }),
     ).resolves.toEqual({
@@ -808,6 +812,10 @@ describe('createOwnFlight', () => {
         latest_time: '09:00',
         opt_in: false,
         terminal: '4',
+        itinerary_details: 'AA123 LAX to DFW',
+        has_us_phone: true,
+        phone_works_in_us: null,
+        us_phone_number: '(909) 555-1234',
         user_id: 'student-1',
         matching_status: 'submitted',
       },
@@ -964,6 +972,9 @@ describe('updateOwnFlight', () => {
           opt_in: 'true',
           bag_no_large: '2',
           latest_time: '17:30',
+          has_us_phone: 'false',
+          phone_works_in_us: 'unsure',
+          us_phone_number: null,
         },
       }),
     ).resolves.toEqual({ success: true })
@@ -976,6 +987,9 @@ describe('updateOwnFlight', () => {
         opt_in: true,
         bag_no_large: 2,
         latest_time: '17:30',
+        has_us_phone: false,
+        phone_works_in_us: 'unsure',
+        us_phone_number: null,
       },
     })
   })

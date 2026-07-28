@@ -22,6 +22,10 @@ export type FlightWritePayload = {
   latest_time?: string
   opt_in?: boolean
   terminal?: string
+  itinerary_details?: string | null
+  has_us_phone?: boolean | null
+  phone_works_in_us?: string | null
+  us_phone_number?: string | null
 }
 
 type FlightPayloadError = Error & {
@@ -55,9 +59,16 @@ const FIELD_LABELS: Record<keyof FlightWritePayload, string> = {
   latest_time: 'Latest time',
   opt_in: 'Unmatched-flight opt-in',
   terminal: 'Terminal',
+  itinerary_details: 'Itinerary details',
+  has_us_phone: 'U.S. phone number answer',
+  phone_works_in_us: 'U.S. phone/mobile data answer',
+  us_phone_number: 'U.S. phone number',
 }
 
 const ALLOWED_FIELDS = new Set(Object.keys(FIELD_LABELS))
+const MAX_ITINERARY_DETAILS_LENGTH = 4000
+const MAX_TEMP_PHONE_LENGTH = 40
+const PHONE_WORKS_IN_US_VALUES = new Set(['yes', 'no', 'unsure'])
 const REQUIRED_CREATE_FIELDS: (keyof FlightWritePayload)[] = [
   'to_airport',
   'airport',
@@ -277,6 +288,75 @@ export const normalizeFlightWritePayload = (
         'INVALID_TERMINAL',
         'terminal',
       )
+    }
+  }
+
+  if ('itinerary_details' in payload) {
+    if (payload.itinerary_details == null) {
+      normalized.itinerary_details = null
+    } else {
+      normalized.itinerary_details = asTrimmedString(
+        payload.itinerary_details,
+        'itinerary_details',
+      )
+      if (
+        normalized.itinerary_details.length > MAX_ITINERARY_DETAILS_LENGTH ||
+        /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(
+          normalized.itinerary_details,
+        )
+      ) {
+        throw createFlightPayloadError(
+          `Itinerary details must be ${MAX_ITINERARY_DETAILS_LENGTH} characters or fewer and cannot contain control characters.`,
+          'INVALID_ITINERARY_DETAILS',
+          'itinerary_details',
+        )
+      }
+    }
+  }
+
+  if ('has_us_phone' in payload) {
+    normalized.has_us_phone =
+      payload.has_us_phone == null
+        ? null
+        : asBoolean(payload.has_us_phone, 'has_us_phone')
+  }
+
+  if ('phone_works_in_us' in payload) {
+    if (payload.phone_works_in_us == null) {
+      normalized.phone_works_in_us = null
+    } else {
+      normalized.phone_works_in_us = asTrimmedString(
+        payload.phone_works_in_us,
+        'phone_works_in_us',
+      ).toLowerCase()
+      if (!PHONE_WORKS_IN_US_VALUES.has(normalized.phone_works_in_us)) {
+        throw createFlightPayloadError(
+          'U.S. phone/mobile data answer must be yes, no, or unsure.',
+          'INVALID_PHONE_WORKS_IN_US',
+          'phone_works_in_us',
+        )
+      }
+    }
+  }
+
+  if ('us_phone_number' in payload) {
+    if (payload.us_phone_number == null) {
+      normalized.us_phone_number = null
+    } else {
+      normalized.us_phone_number = asTrimmedString(
+        payload.us_phone_number,
+        'us_phone_number',
+      )
+      if (
+        normalized.us_phone_number.length > MAX_TEMP_PHONE_LENGTH ||
+        /[\u0000-\u001f\u007f]/.test(normalized.us_phone_number)
+      ) {
+        throw createFlightPayloadError(
+          `U.S. phone number must be ${MAX_TEMP_PHONE_LENGTH} characters or fewer and cannot contain control characters.`,
+          'INVALID_US_PHONE_NUMBER',
+          'us_phone_number',
+        )
+      }
     }
   }
 

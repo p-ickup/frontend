@@ -197,6 +197,8 @@ export type Database = {
           earliest_time: string | null
           flight_id: number
           flight_no: number | null
+          has_us_phone: boolean | null
+          itinerary_details: string | null
           last_arr_estimated_utc: string | null
           last_dep_estimated_utc: string | null
           last_notified_at: string | null
@@ -208,10 +210,12 @@ export type Database = {
           max_dropoff: number | null
           max_price: number | null
           opt_in: boolean | null
+          phone_works_in_us: string | null
           original_unmatched: boolean | null
           terminal: string | null
           to_airport: boolean | null
           unmatched_email_sent: boolean | null
+          us_phone_number: string | null
           user_id: string | null
         }
         Insert: {
@@ -225,6 +229,8 @@ export type Database = {
           earliest_time?: string | null
           flight_id?: number
           flight_no?: number | null
+          has_us_phone?: boolean | null
+          itinerary_details?: string | null
           last_arr_estimated_utc?: string | null
           last_dep_estimated_utc?: string | null
           last_notified_at?: string | null
@@ -236,10 +242,12 @@ export type Database = {
           max_dropoff?: number | null
           max_price?: number | null
           opt_in?: boolean | null
+          phone_works_in_us?: string | null
           original_unmatched?: boolean | null
           terminal?: string | null
           to_airport?: boolean | null
           unmatched_email_sent?: boolean | null
+          us_phone_number?: string | null
           user_id?: string | null
         }
         Update: {
@@ -253,6 +261,8 @@ export type Database = {
           earliest_time?: string | null
           flight_id?: number
           flight_no?: number | null
+          has_us_phone?: boolean | null
+          itinerary_details?: string | null
           last_arr_estimated_utc?: string | null
           last_dep_estimated_utc?: string | null
           last_notified_at?: string | null
@@ -264,10 +274,12 @@ export type Database = {
           max_dropoff?: number | null
           max_price?: number | null
           opt_in?: boolean | null
+          phone_works_in_us?: string | null
           original_unmatched?: boolean | null
           terminal?: string | null
           to_airport?: boolean | null
           unmatched_email_sent?: boolean | null
+          us_phone_number?: string | null
           user_id?: string | null
         }
         Relationships: [
