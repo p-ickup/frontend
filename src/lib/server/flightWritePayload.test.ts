@@ -18,6 +18,10 @@ const validPayload = {
   latest_time: '01:00',
   opt_in: true,
   terminal: 'TBIT',
+  itinerary_details: 'AA123 LAX to DFW\nAA456 DFW to EWR',
+  has_us_phone: false,
+  phone_works_in_us: 'unsure',
+  us_phone_number: null,
 }
 
 const validateCreate = (overrides: Record<string, unknown> = {}) =>
@@ -117,6 +121,40 @@ describe('flight write validation', () => {
 
     expect(() => validateCreate({ terminal: 'x'.repeat(51) })).toThrow(
       expect.objectContaining({ code: 'INVALID_TERMINAL' }),
+    )
+  })
+
+  it('normalizes temporary itinerary and phone fields', () => {
+    expect(
+      validateCreate({
+        itinerary_details: '  AA123 LAX to DFW  ',
+        has_us_phone: 'true',
+        phone_works_in_us: null,
+        us_phone_number: '  (909) 555-1234  ',
+      }),
+    ).toMatchObject({
+      itinerary_details: 'AA123 LAX to DFW',
+      has_us_phone: true,
+      phone_works_in_us: null,
+      us_phone_number: '(909) 555-1234',
+    })
+  })
+
+  it('rejects invalid temporary phone answers and oversized itinerary details', () => {
+    expect(() => validateCreate({ phone_works_in_us: 'maybe' })).toThrow(
+      expect.objectContaining({
+        code: 'INVALID_PHONE_WORKS_IN_US',
+        field: 'phone_works_in_us',
+      }),
+    )
+
+    expect(() =>
+      validateCreate({ itinerary_details: 'x'.repeat(4001) }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'INVALID_ITINERARY_DETAILS',
+        field: 'itinerary_details',
+      }),
     )
   })
 
