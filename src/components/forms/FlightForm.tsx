@@ -30,6 +30,7 @@ import {
   TooltipTrigger,
   useClickTooltip,
 } from '@/components/ui/tooltip'
+import { DatePicker } from '@/components/ui/date-picker'
 import { LEGAL_VERSION, PRIVACY_URL, TERMS_URL } from '@/config/legalDocuments'
 import {
   shouldDefaultOptInUnmatched,
@@ -43,6 +44,56 @@ export interface FlightFormProps {
   submitButtonText: string
   successRedirectRoute: string
   onSuccess?: () => void
+}
+
+type ItineraryFlight = {
+  airline: string
+  flightNumber: string
+  departureAirport: string
+  arrivalAirport: string
+  date: string
+}
+
+const createEmptyItineraryFlight = (): ItineraryFlight => ({
+  airline: '',
+  flightNumber: '',
+  departureAirport: '',
+  arrivalAirport: '',
+  date: '',
+})
+
+const formatItineraryFlights = (flights: ItineraryFlight[]) =>
+  flights
+    .map(
+      (flight, index) =>
+        `Flight ${index + 1}: ${flight.airline.trim()} ${flight.flightNumber.trim()}, ${flight.departureAirport.trim().toUpperCase()} to ${flight.arrivalAirport.trim().toUpperCase()}, ${flight.date}`,
+    )
+    .join('\n')
+
+const isItineraryFlightComplete = (flight: ItineraryFlight) =>
+  flight.airline.trim() &&
+  flight.flightNumber.trim() &&
+  flight.departureAirport.trim() &&
+  flight.arrivalAirport.trim() &&
+  flight.date
+
+const getItineraryFlightLabel = (index: number) => {
+  if (index === 0) return 'First flight'
+  if (index === 1) return 'Second flight'
+  return `Flight ${index + 1}`
+}
+
+const getItineraryFlightSummary = (flight: ItineraryFlight) => {
+  const airlineFlight = [flight.airline.trim(), flight.flightNumber.trim()]
+    .filter(Boolean)
+    .join(' ')
+  const route =
+    flight.departureAirport.trim() || flight.arrivalAirport.trim()
+      ? `${flight.departureAirport.trim().toUpperCase() || '?'} to ${
+          flight.arrivalAirport.trim().toUpperCase() || '?'
+        }`
+      : ''
+  return [airlineFlight, route, flight.date].filter(Boolean).join(' | ')
 }
 
 export default function FlightForm({
@@ -70,6 +121,12 @@ export default function FlightForm({
   const [latestArrival, setLatestArrival] = useState('')
   const [optInUnmatched, setOptInUnmatched] = useState(false)
   const [terminal, setTerminal] = useState('')
+  const [itineraryFlights, setItineraryFlights] = useState<ItineraryFlight[]>([
+    createEmptyItineraryFlight(),
+  ])
+  const [hasUsPhone, setHasUsPhone] = useState<boolean | null>(null)
+  const [phoneWorksInUs, setPhoneWorksInUs] = useState('')
+  const [usPhoneNumber, setUsPhoneNumber] = useState('')
   const [message, setMessage] = useState('')
   const [isValidationError, setIsValidationError] = useState(false) // true = validation, false = submission error
   const [duplicateErrorMessage, setDuplicateErrorMessage] = useState('')
@@ -90,7 +147,11 @@ export default function FlightForm({
 
   // Multi-page wizard state
   const [currentStep, setCurrentStep] = useState(1)
-  const totalSteps = 4
+  const totalSteps = 6
+  const stepNumbers = useMemo(
+    () => Array.from({ length: totalSteps }, (_, index) => index + 1),
+    [totalSteps],
+  )
 
   // Use ref for immediate submission lock (prevents race conditions)
   const isSubmittingRef = useRef(false)
@@ -111,6 +172,10 @@ export default function FlightForm({
   const inboundAllowed = allowedDirections.includes('inbound')
   const outboundSelectable = hasSubsidizedDirections ? outboundAllowed : true
   const inboundSelectable = hasSubsidizedDirections ? inboundAllowed : true
+  const itineraryDetails = useMemo(
+    () => formatItineraryFlights(itineraryFlights),
+    [itineraryFlights],
+  )
 
   // Mobile info modal state
   const [showMobileInfo, setShowMobileInfo] = useState(false)
@@ -126,6 +191,49 @@ export default function FlightForm({
     setMobileInfoContent(content)
     setShowMobileInfo(true)
   }
+
+  const updateItineraryFlight = (
+    index: number,
+    field: keyof ItineraryFlight,
+    value: string,
+  ) => {
+    setItineraryFlights((currentFlights) =>
+      currentFlights.map((flight, flightIndex) =>
+        flightIndex === index ? { ...flight, [field]: value } : flight,
+      ),
+    )
+  }
+
+  const addItineraryFlight = () => {
+    setItineraryFlights((currentFlights) => {
+      const previousFlight = currentFlights[currentFlights.length - 1]
+      return [
+        ...currentFlights,
+        {
+          ...createEmptyItineraryFlight(),
+          date: previousFlight?.date || dateOfFlight,
+        },
+      ]
+    })
+  }
+
+  const removeItineraryFlight = (index: number) => {
+    setItineraryFlights((currentFlights) =>
+      currentFlights.length === 1
+        ? currentFlights
+        : currentFlights.filter((_, flightIndex) => flightIndex !== index),
+    )
+  }
+
+  useEffect(() => {
+    if (!dateOfFlight) return
+
+    setItineraryFlights((currentFlights) =>
+      currentFlights.map((flight) =>
+        flight.date ? flight : { ...flight, date: dateOfFlight },
+      ),
+    )
+  }, [dateOfFlight])
 
   // Modal states
   const [showManyBagsModal, setShowManyBagsModal] = useState(false)
@@ -341,7 +449,7 @@ export default function FlightForm({
         const { data, error } = await supabase
           .from('Flights')
           .select(
-            'flight_id, flight_no, airline_iata, date, matching_status, to_airport, airport, bag_no_personal, bag_no, bag_no_large, earliest_time, latest_time, terminal',
+            'flight_id, flight_no, airline_iata, date, matching_status, to_airport, airport, bag_no_personal, bag_no, bag_no_large, earliest_time, latest_time, terminal, itinerary_details, has_us_phone, phone_works_in_us, us_phone_number',
           )
           .eq('flight_id', flightId)
           .single()
@@ -369,6 +477,21 @@ export default function FlightForm({
             shouldDefaultOptInUnmatched(data.matching_status as MatchingStatus),
           )
           setTerminal(data.terminal)
+          if (data.itinerary_details) {
+            setItineraryFlights([
+              {
+                ...createEmptyItineraryFlight(),
+                airline: data.itinerary_details,
+              },
+            ])
+          }
+          setHasUsPhone(
+            data.has_us_phone === null || data.has_us_phone === undefined
+              ? null
+              : data.has_us_phone,
+          )
+          setPhoneWorksInUs(data.phone_works_in_us || '')
+          setUsPhoneNumber(data.us_phone_number || '')
         }
         setIsLoading(false)
       }
@@ -410,9 +533,8 @@ export default function FlightForm({
       e.preventDefault()
     }
 
-    // Only allow submission on step 4 - prevent any form submission before final step
+    // Only allow submission on the final step.
     if (currentStep !== totalSteps) {
-      // Prevent form submission on steps 1-3 (user must click Next button)
       return
     }
 
@@ -585,6 +707,14 @@ export default function FlightForm({
         latest_time: latestArrival,
         opt_in: optInUnmatched,
         terminal,
+        itinerary_details: itineraryDetails,
+        has_us_phone: hasUsPhone,
+        phone_works_in_us: hasUsPhone === false ? phoneWorksInUs : null,
+        us_phone_number:
+          hasUsPhone === true ||
+          (hasUsPhone === false && phoneWorksInUs === 'yes')
+            ? usPhoneNumber
+            : null,
       }
 
       let error
@@ -871,7 +1001,52 @@ export default function FlightForm({
           return false
         }
         return true
-      case 3: // Luggage
+      case 3: // Itinerary
+        {
+          const incompleteItineraryIndex = itineraryFlights.findIndex(
+            (flight) => !isItineraryFlightComplete(flight),
+          )
+          if (incompleteItineraryIndex >= 0) {
+            setMessage(
+              `Please complete ${getItineraryFlightLabel(
+                incompleteItineraryIndex,
+              ).toLowerCase()} in your itinerary`,
+            )
+            setIsValidationError(true)
+            return false
+          }
+        }
+        if (itineraryDetails.length > 4000) {
+          setMessage('Please shorten your itinerary details')
+          setIsValidationError(true)
+          return false
+        }
+        return true
+      case 4: // U.S. phone availability
+        if (hasUsPhone === null) {
+          setMessage('Please answer whether you have a U.S. phone number')
+          setIsValidationError(true)
+          return false
+        }
+        if (hasUsPhone && !usPhoneNumber.trim()) {
+          setMessage('Please provide your U.S. phone number')
+          setIsValidationError(true)
+          return false
+        }
+        if (!hasUsPhone && !phoneWorksInUs) {
+          setMessage(
+            'Please answer whether your provided phone number or mobile data works in the U.S.',
+          )
+          setIsValidationError(true)
+          return false
+        }
+        if (!hasUsPhone && phoneWorksInUs === 'yes' && !usPhoneNumber.trim()) {
+          setMessage('Please provide the phone number that works in the U.S.')
+          setIsValidationError(true)
+          return false
+        }
+        return true
+      case 5: // Luggage
         if (
           bag_no_personal < 0 ||
           bag_no_personal > MAX_BAG_COUNT ||
@@ -885,7 +1060,7 @@ export default function FlightForm({
           return false
         }
         return true
-      case 4: // Review - no validation needed
+      case 6: // Review - no validation needed
         return true
       default:
         return true
@@ -899,8 +1074,12 @@ export default function FlightForm({
       case 2:
         return 'Trip Direction & Flight Details'
       case 3:
-        return 'Luggage Information'
+        return 'Connecting Flights'
       case 4:
+        return 'U.S. Phone Access'
+      case 5:
+        return 'Luggage Information'
+      case 6:
         return 'Review & Submit'
       default:
         return ''
@@ -945,7 +1124,7 @@ export default function FlightForm({
         {/* Progress indicator */}
         <div className="border-b bg-white px-4 py-6 md:px-8">
           <div className="mb-4 flex items-center justify-between">
-            {[1, 2, 3, 4].map((step) => (
+            {stepNumbers.map((step) => (
               <div key={step} className="flex flex-1 items-center">
                 <div
                   className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border-2 font-semibold transition-colors ${
@@ -974,7 +1153,7 @@ export default function FlightForm({
                     step
                   )}
                 </div>
-                {step < 4 && (
+                {step < totalSteps && (
                   <div
                     className={`mx-2 h-1 flex-1 transition-colors ${
                       step < currentStep ? 'bg-teal-500' : 'bg-gray-300'
@@ -1016,14 +1195,11 @@ export default function FlightForm({
                       This might be different from your flight date if traveling
                       overnight or early morning.
                     </p>
-                    <input
-                      type="date"
+                    <DatePicker
                       value={dateOfFlight}
-                      onChange={(e) => setDateOfFlight(e.target.value)}
-                      min={flightDateBounds.min}
-                      max={flightDateBounds.max}
-                      className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
-                      required
+                      onChange={setDateOfFlight}
+                      minDate={flightDateBounds.min}
+                      maxDate={flightDateBounds.max}
                     />
                   </div>
 
@@ -1377,8 +1553,270 @@ export default function FlightForm({
               </div>
             )}
 
-            {/* Step 3: Luggage Information */}
+            {/* Step 3: Connecting Flights */}
             {currentStep === 3 && (
+              <div className="space-y-6">
+                <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
+                  <p className="mb-2">Add all flights in your itinerary.</p>
+                  <p>
+                    RideLink uses this information to determine if earlier
+                    delays will impact your final arrival time.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  {itineraryFlights.map((flight, index) => (
+                    <div
+                      key={index}
+                      className="rounded-lg border-2 border-gray-200 bg-gray-50 p-4"
+                    >
+                      <div className="mb-4 flex items-center justify-between gap-4">
+                        <h3 className="text-lg font-bold text-gray-800">
+                          {getItineraryFlightLabel(index)}
+                        </h3>
+                        {itineraryFlights.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeItineraryFlight(index)}
+                            className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <label className="block">
+                          <span className="mb-2 block text-sm font-bold text-gray-700">
+                            Airline
+                          </span>
+                          <input
+                            type="text"
+                            value={flight.airline}
+                            onChange={(e) =>
+                              updateItineraryFlight(
+                                index,
+                                'airline',
+                                e.target.value,
+                              )
+                            }
+                            className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                            placeholder="American Airlines or AA"
+                            maxLength={80}
+                            required
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="mb-2 block text-sm font-bold text-gray-700">
+                            Flight Number
+                          </span>
+                          <input
+                            type="text"
+                            value={flight.flightNumber}
+                            onChange={(e) =>
+                              updateItineraryFlight(
+                                index,
+                                'flightNumber',
+                                e.target.value,
+                              )
+                            }
+                            className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                            placeholder="123"
+                            maxLength={12}
+                            required
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="mb-2 block text-sm font-bold text-gray-700">
+                            Departure Airport
+                          </span>
+                          <input
+                            type="text"
+                            value={flight.departureAirport}
+                            onChange={(e) =>
+                              updateItineraryFlight(
+                                index,
+                                'departureAirport',
+                                e.target.value.toUpperCase(),
+                              )
+                            }
+                            className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                            placeholder="LAX"
+                            maxLength={8}
+                            required
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="mb-2 block text-sm font-bold text-gray-700">
+                            Arrival Airport
+                          </span>
+                          <input
+                            type="text"
+                            value={flight.arrivalAirport}
+                            onChange={(e) =>
+                              updateItineraryFlight(
+                                index,
+                                'arrivalAirport',
+                                e.target.value.toUpperCase(),
+                              )
+                            }
+                            className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                            placeholder="DFW"
+                            maxLength={8}
+                            required
+                          />
+                        </label>
+
+                        <label className="block md:col-span-2">
+                          <span className="mb-2 block text-sm font-bold text-gray-700">
+                            Date
+                          </span>
+                          <DatePicker
+                            value={flight.date}
+                            onChange={(e) =>
+                              updateItineraryFlight(index, 'date', e)
+                            }
+                            defaultMonth={flight.date || dateOfFlight}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={addItineraryFlight}
+                    className="w-full rounded-lg border-2 border-dashed border-teal-300 bg-teal-50 px-4 py-3 font-semibold text-teal-700 transition-colors hover:border-teal-400 hover:bg-teal-100"
+                  >
+                    Add another flight
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 4: U.S. Phone Access */}
+            {currentStep === 4 && (
+              <div className="space-y-6">
+                <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
+                  <p className="mb-2 font-medium">Phone Access:</p>
+                  <p>
+                    This helps coordinators know how reliably they can reach you
+                    while you are traveling.
+                  </p>
+                </div>
+
+                <div className="space-y-6">
+                  <label className="block">
+                    <span className="mb-3 block text-lg font-bold text-gray-800">
+                      Do you have a U.S. phone number?
+                    </span>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHasUsPhone(true)
+                          setPhoneWorksInUs('')
+                        }}
+                        className={`rounded-xl border-2 p-5 text-center font-semibold transition-all ${
+                          hasUsPhone === true
+                            ? 'border-teal-500 bg-teal-50 text-teal-700'
+                            : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                        }`}
+                      >
+                        Yes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHasUsPhone(false)
+                          setUsPhoneNumber('')
+                        }}
+                        className={`rounded-xl border-2 p-5 text-center font-semibold transition-all ${
+                          hasUsPhone === false
+                            ? 'border-teal-500 bg-teal-50 text-teal-700'
+                            : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                        }`}
+                      >
+                        No
+                      </button>
+                    </div>
+                  </label>
+
+                  {hasUsPhone === true && (
+                    <label className="block">
+                      <span className="mb-2 block text-lg font-bold text-gray-800">
+                        Provide this phone number
+                      </span>
+                      <input
+                        type="tel"
+                        value={usPhoneNumber}
+                        onChange={(e) => setUsPhoneNumber(e.target.value)}
+                        className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                        placeholder="(909) 555-1234"
+                        maxLength={40}
+                        required
+                      />
+                    </label>
+                  )}
+
+                  {hasUsPhone === false && (
+                    <label className="block">
+                      <span className="mb-3 block text-lg font-bold text-gray-800">
+                        Does your provided phone number or mobile data work in
+                        the U.S.?
+                      </span>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        {[
+                          ['yes', 'Yes'],
+                          ['no', 'No'],
+                          ['unsure', 'Unsure'],
+                        ].map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => {
+                              setPhoneWorksInUs(value)
+                              if (value !== 'yes') {
+                                setUsPhoneNumber('')
+                              }
+                            }}
+                            className={`rounded-xl border-2 p-5 text-center font-semibold transition-all ${
+                              phoneWorksInUs === value
+                                ? 'border-teal-500 bg-teal-50 text-teal-700'
+                                : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {phoneWorksInUs === 'yes' && (
+                        <div className="mt-4">
+                          <span className="mb-2 block text-lg font-bold text-gray-800">
+                            Provide this phone number
+                          </span>
+                          <input
+                            type="tel"
+                            value={usPhoneNumber}
+                            onChange={(e) => setUsPhoneNumber(e.target.value)}
+                            className="w-full rounded-lg border-2 border-gray-300 bg-white p-3 text-black focus:border-teal-500 focus:outline-none"
+                            placeholder="enter number with country code"
+                            maxLength={40}
+                            required
+                          />
+                        </div>
+                      )}
+                    </label>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Step 5: Luggage Information */}
+            {currentStep === 5 && (
               <div className="space-y-6">
                 <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
                   <p className="mb-2 font-medium">Luggage Details:</p>
@@ -1590,8 +2028,8 @@ export default function FlightForm({
               </div>
             )}
 
-            {/* Step 4: Review & Submit */}
-            {currentStep === 4 && (
+            {/* Step 6: Review & Submit */}
+            {currentStep === 6 && (
               <div className="space-y-6">
                 <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-800">
                   <p className="mb-2 font-medium">Review Your Information:</p>
@@ -1668,6 +2106,40 @@ export default function FlightForm({
                       <p className="mt-1 text-lg font-semibold text-gray-900">
                         {bag_no_personal} personal, {bag_no} carry-on,{' '}
                         {bag_no_large} checked
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 border-t border-gray-200 pt-4 md:grid-cols-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        Itinerary
+                      </p>
+                      <div className="mt-1 space-y-1 text-base font-semibold text-gray-900">
+                        {itineraryFlights.map((flight, index) => (
+                          <p key={index} className="break-words">
+                            {getItineraryFlightLabel(index)}:{' '}
+                            {getItineraryFlightSummary(flight) || 'Not set'}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">
+                        U.S. Phone Access
+                      </p>
+                      <p className="mt-1 text-base font-semibold text-gray-900">
+                        {hasUsPhone === true
+                          ? `U.S. phone: ${usPhoneNumber || 'Not set'}`
+                          : hasUsPhone === false
+                            ? `No U.S. phone. Existing phone/mobile data works in U.S.: ${
+                                phoneWorksInUs || 'Not set'
+                              }${
+                                phoneWorksInUs === 'yes'
+                                  ? ` (${usPhoneNumber || 'Not set'})`
+                                  : ''
+                              }`
+                            : 'Not set'}
                       </p>
                     </div>
                   </div>
