@@ -198,6 +198,10 @@ function formatShortDateRange(range: DateRange): string {
   const startDay = start.getDate()
   const endDay = end.getDate()
 
+  if (range.start === range.end) {
+    return `${startMonth} ${startDay}`
+  }
+
   if (startMonth === endMonth) {
     return `${startMonth} ${startDay}-${endDay}`
   }

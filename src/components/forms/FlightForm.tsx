@@ -172,6 +172,7 @@ export default function FlightForm({
   const inboundAllowed = allowedDirections.includes('inbound')
   const outboundSelectable = hasSubsidizedDirections ? outboundAllowed : true
   const inboundSelectable = hasSubsidizedDirections ? inboundAllowed : true
+  const isAugust19RideDate = dateOfFlight.endsWith('-08-19')
   const itineraryDetails = useMemo(
     () => formatItineraryFlights(itineraryFlights),
     [itineraryFlights],
@@ -388,6 +389,14 @@ export default function FlightForm({
         ? isInSubsidizedWindow(dateOfFlight, tripType)
         : getAllowedDirectionsForDate(dateOfFlight).length > 0
 
+    if (isAugust19RideDate) {
+      setAspcWarningMessage(
+        'Only international first-year students are eligible for the ASPC RideLink subsidy on August 19. Other students can still use P-ICKUP to coordinate non-subsidized rides.',
+      )
+      setShowASPCWarning(true)
+      return
+    }
+
     if (!isWithinOperationalPeriod) {
       setAspcWarningMessage(
         'Your flight date is not within ASPC RideLink operational periods. You can still use P-ICKUP to coordinate non-subsidized rides.',
@@ -422,6 +431,7 @@ export default function FlightForm({
     dateOfFlight,
     earliestArrival,
     latestArrival,
+    isAugust19RideDate,
     tripType,
     userSchool,
   ])
@@ -1211,8 +1221,19 @@ export default function FlightForm({
                     </div>
                   )}
 
+                  {dateOfFlight && !isPastDeadline && isAugust19RideDate && (
+                    <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+                      <p className="text-sm text-orange-800">
+                        Only international first-year students are eligible for
+                        the ASPC RideLink subsidy on August 19. Other students
+                        can still continue with a non-subsidized request.
+                      </p>
+                    </div>
+                  )}
+
                   {dateOfFlight &&
                     !isPastDeadline &&
+                    !isAugust19RideDate &&
                     !outboundAllowed &&
                     !inboundAllowed && (
                       <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
