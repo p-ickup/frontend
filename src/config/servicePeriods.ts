@@ -78,9 +78,9 @@ export const SERVICE_PERIODS: ServicePeriod[] = [
     name: 'International Fall Arrival',
     allowedDirections: ['inbound'],
     subsidized: {
-      inbound: { start: '2026-07-27', end: '2026-08-10' },
+      inbound: { start: '2026-08-19', end: '2026-08-19' },
     },
-    buffered: { start: '2026-07-27', end: '2026-08-10' },
-    deadline: '2026-08-10T23:59:59-07:00',
+    buffered: { start: '2026-08-19', end: '2026-08-19' },
+    deadline: '2026-08-19T23:59:59-07:00',
   },
 ]

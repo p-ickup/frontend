@@ -90,8 +90,8 @@ describe('SERVICE_PERIODS', () => {
       SERVICE_PERIODS.find((period) => period.id === 'fall-arrival-2026'),
     ).toMatchObject({
       name: 'International Fall Arrival',
-      buffered: { start: '2026-07-27', end: '2026-08-10' },
-      deadline: '2026-08-10T23:59:59-07:00',
+      buffered: { start: '2026-08-19', end: '2026-08-19' },
+      deadline: '2026-08-19T23:59:59-07:00',
     })
   })
 })
@@ -109,8 +109,9 @@ describe('getDerivedCoveredDates', () => {
     expect(inbound).toContain('11-30')
     expect(inbound).toContain('01-18')
     expect(inbound).toContain('03-21')
-    expect(inbound).toContain('07-27')
-    expect(inbound).toContain('08-10')
+    expect(inbound).toContain('08-19')
+    expect(inbound).not.toContain('07-27')
+    expect(inbound).not.toContain('08-10')
   })
 
   it('normalizes summer dates to zero-padded MM-DD (fixes legacy 5/12 style)', () => {
@@ -172,9 +173,13 @@ describe('isDateCovered / isInSubsidizedWindow', () => {
     ['2026-05-15', true, true],
     ['2026-05-15', false, false],
     ['2026-07-27', true, false],
-    ['2026-07-27', false, true],
+    ['2026-07-27', false, false],
     ['2026-08-10', true, false],
-    ['2026-08-10', false, true],
+    ['2026-08-10', false, false],
+    ['2026-08-19', true, false],
+    ['2026-08-19', false, true],
+    ['2026-08-20', true, false],
+    ['2026-08-20', false, false],
     ['2026-06-15', true, false],
     ['2026-06-15', false, false],
   ])('date %s toAirport=%s covered=%s', (date, toAirport, expected) => {
@@ -189,8 +194,10 @@ describe('getAllowedDirectionsForDate', () => {
     ['2026-03-21', ['inbound']],
     ['2026-03-18', []],
     ['2026-05-15', ['outbound']],
-    ['2026-07-27', ['inbound']],
-    ['2026-08-10', ['inbound']],
+    ['2026-07-27', []],
+    ['2026-08-10', []],
+    ['2026-08-19', ['inbound']],
+    ['2026-08-20', []],
     ['2025-11-25', ['outbound']],
     ['2025-11-30', ['inbound']],
     ['2025-12-10', ['outbound']],
@@ -204,8 +211,10 @@ describe('isDirectionAllowedForDate', () => {
   it('maps to_airport boolean to outbound/inbound policy', () => {
     expect(isDirectionAllowedForDate('2026-05-15', true)).toBe(true)
     expect(isDirectionAllowedForDate('2026-05-15', false)).toBe(false)
-    expect(isDirectionAllowedForDate('2026-07-27', false)).toBe(true)
+    expect(isDirectionAllowedForDate('2026-07-27', false)).toBe(false)
     expect(isDirectionAllowedForDate('2026-07-27', true)).toBe(false)
+    expect(isDirectionAllowedForDate('2026-08-19', false)).toBe(true)
+    expect(isDirectionAllowedForDate('2026-08-19', true)).toBe(false)
     expect(isDirectionAllowedForDate('2026-03-21', false)).toBe(true)
     expect(isDirectionAllowedForDate('2026-03-21', true)).toBe(false)
     expect(isDirectionAllowedForDate('2026-03-18', true)).toBe(false)
@@ -282,12 +291,12 @@ describe('isFlightPastDeadline', () => {
 
   it('uses the fall arrival PDT deadline', () => {
     const beforeFallArrivalDeadline = isFlightPastDeadline(
-      '2026-08-10',
-      new Date('2026-08-10T20:00:00-07:00'),
+      '2026-08-19',
+      new Date('2026-08-19T20:00:00-07:00'),
     )
     const afterFallArrivalDeadline = isFlightPastDeadline(
-      '2026-08-10',
-      new Date('2026-08-11T08:00:00-07:00'),
+      '2026-08-19',
+      new Date('2026-08-20T08:00:00-07:00'),
     )
 
     expect(beforeFallArrivalDeadline.isPastDeadline).toBe(false)
@@ -346,7 +355,7 @@ describe('formatSubsidizedWindowsForDisplay', () => {
 
   it('renders fall arrival returns only', () => {
     expect(formatSubsidizedWindowsForDisplay(fallArrivalPeriod)).toEqual([
-      'Returns: July 27-August 10',
+      'Returns: August 19',
     ])
   })
 
