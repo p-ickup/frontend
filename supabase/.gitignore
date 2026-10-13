@@ -1,0 +1,12 @@
+# Supabase
+.branches
+.temp
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local
+
+# Local dev database: production schema snapshot (pulled by start.sh db:pull-schema)
+/roles.sql
+/dev/schema.sql
