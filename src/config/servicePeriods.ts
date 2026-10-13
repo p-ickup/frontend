@@ -83,4 +83,15 @@ export const SERVICE_PERIODS: ServicePeriod[] = [
     buffered: { start: '2026-08-19', end: '2026-08-19' },
     deadline: '2026-08-19T23:59:59-07:00',
   },
+  {
+    id: 'fall-break-2026',
+    name: 'Fall Break',
+    allowedDirections: ['outbound', 'inbound'],
+    subsidized: {
+      outbound: { start: '2026-10-13', end: '2026-10-16' },
+      inbound: { start: '2026-10-16', end: '2026-10-20' },
+    },
+    buffered: { start: '2026-10-20', end: '2026-10-26' },
+    deadline: '2026-10-12T23:59:59-07:00',
+  },
 ]
