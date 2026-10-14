@@ -92,15 +92,6 @@ export default function AdminDashboard() {
       return today.toISOString().split('T')[0]
     })
   const [unmatchedEmailDateEnd, setUnmatchedEmailDateEnd] = useState<string>('')
-  const [unmatchedDryRunResult, setUnmatchedDryRunResult] = useState<{
-    would_send: number
-    preview: Array<{ to: string; subject: string }>
-  } | null>(null)
-  const [unmatchedEmailResult, setUnmatchedEmailResult] = useState<{
-    sent: number
-    failed: number
-    total: number
-  } | null>(null)
 
   const [rideDateStart, setRideDateStart] = useState<string>(() => {
     // Default to today's date
@@ -209,179 +200,6 @@ export default function AdminDashboard() {
 
     fetchDashboardData()
   }, [unmatchedDateStart, unmatchedDateEnd])
-
-  const handleDryRunBatchEmails = async () => {
-    try {
-      setBatchEmailLoading(true)
-      setDryRunResult(null)
-      setBatchEmailResult(null)
-
-      const body: any = { dry_run: true }
-
-      // Add date range if provided
-      if (matchEmailDateStart) {
-        body.date_start = matchEmailDateStart
-      }
-      if (matchEmailDateEnd) {
-        body.date_end = matchEmailDateEnd
-      }
-
-      const result = await postJson<any>('/api/admin/send-match-emails', body)
-
-      if (result.success) {
-        const wouldSend = result.would_send ?? 0
-        const preview = result.preview || []
-
-        setDryRunResult({
-          would_send: wouldSend,
-          preview: preview,
-        })
-
-        if (wouldSend === 0) {
-          alert(
-            `📋 Dry Run Results:\n\nNo emails to send.\n\nAll verified matches have already been sent, or there are no verified matches that need emails.`,
-          )
-        } else {
-          const previewText =
-            preview.length > 0
-              ? preview.map((p: any) => `- ${p.to}: ${p.subject}`).join('\n')
-              : 'No preview available'
-          alert(
-            `📋 Dry Run Results:\n\nWould send: ${wouldSend} emails\n\nPreview (first ${Math.min(3, preview.length)}):\n${previewText}`,
-          )
-        }
-      } else {
-        throw new Error(result.message || 'Dry run failed')
-      }
-    } catch (error) {
-      console.error('Error in dry run:', error)
-      alert(
-        `❌ Error in dry run: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      )
-    } finally {
-      setBatchEmailLoading(false)
-    }
-  }
-
-  const handleSendBatchEmails = async () => {
-    const dateRangeMsg =
-      matchEmailDateStart && matchEmailDateEnd
-        ? ` between ${matchEmailDateStart} and ${matchEmailDateEnd}`
-        : matchEmailDateStart
-          ? ` from ${matchEmailDateStart} onwards`
-          : ''
-
-    if (
-      !confirm(
-        `Send emails to all verified matches that haven't been emailed yet${dateRangeMsg}? This will send all pending match emails at once using batch API.`,
-      )
-    ) {
-      return
-    }
-
-    try {
-      setBatchEmailLoading(true)
-      setBatchEmailResult(null)
-      setDryRunResult(null)
-
-      const body: any = {}
-
-      // Add date range if provided
-      if (matchEmailDateStart) {
-        body.date_start = matchEmailDateStart
-      }
-      if (matchEmailDateEnd) {
-        body.date_end = matchEmailDateEnd
-      }
-
-      const result = await postJson<any>('/api/admin/send-match-emails', body)
-
-      if (result.success) {
-        const sent = result.sent ?? 0
-        const failed = result.failed ?? 0
-        const total = result.total ?? 0
-
-        setBatchEmailResult({
-          sent: sent,
-          failed: failed,
-          total: total,
-        })
-
-        if (total === 0) {
-          alert(
-            `✅ Batch email sending complete!\n\nNo emails to send.\n\nAll verified matches have already been sent, or there are no verified matches that need emails.`,
-          )
-        } else {
-          alert(
-            `✅ Batch email sending complete!\n\nSent: ${sent}\nFailed: ${failed}\nTotal: ${total}`,
-          )
-        }
-      } else {
-        throw new Error(result.message || 'Batch email sending failed')
-      }
-    } catch (error) {
-      console.error('Error sending batch emails:', error)
-      alert(
-        `❌ Error sending batch emails: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      )
-    } finally {
-      setBatchEmailLoading(false)
-    }
-  }
-
-  const handleDryRunUnmatchedEmails = async () => {
-    try {
-      setUnmatchedEmailLoading(true)
-      setUnmatchedDryRunResult(null)
-      setUnmatchedEmailResult(null)
-
-      if (!unmatchedEmailDateStart || !unmatchedEmailDateEnd) {
-        alert(
-          '⚠️ Please select both start and end dates for the unmatched email range.',
-        )
-        return
-      }
-
-      const result = await postJson<any>('/api/admin/send-unmatched-emails', {
-        date_start: unmatchedEmailDateStart,
-        date_end: unmatchedEmailDateEnd,
-        dry_run: true,
-      })
-
-      if (result.success) {
-        const wouldSend = result.would_send ?? 0
-        const preview = result.preview || []
-
-        setUnmatchedDryRunResult({
-          would_send: wouldSend,
-          preview: preview,
-        })
-
-        if (wouldSend === 0) {
-          alert(
-            `📋 Dry Run Results (Unmatched Emails):\n\nNo unmatched flights found in date range ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}.`,
-          )
-        } else {
-          const previewText =
-            preview.length > 0
-              ? preview.map((p: any) => `- ${p.to}: ${p.subject}`).join('\n')
-              : 'No preview available'
-          alert(
-            `📋 Dry Run Results (Unmatched Emails):\n\nWould send: ${wouldSend} emails\nDate range: ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}\n\nPreview (first ${Math.min(3, preview.length)}):\n${previewText}`,
-          )
-        }
-      } else {
-        throw new Error(result.message || 'Dry run failed')
-      }
-    } catch (error) {
-      console.error('Error in unmatched emails dry run:', error)
-      alert(
-        `❌ Error in dry run: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      )
-    } finally {
-      setUnmatchedEmailLoading(false)
-    }
-  }
 
   function Spinner() {
     return (
@@ -695,8 +513,6 @@ export default function AdminDashboard() {
     const handleDryRunUnmatchedCustomEmails = async () => {
       try {
         setUnmatchedEmailLoading(true)
-        setUnmatchedDryRunResult(null)
-        setUnmatchedEmailResult(null)
 
         if (!unmatchedEmailDateStart || !unmatchedEmailDateEnd) {
           alert(
@@ -716,11 +532,6 @@ export default function AdminDashboard() {
         if (result.success) {
           const wouldSend = result.would_send ?? 0
           const preview = result.preview || []
-
-          setUnmatchedDryRunResult({
-            would_send: wouldSend,
-            preview: preview,
-          })
 
           if (wouldSend === 0) {
             alert(
@@ -766,8 +577,6 @@ export default function AdminDashboard() {
 
       try {
         setUnmatchedEmailLoading(true)
-        setUnmatchedEmailResult(null)
-        setUnmatchedDryRunResult(null)
 
         const result = await postJson<any>('/api/admin/send-unmatched-emails', {
           date_start: unmatchedEmailDateStart,
@@ -781,12 +590,6 @@ export default function AdminDashboard() {
           const sent = result.sent ?? 0
           const failed = result.failed ?? 0
           const total = result.total ?? 0
-
-          setUnmatchedEmailResult({
-            sent: sent,
-            failed: failed,
-            total: total,
-          })
 
           if (total === 0) {
             alert(
@@ -966,66 +769,6 @@ export default function AdminDashboard() {
         </div>
       </div>
     )
-  }
-
-  const handleSendUnmatchedEmails = async () => {
-    if (!unmatchedEmailDateStart || !unmatchedEmailDateEnd) {
-      alert(
-        '⚠️ Please select both start and end dates for the unmatched email range.',
-      )
-      return
-    }
-
-    if (
-      !confirm(
-        `Send emails to all unmatched riders between ${unmatchedEmailDateStart} and ${unmatchedEmailDateEnd}? This will notify them that no match was found.`,
-      )
-    ) {
-      return
-    }
-
-    try {
-      setUnmatchedEmailLoading(true)
-      setUnmatchedEmailResult(null)
-      setUnmatchedDryRunResult(null)
-
-      const result = await postJson<any>('/api/admin/send-unmatched-emails', {
-        date_start: unmatchedEmailDateStart,
-        date_end: unmatchedEmailDateEnd,
-        dry_run: false,
-      })
-
-      if (result.success) {
-        const sent = result.sent ?? 0
-        const failed = result.failed ?? 0
-        const total = result.total ?? 0
-
-        setUnmatchedEmailResult({
-          sent: sent,
-          failed: failed,
-          total: total,
-        })
-
-        if (total === 0) {
-          alert(
-            `✅ Unmatched email sending complete!\n\nNo unmatched flights found in date range ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}.`,
-          )
-        } else {
-          alert(
-            `✅ Unmatched email sending complete!\n\nSent: ${sent}\nFailed: ${failed}\nTotal: ${total}\nDate range: ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}`,
-          )
-        }
-      } else {
-        throw new Error(result.message || 'Unmatched email sending failed')
-      }
-    } catch (error) {
-      console.error('Error sending unmatched emails:', error)
-      alert(
-        `❌ Error sending unmatched emails: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      )
-    } finally {
-      setUnmatchedEmailLoading(false)
-    }
   }
 
   const fetchCancellations = async (waived: boolean) => {
