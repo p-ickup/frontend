@@ -448,6 +448,46 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {dryRunResult && (
+            <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50 p-4">
+              <p className="text-sm font-medium text-purple-900">
+                Preview: Would send {dryRunResult.would_send} email
+                {dryRunResult.would_send !== 1 ? 's' : ''}
+              </p>
+              {dryRunResult.preview && dryRunResult.preview.length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs text-purple-800">
+                  {dryRunResult.preview.map((p, idx) => (
+                    <li key={idx}>• {p.to}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {batchEmailResult && (
+            <div
+              className={`mt-4 rounded-lg border p-4 ${
+                batchEmailResult.failed > 0
+                  ? 'border-red-200 bg-red-50'
+                  : 'border-green-200 bg-green-50'
+              }`}
+            >
+              <p
+                className={`text-sm font-medium ${
+                  batchEmailResult.failed > 0
+                    ? 'text-red-900'
+                    : 'text-green-900'
+                }`}
+              >
+                {batchEmailResult.failed > 0 ? '❌' : '✅'} Sent{' '}
+                {batchEmailResult.sent} email
+                {batchEmailResult.sent !== 1 ? 's' : ''}
+                {batchEmailResult.failed > 0 &&
+                  ` (${batchEmailResult.failed} failed)`}
+              </p>
+            </div>
+          )}
+
           {/* Footer */}
           <div className="mt-8 flex justify-end gap-3 border-t pt-4">
             {/* Preview Button */}
@@ -464,7 +504,7 @@ export default function AdminDashboard() {
             }
           `}
             >
-              {batchEmailLoading ? <Spinner /> : '🔍 Preview Email'}
+              {batchEmailLoading ? <Spinner /> : 'Preview Email'}
             </button>
 
             {/* Send Button */}
@@ -481,7 +521,7 @@ export default function AdminDashboard() {
             }
           `}
             >
-              {batchEmailLoading ? <Spinner /> : '✉️ Send Email'}
+              {batchEmailLoading ? <Spinner /> : 'Send Email'}
             </button>
 
             {/* Cancel Button */}
@@ -729,7 +769,7 @@ export default function AdminDashboard() {
             }
           `}
             >
-              {unmatchedEmailLoading ? <Spinner /> : '🔍 Preview Email'}
+              {unmatchedEmailLoading ? <Spinner /> : 'Preview Email'}
             </button>
 
             {/* Send Button */}
@@ -746,7 +786,7 @@ export default function AdminDashboard() {
             }
           `}
             >
-              {unmatchedEmailLoading ? <Spinner /> : '✉️ Send Email'}
+              {unmatchedEmailLoading ? <Spinner /> : 'Send Email'}
             </button>
 
             {/* Cancel Button */}
@@ -1331,10 +1371,14 @@ export default function AdminDashboard() {
           <div className="p-6">
             <div className="mb-4 flex flex-wrap items-end gap-4">
               <div className="min-w-[200px] flex-1">
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="start_date_optional"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
                   Start Date (optional)
                 </label>
                 <input
+                  id="start_date_optional"
                   type="date"
                   value={matchEmailDateStart}
                   onChange={(e) => setMatchEmailDateStart(e.target.value)}
@@ -1439,46 +1483,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {dryRunResult && (
-              <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50 p-4">
-                <p className="text-sm font-medium text-purple-900">
-                  📋 Preview: Would send {dryRunResult.would_send} email
-                  {dryRunResult.would_send !== 1 ? 's' : ''}
-                </p>
-                {dryRunResult.preview && dryRunResult.preview.length > 0 && (
-                  <ul className="mt-2 space-y-1 text-xs text-purple-800">
-                    {dryRunResult.preview.map((p, idx) => (
-                      <li key={idx}>• {p.to}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-
-            {batchEmailResult && (
-              <div
-                className={`mt-4 rounded-lg border p-4 ${
-                  batchEmailResult.failed > 0
-                    ? 'border-red-200 bg-red-50'
-                    : 'border-green-200 bg-green-50'
-                }`}
-              >
-                <p
-                  className={`text-sm font-medium ${
-                    batchEmailResult.failed > 0
-                      ? 'text-red-900'
-                      : 'text-green-900'
-                  }`}
-                >
-                  {batchEmailResult.failed > 0 ? '❌' : '✅'} Sent{' '}
-                  {batchEmailResult.sent} email
-                  {batchEmailResult.sent !== 1 ? 's' : ''}
-                  {batchEmailResult.failed > 0 &&
-                    ` (${batchEmailResult.failed} failed)`}
-                </p>
-              </div>
-            )}
-
             <div className="flex justify-end">
               <button
                 onClick={() => setShowEditor(true)}
@@ -1489,7 +1493,7 @@ export default function AdminDashboard() {
                 focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 active:bg-blue-800
               "
               >
-                Send Custom Email
+                Send Email(Matched)
               </button>
               {showEditor && (
                 <EmailEditorModal onClose={() => setShowEditor(false)} />
@@ -1509,10 +1513,14 @@ export default function AdminDashboard() {
           <div className="p-6">
             <div className="mb-4 flex flex-wrap items-end gap-4">
               <div className="min-w-[200px] flex-1">
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="start_date"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
                   Start Date
                 </label>
                 <input
+                  id="start_date"
                   type="date"
                   value={unmatchedEmailDateStart}
                   onChange={(e) => setUnmatchedEmailDateStart(e.target.value)}
@@ -1543,7 +1551,7 @@ export default function AdminDashboard() {
                 focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 active:bg-blue-800
               "
               >
-                Send Custom Email
+                Send Email(Unmatched)
               </button>
               {showUnmatchedEditor && (
                 <UnmatchedEmailEditorModal

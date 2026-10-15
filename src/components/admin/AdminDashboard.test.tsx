@@ -440,31 +440,56 @@ describe('AdminDashboard', () => {
     expect(groupsLink).toHaveAttribute('href', '/admin/groups')
   })
 
-  it('runs the match email dry run through the server route', async () => {
+  it('opens the EmailEditorModal and runs the dry-run preview', async () => {
     renderDashboard()
 
+    // Dashboard loads
     await screen.findByText('Pickup Dashboard')
+
+    // Open the modal
     await userEvent.click(
-      screen.getByRole('button', { name: /Preview Match Emails/i }),
+      screen.getByRole('button', { name: 'Send Email(Matched)' }),
     )
 
+    // Modal should appear
+    expect(await screen.findByText('Custom Email')).toBeInTheDocument()
+
+    // Fill subject + body
+    await userEvent.type(
+      screen.getByPlaceholderText('Email subject...'),
+      'Test Subject',
+    )
+    await userEvent.type(
+      screen.getByPlaceholderText('Write your email here...'),
+      'Hello world',
+    )
+
+    // Click Preview inside the modal
+    await userEvent.click(screen.getByRole('button', { name: 'Preview Email' }))
+
+    // API call should be made with dry_run: true
     await waitFor(() =>
       expect(postJsonMock).toHaveBeenCalledWith(
         '/api/admin/send-match-emails',
         expect.objectContaining({
           dry_run: true,
-          date_start: expect.any(String),
+          custom_subject: 'Test Subject',
+          custom_body: 'Hello world',
         }),
       ),
     )
+
+    // Alert should fire
     expect(window.alert).toHaveBeenCalled()
+
+    // Preview panel should show results inside the modal
     expect(
-      await screen.findByText(/Preview: Would send 2 emails/i),
+      await screen.findByText('Preview: Would send 2 emails'),
     ).toBeInTheDocument()
-    expect(await screen.findByText(/student@example.com/i)).toBeInTheDocument()
   })
 
-  it('sends match emails after confirmation and shows the result summary', async () => {
+  it('sends custom emails after confirmation and shows the result summary', async () => {
+    // Mock the server response for the send-email action
     postJsonMock.mockResolvedValueOnce({
       success: true,
       sent: 2,
@@ -474,35 +499,75 @@ describe('AdminDashboard', () => {
 
     renderDashboard()
 
+    // Dashboard loads
     await screen.findByText('Pickup Dashboard')
+
+    // Open the modal
     await userEvent.click(
-      screen.getByRole('button', { name: /Send All Match Emails/i }),
+      screen.getByRole('button', { name: 'Send Email(Matched)' }),
     )
 
+    // Modal should appear
+    expect(await screen.findByText('Custom Email')).toBeInTheDocument()
+
+    // Fill subject + body
+    await userEvent.type(
+      screen.getByPlaceholderText('Email subject...'),
+      'Test Subject',
+    )
+    await userEvent.type(
+      screen.getByPlaceholderText('Write your email here...'),
+      'Hello world',
+    )
+
+    // Click "Send Email" inside the modal
+    await userEvent.click(screen.getByRole('button', { name: 'Send Email' }))
+
+    // Confirm dialog should appear
+    expect(window.confirm).toHaveBeenCalled()
+
+    // API call should be made with correct payload
     await waitFor(() =>
       expect(postJsonMock).toHaveBeenCalledWith(
         '/api/admin/send-match-emails',
         expect.objectContaining({
-          date_start: expect.any(String),
+          custom_subject: 'Test Subject',
+          custom_body: 'Hello world',
         }),
       ),
     )
-    expect(window.confirm).toHaveBeenCalled()
+
+    // Alert should show the summary
     expect(window.alert).toHaveBeenCalledWith(
       expect.stringContaining('Sent: 2'),
     )
-    expect(await screen.findByText('2/2')).toBeInTheDocument()
   })
 
   it('blocks unmatched email preview until both dates are selected', async () => {
     renderDashboard()
 
+    // Dashboard loads
     await screen.findByText('Pickup Dashboard')
+
+    // Fill ONLY the start date on the dashboard
+    await userEvent.type(screen.getByLabelText('Start Date'), '2026-10-14')
+    // Leave End Date empty
+
+    // Open the unmatched email modal
     await userEvent.click(
-      screen.getByRole('button', { name: /Preview Unmatched \(Dry Run\)/i }),
+      screen.getByRole('button', { name: 'Send Email(Unmatched)' }),
     )
 
+    // Modal should appear
+    expect(await screen.findByText('Custom Email')).toBeInTheDocument()
+
+    // Click Preview inside the modal
+    await userEvent.click(screen.getByRole('button', { name: 'Preview Email' }))
+
+    // Should NOT call the API
     expect(postJsonMock).not.toHaveBeenCalled()
+
+    // Should show an alert explaining the issue
     expect(window.alert).toHaveBeenCalledWith(
       expect.stringContaining('Please select both start and end dates'),
     )
