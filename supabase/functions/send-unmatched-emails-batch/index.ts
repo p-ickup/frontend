@@ -1,8 +1,10 @@
 // Supabase Edge Function: send-unmatched-emails-batch
-// Deploy this to: supabase/functions/send-unmatched-emails-batch/index.ts
+// Called by /api/admin/send-unmatched-emails with the service role key.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireServiceRole } from '../_shared/auth.ts'
+import { escapeHtml, plainTextToHtml } from '../_shared/html.ts'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -120,15 +122,6 @@ function generateUnmatchedEmailHtml(
   `.trim()
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
 // Fills {{name}}, {{direction}}, {{airport}} and {{rideDate}} in admin-written text
 function fillPlaceholders(template: string, flight: UnmatchedFlight): string {
   return template
@@ -152,10 +145,7 @@ function generateCustomEmailHtml(
   customBody: string,
   flight: UnmatchedFlight,
 ): string {
-  const text = escapeHtml(fillPlaceholders(customBody, flight)).replaceAll(
-    '\n',
-    '<br>',
-  )
+  const text = plainTextToHtml(fillPlaceholders(customBody, flight))
   return `
 <!DOCTYPE html>
 <html>
@@ -187,6 +177,11 @@ serve(async (req) => {
       },
     })
   }
+
+  const unauthorized = requireServiceRole(req, {
+    'Access-Control-Allow-Origin': '*',
+  })
+  if (unauthorized) return unauthorized
 
   try {
     const { date_start, date_end, dry_run, custom_subject, custom_body } =
@@ -355,7 +350,7 @@ serve(async (req) => {
       html: custom_body?.trim()
         ? generateCustomEmailHtml(custom_body, flight)
         : generateUnmatchedEmailHtml(
-            flight.firstname,
+            escapeHtml(flight.firstname),
             flight.date,
             flight.airport,
             flight.to_airport,
