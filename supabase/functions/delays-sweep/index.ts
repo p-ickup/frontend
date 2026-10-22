@@ -1,8 +1,13 @@
 // supabase/functions/delays-sweep/index.ts
-import { processUpdate } from './processUpdate.ts'
+// Run by the delays-sweep-20 cron job, which must send the service role key.
+import { requireServiceRole } from '../_shared/auth.ts'
+import { type FlightUpdate, processUpdate } from './processUpdate.ts'
 // flip this flag to true locally to simulate delays/cancellations
 // const TEST_MODE = true;
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  const unauthorized = requireServiceRole(req)
+  if (unauthorized) return unauthorized
+
   const airports = ['LAX', 'ONT']
   const results = []
   const apiKey = Deno.env.get('AIRLABS_API_KEY')
@@ -41,7 +46,7 @@ Deno.serve(async (_req) => {
         console.log('Skipping flight with missing critical data:', f)
         continue
       }
-      let update = {
+      const update: FlightUpdate = {
         airline_iata: f.airline_iata,
         flight_no: f.flight_number,
         airport: f.arr_iata,
