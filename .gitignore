@@ -55,3 +55,6 @@ package-lock*.json
 # temporary files that can cause corruption
 *.tmp
 *.temp
+
+# deno (created by type-checking supabase/functions locally)
+deno.lock
