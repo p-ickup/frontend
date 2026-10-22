@@ -1,5 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireServiceRole } from '../_shared/auth.ts'
+import { escapeHtml } from '../_shared/html.ts'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
@@ -7,7 +9,7 @@ const corsHeaders = {
 }
 // Brand turquoise (swap to your exact hex if different)
 const TURQ = '#06b6d4'
-function toAmPm(timeStr) {
+function toAmPm(timeStr: string | null | undefined) {
   if (!timeStr) return ''
   const [hourStr, minuteStr] = timeStr.split(':')
   let hour = parseInt(hourStr, 10)
@@ -22,12 +24,14 @@ serve(async (req) => {
       headers: corsHeaders,
     })
   }
+  // Called by the Matches triggers (handle_algorithm_match_created) with app.secrets.edge_auth
+  const unauthorized = requireServiceRole(req, corsHeaders)
+  if (unauthorized) return unauthorized
+
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ??
-        Deno.env.get('SUPABASE_ANON_KEY') ??
-        '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
     const { user_id, ride_id, flight_id } = await req.json()
     // Get user details
@@ -69,7 +73,15 @@ serve(async (req) => {
       .select('is_subsidized, voucher, contingency_voucher, date, time')
       .eq('user_id', user_id)
       .eq('ride_id', ride_id)
-      .single()
+      .eq('flight_id', flight_id)
+      .maybeSingle()
+    // Only members of the ride may receive its contact list
+    if (!myMatch) {
+      throw new Error(
+        `No match for user ${user_id}, ride ${ride_id}, flight ${flight_id}`,
+      )
+    }
+    if (!userData?.email) throw new Error(`User ${user_id} has no email`)
     // ride-level values (fallbacks to flight values if match-specific values missing)
     const rideDate = myMatch?.date ?? flightData?.date
     // const earliest = toAmPm(flightData?.earliest_time);
@@ -88,18 +100,18 @@ serve(async (req) => {
     //     </li>
     //   `).join('');
     // };
-    const renderGroupList = (members) => {
+    const renderGroupList = (members: any[] | null) => {
       if (!members || members.length === 0)
         return '<li>No other group members found.</li>'
       return members
-        .map((member) => {
+        .map((member: any) => {
           const email = member.Users?.email || ''
           const phone = member.Users?.phonenumber || ''
           const contact = [email, phone].filter(Boolean).join(' · ') // clean + readable
           return `
         <li style="margin-bottom: 10px;">
-          <strong>${member.Users?.firstname || ''} ${member.Users?.lastname || ''}</strong><br>
-          <small>${contact}</small>
+          <strong>${escapeHtml(`${member.Users?.firstname || ''} ${member.Users?.lastname || ''}`)}</strong><br>
+          <small>${escapeHtml(contact)}</small>
         </li>
       `
         })
@@ -131,7 +143,7 @@ serve(async (req) => {
       ? flightData?.to_airport
         ? `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: ${TURQ};">Hello ${userData?.firstname || 'there'}!</h2>
+          <h2 style="color: ${TURQ};">Hello ${escapeHtml(userData.firstname || 'there')}!</h2>
           <p>You’ve been successfully matched for your upcoming Airport Rideshare trip, covered by ASPC RideLink!</p>
 
           <h3 style="margin-top:0;">Please review your group details and departure instructions below:</h3>
@@ -182,7 +194,7 @@ serve(async (req) => {
       `
         : `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: ${TURQ};">Hello ${userData?.firstname || 'there'}!</h2>
+          <h2 style="color: ${TURQ};">Hello ${escapeHtml(userData.firstname || 'there')}!</h2>
           <p>Welcome back! You’ve been matched for your Airport Rideshare return trip to campus, subsidized by ASPC.</p>
 
           <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -234,7 +246,7 @@ serve(async (req) => {
       `
       : `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: ${TURQ};">Hello ${userData?.firstname || 'there'}!</h2>
+        <h2 style="color: ${TURQ};">Hello ${escapeHtml(userData.firstname || 'there')}!</h2>
         <p>Thank you for submitting a ride request for ASPC Subsidized Rideshare. We reviewed your travel request, and unfortunately could not find a group to be subsidized by ASPC, but you can still share a rideshare with the following group.</p>
 
         <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -280,7 +292,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         from: 'PICKUP <match@notify.p-ickup.com>',
-        to: [userData?.email || user_id],
+        to: [userData.email],
         cc: ['ridelink@aspc.pomona.edu'],
         subject: myMatch?.is_subsidized
           ? 'PICKUP — Your ASPC-subsidized ride group!'
@@ -311,7 +323,7 @@ serve(async (req) => {
     console.error('Error in send-algorithm-match-email:', error)
     return new Response(
       JSON.stringify({
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       }),
       {
         headers: {
