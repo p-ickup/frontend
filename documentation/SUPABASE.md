@@ -1,23 +1,40 @@
 # Supabase: database functions, edge functions, and syncing
 
-This app treats Supabase as **Auth + Postgres + Edge Functions**. The frontend repo does **not** currently contain a full `supabase/` project (no `config.toml`, no edge function sources). It **does** contain SQL migrations for RPCs the Next.js app calls.
+This app treats Supabase as **Auth + Postgres + Edge Functions**. The `supabase/` folder holds the local dev config (`config.toml`, see the workspace README) and the **edge function sources** (`supabase/functions/`). SQL migrations for the RPCs the Next.js app calls live in `supabase-migrations/`.
 
 For table and column definitions, see [SCHEMA.md](./SCHEMA.md). Machine-readable types: [`src/lib/database.types.ts`](../src/lib/database.types.ts). To regenerate types, send batch emails, or enable delay cron, see [OPERATIONS.md](./OPERATIONS.md).
 
-## Edge functions (invoked from this repo)
+## Edge functions
 
-These are called by HTTP from admin API routes (anon key in `Authorization` header):
+Source of truth: [`supabase/functions/`](../supabase/functions). Change them here, review them in a PR, then deploy (see below). Never edit or deploy a function from the dashboard only.
 
-| Function | Called from | Purpose |
-|----------|-------------|---------|
-| `send-all-match-emails-batch` | `src/app/api/admin/send-match-emails/route.ts` | Batch Resend emails for verified matches with `email_sent = false` |
-| `send-unmatched-emails-batch` | `src/app/api/admin/send-unmatched-emails/route.ts` | Batch emails for unmatched riders |
+| Function                       | Called by                                                                                             | Purpose                                                                                                                                                  |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `send-all-match-emails-batch`  | `src/app/api/admin/send-match-emails/route.ts`, group email in `groupsWriteService`                   | Batch emails for matches with `email_sent = false`, optionally filtered by ride date, airport and direction, with an optional admin-written subject/body |
+| `send-unmatched-emails-batch`  | `src/app/api/admin/send-unmatched-emails/route.ts`                                                    | Batch emails for unmatched riders in a date range, optional custom subject/body                                                                          |
+| `send-flight-submission-email` | `trg_flights_after_insert_notify` trigger (`app.notify_flight_submission`)                            | "Flight received" confirmation                                                                                                                           |
+| `send-algorithm-match-email`   | `on_algorithm_match_created` / `is_verified_match_trigger` triggers (both **disabled** in production) | Per-rider match email                                                                                                                                    |
+| `delays-sweep`                 | `delays-sweep-20` cron job                                                                            | Polls AirLabs and emails a ride group when a member's flight is delayed or cancelled                                                                     |
 
-URL shape: `{NEXT_PUBLIC_SUPABASE_URL}/functions/v1/<name>`
+**Auth:** every function requires the **service role key** as `Authorization: Bearer <key>` ([`_shared/auth.ts`](../supabase/functions/_shared/auth.ts)) and returns 401 otherwise. The anon key is public, so it must never be enough to send email. Callers:
 
-Email **content rules** (variants: subsidized × direction) are described in [BATCH_EMAIL_LOGIC.md](./BATCH_EMAIL_LOGIC.md). Implementation is in the edge function codebase (not in this frontend tree).
+- Admin API routes check the admin role, then call the function through `relayEdgeFunction` (`src/lib/server/edgeFunctions.ts`) with `SUPABASE_SECRET_KEY`.
+- Triggers send `app.secrets.edge_auth`, which must be `Bearer <service role key>`.
+- The cron job must send the same header. `delays-sweep` has `verify_jwt = false` at the gateway (`config.toml`), so the in-code check is its only protection.
 
-Other **edge functions** and **database functions** may exist in Supabase project (cron, webhooks, etc.) but are **not referenced** in this frontend repo.
+**Custom emails** are plain text: HTML is escaped and line breaks are kept. Placeholders such as `{{name}}` are filled in per recipient (the composer in the admin dashboard lists them).
+
+Email **content rules** (variants: subsidized × direction) are described in [BATCH_EMAIL_LOGIC.md](./BATCH_EMAIL_LOGIC.md).
+
+### Run and deploy
+
+`./start.sh` (workspace root) serves the functions locally at `http://127.0.0.1:54321/functions/v1/<name>`. There is no `RESEND_API_KEY` locally, so real sends fail at Resend; use dry runs.
+
+```bash
+pnpm exec supabase functions deploy <name> --project-ref <project-ref>
+```
+
+Deploying `delays-sweep` picks up `verify_jwt = false` from `config.toml`.
 
 ## Postgres RPCs used by the app
 
@@ -25,23 +42,23 @@ Defined in `supabase-migrations/` (and must exist in production).
 
 ### Student / authenticated (`grant` to `authenticated`)
 
-| RPC | Called from | Purpose |
-|-----|-------------|---------|
-| `accept_match_request(p_request_id uuid)` | `studentCommands.acceptMatchRequest` | Atomically accept request and form/join group |
-| `cancel_own_match(p_ride_id bigint, p_cancelled_after_deadline boolean)` | `studentCommands.cancelOwnMatch` | User leaves a ride group |
-| `report_ready_status(p_ride_id, p_status, p_user_ids)` | `studentCommands` (ASPC ready) | Record group readiness |
+| RPC                                                                      | Called from                          | Purpose                                       |
+| ------------------------------------------------------------------------ | ------------------------------------ | --------------------------------------------- |
+| `accept_match_request(p_request_id uuid)`                                | `studentCommands.acceptMatchRequest` | Atomically accept request and form/join group |
+| `cancel_own_match(p_ride_id bigint, p_cancelled_after_deadline boolean)` | `studentCommands.cancelOwnMatch`     | User leaves a ride group                      |
+| `report_ready_status(p_ride_id, p_status, p_user_ids)`                   | `studentCommands` (ASPC ready)       | Record group readiness                        |
 
 ### Service role only (`revoke` from `authenticated`; API uses `SUPABASE_SECRET_KEY`)
 
-| RPC | Called from | Purpose |
-|-----|-------------|---------|
-| `create_group_records(...)` | `adminGroupsCommands.createGroupRecords` | Create ride + matches + flight links |
-| `delete_group_records(...)` | `adminGroupsCommands.deleteGroupRecords` | Delete/disband group |
-| `aspc_delay_keep_original_group` | `aspcDelayCommands` | Delay flow: stay in group |
-| `aspc_delay_move_to_unmatched` | `aspcDelayCommands` | Delay flow: return to unmatched |
-| `aspc_delay_create_solo_ride` | `aspcDelayCommands` | Delay flow: solo ride |
-| `aspc_delay_join_group` | `aspcDelayCommands` | Delay flow: join another group |
-| `aspc_delay_decline_groups` | `aspcDelayCommands` | Delay flow: decline options |
+| RPC                              | Called from                              | Purpose                              |
+| -------------------------------- | ---------------------------------------- | ------------------------------------ |
+| `create_group_records(...)`      | `adminGroupsCommands.createGroupRecords` | Create ride + matches + flight links |
+| `delete_group_records(...)`      | `adminGroupsCommands.deleteGroupRecords` | Delete/disband group                 |
+| `aspc_delay_keep_original_group` | `aspcDelayCommands`                      | Delay flow: stay in group            |
+| `aspc_delay_move_to_unmatched`   | `aspcDelayCommands`                      | Delay flow: return to unmatched      |
+| `aspc_delay_create_solo_ride`    | `aspcDelayCommands`                      | Delay flow: solo ride                |
+| `aspc_delay_join_group`          | `aspcDelayCommands`                      | Delay flow: join another group       |
+| `aspc_delay_decline_groups`      | `aspcDelayCommands`                      | Delay flow: decline options          |
 
 Internal helper (not called from TypeScript directly):
 
@@ -74,13 +91,11 @@ pnpm exec supabase init   # if you want supabase/ folder created here
 
 ### Pull edge function sources
 
-```bash
-pnpm exec supabase functions download send-all-match-emails-batch
-pnpm exec supabase functions download send-unmatched-emails-batch
-# or download all deployed functions per CLI docs
-```
+Only needed if someone deployed a function outside git: download it, diff it against `supabase/functions/` and commit the difference.
 
-Commit `supabase/functions/<name>/index.ts` (and shared deps). Deploy with `supabase functions deploy <name>`.
+```bash
+pnpm exec supabase functions download <name> --project-ref <project-ref> --use-api --workdir /tmp/pickup-functions
+```
 
 ### Pull / track database schema and RPCs
 
@@ -111,10 +126,10 @@ If production already has equivalent definitions, diff before applying to avoid 
 
 ## Environment variables (Supabase-related)
 
-| Variable | Exposure | Use |
-|----------|----------|-----|
-| `NEXT_PUBLIC_SUPABASE_URL` | Public | Client + server |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public | Client + server session; edge invoke from admin routes |
-| `SUPABASE_SECRET_KEY` | **Server only** | Service role client for admin commands and selected student APIs |
+| Variable                        | Exposure        | Use                                                              |
+| ------------------------------- | --------------- | ---------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Public          | Client + server                                                  |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public          | Client + server session; edge invoke from admin routes           |
+| `SUPABASE_SECRET_KEY`           | **Server only** | Service role client for admin commands and selected student APIs |
 
 Never prefix the service role key with `NEXT_PUBLIC_`.
