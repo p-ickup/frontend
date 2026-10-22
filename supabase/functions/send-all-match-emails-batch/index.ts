@@ -1,5 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireServiceRole } from '../_shared/auth.ts'
+import { escapeHtml, plainTextToHtml } from '../_shared/html.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -22,15 +24,6 @@ type EmailTemplateData = {
 function getRelation<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null
   return Array.isArray(value) ? (value[0] ?? null) : value
-}
-
-function escapeHtml(value: unknown): string {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;')
 }
 
 function toAmPm(time: string | null | undefined): string {
@@ -77,16 +70,42 @@ function sectionCard(
   `
 }
 
-function renderTemplate(template: string, data: EmailTemplateData): string {
+function fillPlaceholders(
+  template: string,
+  data: EmailTemplateData,
+  escape: (value: string) => string,
+): string {
   return template
-    .replaceAll('{{name}}', escapeHtml(data.firstName))
-    .replaceAll('{{airport}}', escapeHtml(data.airport))
-    .replaceAll('{{flightNumber}}', escapeHtml(data.flightNumber))
-    .replaceAll('{{terminal}}', escapeHtml(data.terminal))
-    .replaceAll('{{rideDate}}', escapeHtml(data.rideDate))
-    .replaceAll('{{rideTime}}', escapeHtml(data.rideTime))
-    .replaceAll('{{groupMembers}}', data.groupMembers)
+    .replaceAll('{{name}}', escape(data.firstName))
+    .replaceAll('{{airport}}', escape(data.airport))
+    .replaceAll('{{flightNumber}}', escape(data.flightNumber))
+    .replaceAll('{{terminal}}', escape(data.terminal))
+    .replaceAll('{{rideDate}}', escape(data.rideDate))
+    .replaceAll('{{rideTime}}', escape(data.rideTime))
 }
+
+// Admin-written bodies are plain text: escaped (no HTML injection) and line breaks kept, so the
+// email looks like the preview in the admin dashboard. {{groupMembers}} expands to a list.
+function renderCustomBody(template: string, data: EmailTemplateData): string {
+  return fillPlaceholders(
+    plainTextToHtml(template),
+    data,
+    escapeHtml,
+  ).replaceAll('{{groupMembers}}', `<ul>${data.groupMembers}</ul>`)
+}
+
+function renderCustomSubject(
+  template: string,
+  data: EmailTemplateData,
+): string {
+  return fillPlaceholders(template, data, (value) => value).replaceAll(
+    '{{groupMembers}}',
+    '',
+  )
+}
+
+const AIRPORTS = new Set(['LAX', 'ONT'])
+const DIRECTIONS = new Set(['TO', 'FROM'])
 
 function generateMatchEmailHtml({
   firstName,
@@ -217,12 +236,13 @@ serve(async (req) => {
     })
   }
 
+  const unauthorized = requireServiceRole(req, corsHeaders)
+  if (unauthorized) return unauthorized
+
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ??
-        Deno.env.get('SUPABASE_ANON_KEY') ??
-        '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
     const {
@@ -232,24 +252,26 @@ serve(async (req) => {
       date_end,
       custom_subject,
       custom_body,
-      ride_date_start,
-      ride_date_end,
-      airport,
-      direction,
+      airport: airportFilter,
+      direction: directionFilter,
     } = await req.json().catch(() => ({}))
 
-    console.log({
-      dry_run,
-      ride_ids,
-      date_start,
-      date_end,
-      custom_subject,
-      custom_body,
-      ride_date_start,
-      ride_date_end,
-      airport,
-      direction,
-    })
+    // Optional recipient filters; omitted means every airport / both directions
+    if (
+      (airportFilter != null && !AIRPORTS.has(airportFilter)) ||
+      (directionFilter != null && !DIRECTIONS.has(directionFilter))
+    ) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'airport must be LAX or ONT and direction must be TO or FROM',
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        },
+      )
+    }
 
     const isGroupEmail = Array.isArray(ride_ids) && ride_ids.length > 0
 
@@ -347,6 +369,11 @@ serve(async (req) => {
         continue
       }
 
+      if (airportFilter && flight.airport !== airportFilter) continue
+      if (directionFilter && flight.to_airport !== (directionFilter === 'TO')) {
+        continue
+      }
+
       const rideDate = match.date ?? flight.date ?? ''
       const rideTime = toAmPm(match.time)
       const flightNumber = flight.flight_no ? String(flight.flight_no) : ''
@@ -367,15 +394,17 @@ serve(async (req) => {
         groupMembers,
       }
 
-      const emailHtml = custom_body
-        ? renderTemplate(custom_body, templateData)
+      const emailHtml = custom_body?.trim()
+        ? renderCustomBody(custom_body, templateData)
         : generateMatchEmailHtml(templateData)
 
       emailBatch.push({
         from: 'ASPC RideLink <match@notify.p-ickup.com>',
         to: [user.email],
         cc: ['ridelink@aspc.pomona.edu'],
-        subject: custom_subject || 'Your RideLink Match Information',
+        subject: custom_subject?.trim()
+          ? renderCustomSubject(custom_subject.trim(), templateData)
+          : 'Your RideLink Match Information',
         html: emailHtml,
         reply_to: ['ridelink@aspc.pomona.edu', 'pickup.pai.47@gmail.com'],
       })
