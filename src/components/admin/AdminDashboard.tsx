@@ -3,11 +3,12 @@
 import type { AdminSummaryDto } from '@/contracts/readModels'
 import type { NoShowRiderInfo } from '@/utils/adminMatchNoShows'
 import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
-import { postJson, requestJson } from '@/utils/api'
+import { requestJson } from '@/utils/api'
 import {
   estimateCancellationFee,
   formatCancellationFee,
 } from '@/utils/cancellationFees'
+import EmailComposerModal from '@/components/admin/EmailComposerModal'
 import { useEffect, useState } from 'react'
 
 const formatDateTime = (dateString: string): string => {
@@ -33,6 +34,34 @@ const formatDateForInput = (date: Date): string => {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+type EmailAirport = '' | 'LAX' | 'ONT'
+type EmailDirection = '' | 'TO' | 'FROM'
+
+const describeMatchEmailAudience = (
+  dateStart: string,
+  dateEnd: string,
+  airport: EmailAirport,
+  direction: EmailDirection,
+) => {
+  const dates =
+    dateStart && dateEnd
+      ? `rides ${dateStart} to ${dateEnd}`
+      : dateStart
+        ? `rides from ${dateStart}`
+        : dateEnd
+          ? `rides until ${dateEnd}`
+          : 'all ride dates'
+  const route =
+    direction === 'TO'
+      ? `to ${airport || 'any airport'}`
+      : direction === 'FROM'
+        ? `from ${airport || 'any airport'}`
+        : airport
+          ? `to and from ${airport}`
+          : 'all airports and directions'
+  return `verified matches not yet emailed (${dates}, ${route})`
 }
 
 const getDefaultUnmatchedDateWindow = () => {
@@ -66,41 +95,22 @@ export default function AdminDashboard() {
   const [unmatchedDateEnd, setUnmatchedDateEnd] = useState<string>(
     () => getDefaultUnmatchedDateWindow().end,
   )
-  const [batchEmailLoading, setBatchEmailLoading] = useState(false)
-  const [batchEmailResult, setBatchEmailResult] = useState<{
-    sent: number
-    failed: number
-    total: number
-  } | null>(null)
-  const [dryRunResult, setDryRunResult] = useState<{
-    would_send: number
-    preview: Array<{ to: string; subject: string }>
-  } | null>(null)
-  const [matchEmailDateStart, setMatchEmailDateStart] = useState<string>(() => {
-    // Default to today's date
-    const today = new Date()
-    return today.toISOString().split('T')[0]
-  })
+  // Match emails: ride date range plus optional airport/direction filters
+  const [matchEmailDateStart, setMatchEmailDateStart] = useState<string>(() =>
+    formatDateForInput(new Date()),
+  )
   const [matchEmailDateEnd, setMatchEmailDateEnd] = useState<string>('')
+  const [matchEmailAirport, setMatchEmailAirport] = useState<EmailAirport>('')
+  const [matchEmailDirection, setMatchEmailDirection] =
+    useState<EmailDirection>('')
+  const [showMatchEmailComposer, setShowMatchEmailComposer] = useState(false)
 
   // Unmatched emails state
-  const [unmatchedEmailLoading, setUnmatchedEmailLoading] = useState(false)
   const [unmatchedEmailDateStart, setUnmatchedEmailDateStart] =
-    useState<string>(() => {
-      // Default to today's date
-      const today = new Date()
-      return today.toISOString().split('T')[0]
-    })
+    useState<string>(() => formatDateForInput(new Date()))
   const [unmatchedEmailDateEnd, setUnmatchedEmailDateEnd] = useState<string>('')
-  const [unmatchedDryRunResult, setUnmatchedDryRunResult] = useState<{
-    would_send: number
-    preview: Array<{ to: string; subject: string }>
-  } | null>(null)
-  const [unmatchedEmailResult, setUnmatchedEmailResult] = useState<{
-    sent: number
-    failed: number
-    total: number
-  } | null>(null)
+  const [showUnmatchedEmailComposer, setShowUnmatchedEmailComposer] =
+    useState(false)
 
   // Match cancellations (for fee billing)
   const [cancellationsDateStart, setCancellationsDateStart] = useState<string>(
@@ -196,239 +206,6 @@ export default function AdminDashboard() {
 
     fetchDashboardData()
   }, [unmatchedDateStart, unmatchedDateEnd])
-
-  const handleDryRunBatchEmails = async () => {
-    try {
-      setBatchEmailLoading(true)
-      setDryRunResult(null)
-      setBatchEmailResult(null)
-
-      const body: any = { dry_run: true }
-
-      // Add date range if provided
-      if (matchEmailDateStart) {
-        body.date_start = matchEmailDateStart
-      }
-      if (matchEmailDateEnd) {
-        body.date_end = matchEmailDateEnd
-      }
-
-      const result = await postJson<any>('/api/admin/send-match-emails', body)
-
-      if (result.success) {
-        const wouldSend = result.would_send ?? 0
-        const preview = result.preview || []
-
-        setDryRunResult({
-          would_send: wouldSend,
-          preview: preview,
-        })
-
-        if (wouldSend === 0) {
-          alert(
-            `📋 Dry Run Results:\n\nNo emails to send.\n\nAll verified matches have already been sent, or there are no verified matches that need emails.`,
-          )
-        } else {
-          const previewText =
-            preview.length > 0
-              ? preview.map((p: any) => `- ${p.to}: ${p.subject}`).join('\n')
-              : 'No preview available'
-          alert(
-            `📋 Dry Run Results:\n\nWould send: ${wouldSend} emails\n\nPreview (first ${Math.min(3, preview.length)}):\n${previewText}`,
-          )
-        }
-      } else {
-        throw new Error(result.message || 'Dry run failed')
-      }
-    } catch (error) {
-      console.error('Error in dry run:', error)
-      alert(
-        `❌ Error in dry run: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      )
-    } finally {
-      setBatchEmailLoading(false)
-    }
-  }
-
-  const handleSendBatchEmails = async () => {
-    const dateRangeMsg =
-      matchEmailDateStart && matchEmailDateEnd
-        ? ` between ${matchEmailDateStart} and ${matchEmailDateEnd}`
-        : matchEmailDateStart
-          ? ` from ${matchEmailDateStart} onwards`
-          : ''
-
-    if (
-      !confirm(
-        `Send emails to all verified matches that haven't been emailed yet${dateRangeMsg}? This will send all pending match emails at once using batch API.`,
-      )
-    ) {
-      return
-    }
-
-    try {
-      setBatchEmailLoading(true)
-      setBatchEmailResult(null)
-      setDryRunResult(null)
-
-      const body: any = {}
-
-      // Add date range if provided
-      if (matchEmailDateStart) {
-        body.date_start = matchEmailDateStart
-      }
-      if (matchEmailDateEnd) {
-        body.date_end = matchEmailDateEnd
-      }
-
-      const result = await postJson<any>('/api/admin/send-match-emails', body)
-
-      if (result.success) {
-        const sent = result.sent ?? 0
-        const failed = result.failed ?? 0
-        const total = result.total ?? 0
-
-        setBatchEmailResult({
-          sent: sent,
-          failed: failed,
-          total: total,
-        })
-
-        if (total === 0) {
-          alert(
-            `✅ Batch email sending complete!\n\nNo emails to send.\n\nAll verified matches have already been sent, or there are no verified matches that need emails.`,
-          )
-        } else {
-          alert(
-            `✅ Batch email sending complete!\n\nSent: ${sent}\nFailed: ${failed}\nTotal: ${total}`,
-          )
-        }
-      } else {
-        throw new Error(result.message || 'Batch email sending failed')
-      }
-    } catch (error) {
-      console.error('Error sending batch emails:', error)
-      alert(
-        `❌ Error sending batch emails: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      )
-    } finally {
-      setBatchEmailLoading(false)
-    }
-  }
-
-  const handleDryRunUnmatchedEmails = async () => {
-    try {
-      setUnmatchedEmailLoading(true)
-      setUnmatchedDryRunResult(null)
-      setUnmatchedEmailResult(null)
-
-      if (!unmatchedEmailDateStart || !unmatchedEmailDateEnd) {
-        alert(
-          '⚠️ Please select both start and end dates for the unmatched email range.',
-        )
-        return
-      }
-
-      const result = await postJson<any>('/api/admin/send-unmatched-emails', {
-        date_start: unmatchedEmailDateStart,
-        date_end: unmatchedEmailDateEnd,
-        dry_run: true,
-      })
-
-      if (result.success) {
-        const wouldSend = result.would_send ?? 0
-        const preview = result.preview || []
-
-        setUnmatchedDryRunResult({
-          would_send: wouldSend,
-          preview: preview,
-        })
-
-        if (wouldSend === 0) {
-          alert(
-            `📋 Dry Run Results (Unmatched Emails):\n\nNo unmatched flights found in date range ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}.`,
-          )
-        } else {
-          const previewText =
-            preview.length > 0
-              ? preview.map((p: any) => `- ${p.to}: ${p.subject}`).join('\n')
-              : 'No preview available'
-          alert(
-            `📋 Dry Run Results (Unmatched Emails):\n\nWould send: ${wouldSend} emails\nDate range: ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}\n\nPreview (first ${Math.min(3, preview.length)}):\n${previewText}`,
-          )
-        }
-      } else {
-        throw new Error(result.message || 'Dry run failed')
-      }
-    } catch (error) {
-      console.error('Error in unmatched emails dry run:', error)
-      alert(
-        `❌ Error in dry run: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      )
-    } finally {
-      setUnmatchedEmailLoading(false)
-    }
-  }
-
-  const handleSendUnmatchedEmails = async () => {
-    if (!unmatchedEmailDateStart || !unmatchedEmailDateEnd) {
-      alert(
-        '⚠️ Please select both start and end dates for the unmatched email range.',
-      )
-      return
-    }
-
-    if (
-      !confirm(
-        `Send emails to all unmatched riders between ${unmatchedEmailDateStart} and ${unmatchedEmailDateEnd}? This will notify them that no match was found.`,
-      )
-    ) {
-      return
-    }
-
-    try {
-      setUnmatchedEmailLoading(true)
-      setUnmatchedEmailResult(null)
-      setUnmatchedDryRunResult(null)
-
-      const result = await postJson<any>('/api/admin/send-unmatched-emails', {
-        date_start: unmatchedEmailDateStart,
-        date_end: unmatchedEmailDateEnd,
-        dry_run: false,
-      })
-
-      if (result.success) {
-        const sent = result.sent ?? 0
-        const failed = result.failed ?? 0
-        const total = result.total ?? 0
-
-        setUnmatchedEmailResult({
-          sent: sent,
-          failed: failed,
-          total: total,
-        })
-
-        if (total === 0) {
-          alert(
-            `✅ Unmatched email sending complete!\n\nNo unmatched flights found in date range ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}.`,
-          )
-        } else {
-          alert(
-            `✅ Unmatched email sending complete!\n\nSent: ${sent}\nFailed: ${failed}\nTotal: ${total}\nDate range: ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}`,
-          )
-        }
-      } else {
-        throw new Error(result.message || 'Unmatched email sending failed')
-      }
-    } catch (error) {
-      console.error('Error sending unmatched emails:', error)
-      alert(
-        `❌ Error sending unmatched emails: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      )
-    } finally {
-      setUnmatchedEmailLoading(false)
-    }
-  }
 
   const fetchCancellations = async (waived: boolean) => {
     if (!cancellationsDateStart || !cancellationsDateEnd) return
@@ -988,12 +765,20 @@ export default function AdminDashboard() {
           </div>
 
           <div className="p-6">
-            <div className="mb-4 flex flex-wrap items-end gap-4">
-              <div className="min-w-[200px] flex-1">
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  Start Date (optional)
+            <p className="mb-4 text-sm text-gray-600">
+              Emails every verified match that has not been emailed yet. Narrow
+              the recipients by ride date, airport and direction.
+            </p>
+            <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <label
+                  htmlFor="match-email-date-start"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
+                  Ride date from (optional)
                 </label>
                 <input
+                  id="match-email-date-start"
                   type="date"
                   value={matchEmailDateStart}
                   onChange={(e) => setMatchEmailDateStart(e.target.value)}
@@ -1001,185 +786,102 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              <div className="min-w-[200px] flex-1">
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  End Date (optional)
+              <div>
+                <label
+                  htmlFor="match-email-date-end"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
+                  Ride date to (optional)
                 </label>
                 <input
+                  id="match-email-date-end"
                   type="date"
                   value={matchEmailDateEnd}
+                  min={matchEmailDateStart || undefined}
                   onChange={(e) => setMatchEmailDateEnd(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-            </div>
 
-            <div className="flex flex-wrap gap-3">
-              <button
-                onClick={handleDryRunBatchEmails}
-                disabled={batchEmailLoading}
-                className={`flex items-center gap-2 rounded-lg px-6 py-3 font-medium text-white transition-all ${
-                  batchEmailLoading
-                    ? 'cursor-not-allowed bg-gray-400 opacity-50'
-                    : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700'
-                }`}
-                title="Preview what emails would be sent without actually sending them"
-              >
-                {batchEmailLoading ? (
-                  <>
-                    <svg
-                      className="h-5 w-5 animate-spin"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Checking...
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-5 w-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                      />
-                    </svg>
-                    Preview Match Emails (Dry Run)
-                  </>
-                )}
-                {dryRunResult && dryRunResult.would_send !== undefined && (
-                  <span className="ml-2 rounded-full bg-white/20 px-2 py-1 text-xs font-semibold">
-                    {dryRunResult.would_send}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={handleSendBatchEmails}
-                disabled={batchEmailLoading}
-                className={`flex items-center gap-2 rounded-lg px-6 py-3 font-medium text-white transition-all ${
-                  batchEmailLoading
-                    ? 'cursor-not-allowed bg-gray-400 opacity-50'
-                    : 'bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600'
-                }`}
-                title="Send all pending match emails at once using Resend Batch API (avoids rate limits)"
-              >
-                {batchEmailLoading ? (
-                  <>
-                    <svg
-                      className="h-5 w-5 animate-spin"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-5 w-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                      />
-                    </svg>
-                    Send All Match Emails
-                  </>
-                )}
-                {batchEmailResult && batchEmailResult.total !== undefined && (
-                  <span className="ml-2 rounded-full bg-white/20 px-2 py-1 text-xs font-semibold">
-                    {batchEmailResult.sent}/{batchEmailResult.total}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {dryRunResult && (
-              <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50 p-4">
-                <p className="text-sm font-medium text-purple-900">
-                  📋 Preview: Would send {dryRunResult.would_send} email
-                  {dryRunResult.would_send !== 1 ? 's' : ''}
-                </p>
-                {dryRunResult.preview && dryRunResult.preview.length > 0 && (
-                  <ul className="mt-2 space-y-1 text-xs text-purple-800">
-                    {dryRunResult.preview.map((p, idx) => (
-                      <li key={idx}>• {p.to}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-
-            {batchEmailResult && (
-              <div
-                className={`mt-4 rounded-lg border p-4 ${
-                  batchEmailResult.failed > 0
-                    ? 'border-red-200 bg-red-50'
-                    : 'border-green-200 bg-green-50'
-                }`}
-              >
-                <p
-                  className={`text-sm font-medium ${
-                    batchEmailResult.failed > 0
-                      ? 'text-red-900'
-                      : 'text-green-900'
-                  }`}
+              <div>
+                <label
+                  htmlFor="match-email-airport"
+                  className="mb-2 block text-sm font-medium text-gray-700"
                 >
-                  {batchEmailResult.failed > 0 ? '❌' : '✅'} Sent{' '}
-                  {batchEmailResult.sent} email
-                  {batchEmailResult.sent !== 1 ? 's' : ''}
-                  {batchEmailResult.failed > 0 &&
-                    ` (${batchEmailResult.failed} failed)`}
-                </p>
+                  Airport
+                </label>
+                <select
+                  id="match-email-airport"
+                  value={matchEmailAirport}
+                  onChange={(e) =>
+                    setMatchEmailAirport(e.target.value as EmailAirport)
+                  }
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All airports</option>
+                  <option value="LAX">LAX</option>
+                  <option value="ONT">ONT</option>
+                </select>
               </div>
+
+              <div>
+                <label
+                  htmlFor="match-email-direction"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
+                  Direction
+                </label>
+                <select
+                  id="match-email-direction"
+                  value={matchEmailDirection}
+                  onChange={(e) =>
+                    setMatchEmailDirection(e.target.value as EmailDirection)
+                  }
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Both directions</option>
+                  <option value="TO">To the airport</option>
+                  <option value="FROM">From the airport</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowMatchEmailComposer(true)}
+                className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
+              >
+                Email matched riders
+              </button>
+            </div>
+            {showMatchEmailComposer && (
+              <EmailComposerModal
+                title="Email matched riders"
+                audience={describeMatchEmailAudience(
+                  matchEmailDateStart,
+                  matchEmailDateEnd,
+                  matchEmailAirport,
+                  matchEmailDirection,
+                )}
+                placeholders={[
+                  '{{name}}',
+                  '{{rideDate}}',
+                  '{{rideTime}}',
+                  '{{airport}}',
+                  '{{terminal}}',
+                  '{{flightNumber}}',
+                  '{{groupMembers}}',
+                ]}
+                endpoint="/api/admin/send-match-emails"
+                filters={{
+                  date_start: matchEmailDateStart || undefined,
+                  date_end: matchEmailDateEnd || undefined,
+                  airport: matchEmailAirport || undefined,
+                  direction: matchEmailDirection || undefined,
+                }}
+                onClose={() => setShowMatchEmailComposer(false)}
+              />
             )}
           </div>
         </div>
@@ -1193,12 +895,20 @@ export default function AdminDashboard() {
           </div>
 
           <div className="p-6">
-            <div className="mb-4 flex flex-wrap items-end gap-4">
-              <div className="min-w-[200px] flex-1">
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  Start Date
+            <p className="mb-4 text-sm text-gray-600">
+              Emails riders whose flights in this date range were not matched
+              and have not been emailed yet.
+            </p>
+            <div className="mb-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label
+                  htmlFor="unmatched-email-date-start"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
+                  Flight date from
                 </label>
                 <input
+                  id="unmatched-email-date-start"
                   type="date"
                   value={unmatchedEmailDateStart}
                   onChange={(e) => setUnmatchedEmailDateStart(e.target.value)}
@@ -1206,188 +916,55 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              <div className="min-w-[200px] flex-1">
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  End Date
+              <div>
+                <label
+                  htmlFor="unmatched-email-date-end"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
+                  Flight date to
                 </label>
                 <input
+                  id="unmatched-email-date-end"
                   type="date"
                   value={unmatchedEmailDateEnd}
+                  min={unmatchedEmailDateStart || undefined}
                   onChange={(e) => setUnmatchedEmailDateEnd(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex justify-end">
               <button
-                onClick={handleDryRunUnmatchedEmails}
-                disabled={unmatchedEmailLoading}
-                className={`flex items-center gap-2 rounded-lg px-6 py-3 font-medium text-white transition-all ${
-                  unmatchedEmailLoading
-                    ? 'cursor-not-allowed bg-gray-400 opacity-50'
-                    : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700'
-                }`}
-                title="Preview what unmatched emails would be sent"
+                type="button"
+                onClick={() => setShowUnmatchedEmailComposer(true)}
+                className="rounded-lg bg-orange-600 px-6 py-3 font-medium text-white hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2"
               >
-                {unmatchedEmailLoading ? (
-                  <>
-                    <svg
-                      className="h-5 w-5 animate-spin"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Checking...
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-5 w-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                      />
-                    </svg>
-                    Preview Unmatched (Dry Run)
-                  </>
-                )}
-                {unmatchedDryRunResult &&
-                  unmatchedDryRunResult.would_send !== undefined && (
-                    <span className="ml-2 rounded-full bg-white/20 px-2 py-1 text-xs font-semibold">
-                      {unmatchedDryRunResult.would_send}
-                    </span>
-                  )}
-              </button>
-
-              <button
-                onClick={handleSendUnmatchedEmails}
-                disabled={unmatchedEmailLoading}
-                className={`flex items-center gap-2 rounded-lg px-6 py-3 font-medium text-white transition-all ${
-                  unmatchedEmailLoading
-                    ? 'cursor-not-allowed bg-gray-400 opacity-50'
-                    : 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600'
-                }`}
-                title="Send emails to all unmatched riders in the date range"
-              >
-                {unmatchedEmailLoading ? (
-                  <>
-                    <svg
-                      className="h-5 w-5 animate-spin"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-5 w-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                      />
-                    </svg>
-                    Send Unmatched Emails
-                  </>
-                )}
-                {unmatchedEmailResult &&
-                  unmatchedEmailResult.total !== undefined && (
-                    <span className="ml-2 rounded-full bg-white/20 px-2 py-1 text-xs font-semibold">
-                      {unmatchedEmailResult.sent}/{unmatchedEmailResult.total}
-                    </span>
-                  )}
+                Email unmatched riders
               </button>
             </div>
-
-            {unmatchedDryRunResult && (
-              <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50 p-4">
-                <p className="text-sm font-medium text-purple-900">
-                  📋 Preview: Would send {unmatchedDryRunResult.would_send}{' '}
-                  email{unmatchedDryRunResult.would_send !== 1 ? 's' : ''}
-                </p>
-                {unmatchedDryRunResult.preview &&
-                  unmatchedDryRunResult.preview.length > 0 && (
-                    <ul className="mt-2 space-y-1 text-xs text-purple-800">
-                      {unmatchedDryRunResult.preview.map((p, idx) => (
-                        <li key={idx}>• {p.to}</li>
-                      ))}
-                    </ul>
-                  )}
-              </div>
-            )}
-
-            {unmatchedEmailResult && (
-              <div
-                className={`mt-4 rounded-lg border p-4 ${
-                  unmatchedEmailResult.failed > 0
-                    ? 'border-red-200 bg-red-50'
-                    : 'border-green-200 bg-green-50'
-                }`}
-              >
-                <p
-                  className={`text-sm font-medium ${
-                    unmatchedEmailResult.failed > 0
-                      ? 'text-red-900'
-                      : 'text-green-900'
-                  }`}
-                >
-                  {unmatchedEmailResult.failed > 0 ? '❌' : '✅'} Sent{' '}
-                  {unmatchedEmailResult.sent} email
-                  {unmatchedEmailResult.sent !== 1 ? 's' : ''}
-                  {unmatchedEmailResult.failed > 0 &&
-                    ` (${unmatchedEmailResult.failed} failed)`}
-                </p>
-              </div>
+            {showUnmatchedEmailComposer && (
+              <EmailComposerModal
+                title="Email unmatched riders"
+                audience={`unmatched riders not yet emailed (flights ${unmatchedEmailDateStart || '?'} to ${unmatchedEmailDateEnd || '?'})`}
+                placeholders={[
+                  '{{name}}',
+                  '{{rideDate}}',
+                  '{{airport}}',
+                  '{{direction}}',
+                ]}
+                endpoint="/api/admin/send-unmatched-emails"
+                filters={{
+                  date_start: unmatchedEmailDateStart,
+                  date_end: unmatchedEmailDateEnd,
+                }}
+                validate={() =>
+                  unmatchedEmailDateStart && unmatchedEmailDateEnd
+                    ? null
+                    : 'Select both flight dates before previewing or sending.'
+                }
+                onClose={() => setShowUnmatchedEmailComposer(false)}
+              />
             )}
           </div>
         </div>

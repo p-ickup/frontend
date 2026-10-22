@@ -440,71 +440,143 @@ describe('AdminDashboard', () => {
     expect(groupsLink).toHaveAttribute('href', '/admin/groups')
   })
 
-  it('runs the match email dry run through the server route', async () => {
+  const openComposer = async (name: string) => {
     renderDashboard()
-
     await screen.findByText('Pickup Dashboard')
-    await userEvent.click(
-      screen.getByRole('button', { name: /Preview Match Emails/i }),
+    await userEvent.click(screen.getByRole('button', { name }))
+    return screen.findByRole('dialog', { name })
+  }
+
+  const writeEmail = async () => {
+    await userEvent.type(
+      screen.getByPlaceholderText('Email subject...'),
+      'Test Subject',
     )
+    await userEvent.type(
+      screen.getByPlaceholderText('Write your email here...'),
+      'Hello world',
+    )
+  }
+
+  it('previews a custom match email and keeps the draft afterwards', async () => {
+    await openComposer('Email matched riders')
+    await writeEmail()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Preview Email' }))
 
     await waitFor(() =>
       expect(postJsonMock).toHaveBeenCalledWith(
         '/api/admin/send-match-emails',
         expect.objectContaining({
           dry_run: true,
-          date_start: expect.any(String),
+          custom_subject: 'Test Subject',
+          custom_body: 'Hello world',
         }),
       ),
     )
-    expect(window.alert).toHaveBeenCalled()
     expect(
-      await screen.findByText(/Preview: Would send 2 emails/i),
+      await screen.findByText('Preview: would send 2 emails'),
     ).toBeInTheDocument()
-    expect(await screen.findByText(/student@example.com/i)).toBeInTheDocument()
+    expect(
+      screen.getByText('student@example.com: Your match'),
+    ).toBeInTheDocument()
+
+    // The draft must survive the dashboard re-render the preview causes
+    expect(screen.getByPlaceholderText('Email subject...')).toHaveValue(
+      'Test Subject',
+    )
+    expect(screen.getByPlaceholderText('Write your email here...')).toHaveValue(
+      'Hello world',
+    )
   })
 
-  it('sends match emails after confirmation and shows the result summary', async () => {
+  it('sends match emails for real after confirmation, with the recipient filters', async () => {
     postJsonMock.mockResolvedValueOnce({
       success: true,
       sent: 2,
       failed: 0,
       total: 2,
     })
-
     renderDashboard()
-
     await screen.findByText('Pickup Dashboard')
-    await userEvent.click(
-      screen.getByRole('button', { name: /Send All Match Emails/i }),
-    )
 
+    await userEvent.selectOptions(screen.getByLabelText('Airport'), 'ONT')
+    await userEvent.selectOptions(
+      screen.getByLabelText('Direction'),
+      'From the airport',
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Email matched riders' }),
+    )
+    await writeEmail()
+    await userEvent.click(screen.getByRole('button', { name: 'Send Email' }))
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('from ONT'),
+    )
     await waitFor(() =>
       expect(postJsonMock).toHaveBeenCalledWith(
         '/api/admin/send-match-emails',
         expect.objectContaining({
-          date_start: expect.any(String),
+          dry_run: false,
+          airport: 'ONT',
+          direction: 'FROM',
+          custom_subject: 'Test Subject',
+          custom_body: 'Hello world',
         }),
       ),
     )
-    expect(window.confirm).toHaveBeenCalled()
-    expect(window.alert).toHaveBeenCalledWith(
-      expect.stringContaining('Sent: 2'),
+    expect(await screen.findByText('Sent 2 of 2 emails')).toBeInTheDocument()
+  })
+
+  it('does not send when the confirmation is declined', async () => {
+    jest.mocked(window.confirm).mockReturnValueOnce(false)
+    await openComposer('Email matched riders')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Send Email' }))
+
+    expect(postJsonMock).not.toHaveBeenCalled()
+  })
+
+  it('sends custom unmatched emails for the selected flight dates', async () => {
+    postJsonMock.mockResolvedValueOnce({
+      success: true,
+      sent: 1,
+      failed: 0,
+      total: 1,
+    })
+    renderDashboard()
+    await screen.findByText('Pickup Dashboard')
+
+    await userEvent.type(screen.getByLabelText('Flight date to'), '2026-11-30')
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Email unmatched riders' }),
     )
-    expect(await screen.findByText('2/2')).toBeInTheDocument()
+    await writeEmail()
+    await userEvent.click(screen.getByRole('button', { name: 'Send Email' }))
+
+    await waitFor(() =>
+      expect(postJsonMock).toHaveBeenCalledWith(
+        '/api/admin/send-unmatched-emails',
+        expect.objectContaining({
+          dry_run: false,
+          date_end: '2026-11-30',
+          custom_subject: 'Test Subject',
+          custom_body: 'Hello world',
+        }),
+      ),
+    )
+    expect(await screen.findByText('Sent 1 of 1 email')).toBeInTheDocument()
   })
 
   it('blocks unmatched email preview until both dates are selected', async () => {
-    renderDashboard()
+    await openComposer('Email unmatched riders')
 
-    await screen.findByText('Pickup Dashboard')
-    await userEvent.click(
-      screen.getByRole('button', { name: /Preview Unmatched \(Dry Run\)/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Preview Email' }))
 
     expect(postJsonMock).not.toHaveBeenCalled()
-    expect(window.alert).toHaveBeenCalledWith(
-      expect.stringContaining('Please select both start and end dates'),
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Select both flight dates',
     )
   })
 

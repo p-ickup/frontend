@@ -1,38 +1,10 @@
 import { internalErrorJson, withAdminRoute } from '@/lib/server/auth'
-import { NextResponse } from 'next/server'
+import { relayEdgeFunction } from '@/lib/server/edgeFunctions'
 
 export const POST = withAdminRoute(async (request) => {
   try {
     const body = await request.json().catch(() => ({}))
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-    if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error('Missing Supabase configuration')
-    }
-
-    const response = await fetch(
-      `${supabaseUrl}/functions/v1/send-unmatched-emails-batch`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${supabaseAnonKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      },
-    )
-
-    const result = await response.json().catch(() => ({}))
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: result.error || `HTTP ${response.status}` },
-        { status: response.status },
-      )
-    }
-
-    return NextResponse.json(result)
+    return await relayEdgeFunction('send-unmatched-emails-batch', body)
   } catch (error: any) {
     return internalErrorJson(
       error?.message || 'Failed to send unmatched emails.',
