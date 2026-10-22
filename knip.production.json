@@ -1,5 +1,9 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": ["src/lib/database.types.ts", "jest.setup.ts"],
+  "ignore": [
+    "src/lib/database.types.ts",
+    "supabase/functions/**",
+    "jest.setup.ts"
+  ],
   "ignoreDependencies": ["server-only", "supabase", "tailwindcss-animate"]
 }

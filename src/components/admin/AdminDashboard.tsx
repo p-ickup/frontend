@@ -298,7 +298,7 @@ export default function AdminDashboard() {
         setDryRunResult(null)
 
         const body: any = {
-          dry_run: true,
+          dry_run: false,
           custom_subject: subject,
           custom_body: email_body,
           ride_date_start: rideDateStart,

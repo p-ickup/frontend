@@ -531,6 +531,7 @@ describe('AdminDashboard', () => {
       expect(postJsonMock).toHaveBeenCalledWith(
         '/api/admin/send-match-emails',
         expect.objectContaining({
+          dry_run: false,
           custom_subject: 'Test Subject',
           custom_body: 'Hello world',
         }),
