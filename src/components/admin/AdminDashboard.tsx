@@ -3,11 +3,12 @@
 import type { AdminSummaryDto } from '@/contracts/readModels'
 import type { NoShowRiderInfo } from '@/utils/adminMatchNoShows'
 import SimpleRedirectButton from '@/components/buttons/SimpleRedirectButton'
-import { postJson, requestJson } from '@/utils/api'
+import { requestJson } from '@/utils/api'
 import {
   estimateCancellationFee,
   formatCancellationFee,
 } from '@/utils/cancellationFees'
+import EmailComposerModal from '@/components/admin/EmailComposerModal'
 import { useEffect, useState } from 'react'
 
 const formatDateTime = (dateString: string): string => {
@@ -33,6 +34,34 @@ const formatDateForInput = (date: Date): string => {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+type EmailAirport = '' | 'LAX' | 'ONT'
+type EmailDirection = '' | 'TO' | 'FROM'
+
+const describeMatchEmailAudience = (
+  dateStart: string,
+  dateEnd: string,
+  airport: EmailAirport,
+  direction: EmailDirection,
+) => {
+  const dates =
+    dateStart && dateEnd
+      ? `rides ${dateStart} to ${dateEnd}`
+      : dateStart
+        ? `rides from ${dateStart}`
+        : dateEnd
+          ? `rides until ${dateEnd}`
+          : 'all ride dates'
+  const route =
+    direction === 'TO'
+      ? `to ${airport || 'any airport'}`
+      : direction === 'FROM'
+        ? `from ${airport || 'any airport'}`
+        : airport
+          ? `to and from ${airport}`
+          : 'all airports and directions'
+  return `verified matches not yet emailed (${dates}, ${route})`
 }
 
 const getDefaultUnmatchedDateWindow = () => {
@@ -66,45 +95,22 @@ export default function AdminDashboard() {
   const [unmatchedDateEnd, setUnmatchedDateEnd] = useState<string>(
     () => getDefaultUnmatchedDateWindow().end,
   )
-  const [batchEmailLoading, setBatchEmailLoading] = useState(false)
-  const [batchEmailResult, setBatchEmailResult] = useState<{
-    sent: number
-    failed: number
-    total: number
-  } | null>(null)
-  const [dryRunResult, setDryRunResult] = useState<{
-    would_send: number
-    preview: Array<{ to: string; subject: string }>
-  } | null>(null)
-  const [matchEmailDateStart, setMatchEmailDateStart] = useState<string>(() => {
-    // Default to today's date
-    const today = new Date()
-    return today.toISOString().split('T')[0]
-  })
+  // Match emails: ride date range plus optional airport/direction filters
+  const [matchEmailDateStart, setMatchEmailDateStart] = useState<string>(() =>
+    formatDateForInput(new Date()),
+  )
   const [matchEmailDateEnd, setMatchEmailDateEnd] = useState<string>('')
+  const [matchEmailAirport, setMatchEmailAirport] = useState<EmailAirport>('')
+  const [matchEmailDirection, setMatchEmailDirection] =
+    useState<EmailDirection>('')
+  const [showMatchEmailComposer, setShowMatchEmailComposer] = useState(false)
 
   // Unmatched emails state
-  const [unmatchedEmailLoading, setUnmatchedEmailLoading] = useState(false)
   const [unmatchedEmailDateStart, setUnmatchedEmailDateStart] =
-    useState<string>(() => {
-      // Default to today's date
-      const today = new Date()
-      return today.toISOString().split('T')[0]
-    })
+    useState<string>(() => formatDateForInput(new Date()))
   const [unmatchedEmailDateEnd, setUnmatchedEmailDateEnd] = useState<string>('')
-
-  const [rideDateStart, setRideDateStart] = useState<string>(() => {
-    // Default to today's date
-    const today = new Date()
-    return today.toISOString().split('T')[0]
-  })
-  const [rideDateEnd, setRideDateEnd] = useState<string>('')
-  const [coveredAirport, setCoveredAirport] = useState<string>('LAX')
-  const [coveredDirections, setCoveredDirections] = useState<string>('TO')
-  //show email editor
-  const [showEditor, setShowEditor] = useState(false)
-  //show unmatched email editor
-  const [showUnmatchedEditor, setShowUnmatchedEditor] = useState(false)
+  const [showUnmatchedEmailComposer, setShowUnmatchedEmailComposer] =
+    useState(false)
 
   // Match cancellations (for fee billing)
   const [cancellationsDateStart, setCancellationsDateStart] = useState<string>(
@@ -200,616 +206,6 @@ export default function AdminDashboard() {
 
     fetchDashboardData()
   }, [unmatchedDateStart, unmatchedDateEnd])
-
-  function Spinner() {
-    return (
-      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-    )
-  }
-
-  type EmailEditorModalProps = {
-    onClose: () => void
-  }
-
-  function EmailEditorModal({ onClose }: EmailEditorModalProps) {
-    const [subject, setSubject] = useState('')
-    const [email_body, setBody] = useState('')
-
-    const handleDryRunBatchCustomEmails = async () => {
-      try {
-        setBatchEmailLoading(true)
-        setDryRunResult(null)
-        setBatchEmailResult(null)
-
-        const body: any = {
-          dry_run: true,
-          custom_subject: subject,
-          custom_body: email_body,
-          ride_date_start: rideDateStart,
-          ride_date_end: rideDateEnd,
-          airport: coveredAirport,
-          direction: coveredDirections,
-        }
-
-        // Add date range if provided
-        if (matchEmailDateStart) {
-          body.date_start = matchEmailDateStart
-        }
-        if (matchEmailDateEnd) {
-          body.date_end = matchEmailDateEnd
-        }
-
-        const result = await postJson<any>('/api/admin/send-match-emails', body)
-
-        if (result.success) {
-          const wouldSend = result.would_send ?? 0
-          const preview = result.preview || []
-
-          setDryRunResult({
-            would_send: wouldSend,
-            preview: preview,
-          })
-
-          if (wouldSend === 0) {
-            alert(
-              `📋 Dry Run Results:\n\nNo customized emails to send.\n\nAll verified matches have already been sent, or there are no verified matches that need emails.`,
-            )
-          } else {
-            const previewText =
-              preview.length > 0
-                ? preview.map((p: any) => `- ${p.to}: ${p.subject}`).join('\n')
-                : 'No preview available'
-            alert(
-              `📋 Dry Run Results:\n\nWould send: ${wouldSend} customized emails\n\nPreview (first ${Math.min(3, preview.length)}):\n${previewText}`,
-            )
-          }
-        } else {
-          throw new Error(result.message || 'Dry run failed')
-        }
-      } catch (error) {
-        console.error('Error in dry run:', error)
-        alert(
-          `❌ Error in dry run: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        )
-      } finally {
-        setBatchEmailLoading(false)
-      }
-    }
-
-    const handleSendBatchCustomEmails = async () => {
-      const dateRangeMsg =
-        matchEmailDateStart && matchEmailDateEnd
-          ? ` between ${matchEmailDateStart} and ${matchEmailDateEnd}`
-          : matchEmailDateStart
-            ? ` from ${matchEmailDateStart} onwards`
-            : ''
-
-      if (
-        !confirm(
-          `Send customized emails to all verified matches that haven't been emailed yet${dateRangeMsg}? This will send all pending match emails at once using batch API.`,
-        )
-      ) {
-        return
-      }
-
-      try {
-        setBatchEmailLoading(true)
-        setBatchEmailResult(null)
-        setDryRunResult(null)
-
-        const body: any = {
-          dry_run: false,
-          custom_subject: subject,
-          custom_body: email_body,
-          ride_date_start: rideDateStart,
-          ride_date_end: rideDateEnd,
-          airport: coveredAirport,
-          direction: coveredDirections,
-        }
-
-        // Add date range if provided
-        if (matchEmailDateStart) {
-          body.date_start = matchEmailDateStart
-        }
-        if (matchEmailDateEnd) {
-          body.date_end = matchEmailDateEnd
-        }
-
-        const result = await postJson<any>('/api/admin/send-match-emails', body)
-
-        if (result.success) {
-          const sent = result.sent ?? 0
-          const failed = result.failed ?? 0
-          const total = result.total ?? 0
-
-          setBatchEmailResult({
-            sent: sent,
-            failed: failed,
-            total: total,
-          })
-
-          if (total === 0) {
-            alert(
-              `✅ Batch Custom email sending complete!\n\nNo emails to send.\n\nAll verified matches have already been sent, or there are no verified matches that need emails.`,
-            )
-          } else {
-            alert(
-              `✅ Batch Custom email sending complete!\n\nSent: ${sent}\nFailed: ${failed}\nTotal: ${total}`,
-            )
-          }
-        } else {
-          throw new Error(result.message || 'Batch Custom email sending failed')
-        }
-      } catch (error) {
-        console.error('Error sending batch custom emails:', error)
-        alert(
-          `❌ Error sending batch custom emails: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        )
-      } finally {
-        setBatchEmailLoading(false)
-      }
-    }
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
-        {/* Backdrop */}
-        <div
-          className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-          onClick={onClose}
-        />
-
-        {/* Modal */}
-        <div
-          className="
-          relative w-full max-w-3xl scale-100 transform animate-[fadeIn_0.15s_ease-out] rounded-xl
-          border border-gray-200
-          bg-white
-          p-6 opacity-100 shadow-2xl
-          transition-all duration-200
-        "
-        >
-          {/* Header */}
-          <div className="mb-6 flex items-center justify-between border-b pb-2">
-            <h2 className="text-2xl font-semibold tracking-tight text-gray-800">
-              Custom Email
-            </h2>
-
-            <button
-              onClick={onClose}
-              className="
-              rounded-full p-2
-              text-gray-500 transition-colors
-              duration-150 hover:bg-gray-100 hover:text-gray-700
-            "
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* Subject */}
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            Subject
-          </label>
-          <input
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            className="
-            mb-5 w-full rounded-md border border-gray-300 p-2
-            transition-all duration-150 hover:border-gray-400
-            focus:outline-none focus:ring-2
-            focus:ring-blue-400
-          "
-            placeholder="Email subject..."
-          />
-
-          {/* Body */}
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            Body
-          </label>
-          <textarea
-            value={email_body}
-            onChange={(e) => setBody(e.target.value)}
-            className="
-            h-40 w-full rounded-md border border-gray-300 p-3
-            transition-all duration-150 hover:border-gray-400
-            focus:outline-none focus:ring-2
-            focus:ring-blue-400
-          "
-            placeholder="Write your email here..."
-          />
-
-          {/* Preview Panel */}
-          <div className="mt-8 border-t pt-5">
-            <h3 className="mb-3 text-lg font-semibold text-gray-800">
-              Preview
-            </h3>
-
-            <div
-              className="
-              whitespace-pre-wrap rounded-md border border-gray-200 bg-gray-50
-              p-4 shadow-sm
-              transition-all duration-150
-            "
-            >
-              <div className="mb-2 font-medium text-gray-900">
-                {subject || '(No subject)'}
-              </div>
-
-              <div className="leading-relaxed text-gray-700">
-                {email_body || '(No body content)'}
-              </div>
-            </div>
-          </div>
-
-          {batchEmailLoading && (
-            <div className="mt-6 flex animate-pulse items-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-blue-700">
-              <Spinner />
-              <span>Processing your request…</span>
-            </div>
-          )}
-
-          {dryRunResult && (
-            <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50 p-4">
-              <p className="text-sm font-medium text-purple-900">
-                Preview: Would send {dryRunResult.would_send} email
-                {dryRunResult.would_send !== 1 ? 's' : ''}
-              </p>
-              {dryRunResult.preview && dryRunResult.preview.length > 0 && (
-                <ul className="mt-2 space-y-1 text-xs text-purple-800">
-                  {dryRunResult.preview.map((p, idx) => (
-                    <li key={idx}>• {p.to}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {batchEmailResult && (
-            <div
-              className={`mt-4 rounded-lg border p-4 ${
-                batchEmailResult.failed > 0
-                  ? 'border-red-200 bg-red-50'
-                  : 'border-green-200 bg-green-50'
-              }`}
-            >
-              <p
-                className={`text-sm font-medium ${
-                  batchEmailResult.failed > 0
-                    ? 'text-red-900'
-                    : 'text-green-900'
-                }`}
-              >
-                {batchEmailResult.failed > 0 ? '❌' : '✅'} Sent{' '}
-                {batchEmailResult.sent} email
-                {batchEmailResult.sent !== 1 ? 's' : ''}
-                {batchEmailResult.failed > 0 &&
-                  ` (${batchEmailResult.failed} failed)`}
-              </p>
-            </div>
-          )}
-
-          {/* Footer */}
-          <div className="mt-8 flex justify-end gap-3 border-t pt-4">
-            {/* Preview Button */}
-            <button
-              onClick={handleDryRunBatchCustomEmails}
-              disabled={batchEmailLoading}
-              className={`
-            flex items-center gap-2 rounded-md px-4 py-2 font-medium
-            shadow-sm transition-all duration-150 hover:shadow-md
-            ${
-              batchEmailLoading
-                ? 'cursor-not-allowed bg-green-400 opacity-70'
-                : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'
-            }
-          `}
-            >
-              {batchEmailLoading ? <Spinner /> : 'Preview Email'}
-            </button>
-
-            {/* Send Button */}
-            <button
-              onClick={handleSendBatchCustomEmails}
-              disabled={batchEmailLoading}
-              className={`
-            flex items-center gap-2 rounded-md px-4 py-2 font-medium
-            shadow-sm transition-all duration-150 hover:shadow-md
-            ${
-              batchEmailLoading
-                ? 'cursor-not-allowed bg-blue-400 opacity-70'
-                : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
-            }
-          `}
-            >
-              {batchEmailLoading ? <Spinner /> : 'Send Email'}
-            </button>
-
-            {/* Cancel Button */}
-            <button
-              onClick={onClose}
-              disabled={batchEmailLoading}
-              className={`
-            flex items-center gap-2 rounded-md px-4 py-2 font-medium
-            shadow-sm transition-all duration-150 hover:shadow-md
-            ${
-              batchEmailLoading
-                ? 'cursor-not-allowed bg-gray-300 opacity-70'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }
-          `}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  function UnmatchedEmailEditorModal({ onClose }: EmailEditorModalProps) {
-    const [subject, setSubject] = useState('')
-    const [email_body, setBody] = useState('')
-
-    const handleDryRunUnmatchedCustomEmails = async () => {
-      try {
-        setUnmatchedEmailLoading(true)
-
-        if (!unmatchedEmailDateStart || !unmatchedEmailDateEnd) {
-          alert(
-            '⚠️ Please select both start and end dates for the unmatched email range.',
-          )
-          return
-        }
-
-        const result = await postJson<any>('/api/admin/send-unmatched-emails', {
-          date_start: unmatchedEmailDateStart,
-          date_end: unmatchedEmailDateEnd,
-          dry_run: true,
-          custom_subject: subject,
-          custom_body: email_body,
-        })
-
-        if (result.success) {
-          const wouldSend = result.would_send ?? 0
-          const preview = result.preview || []
-
-          if (wouldSend === 0) {
-            alert(
-              `📋 Dry Run Results (Unmatched Custom Emails):\n\nNo unmatched flights found in date range ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}.`,
-            )
-          } else {
-            const previewText =
-              preview.length > 0
-                ? preview.map((p: any) => `- ${p.to}: ${p.subject}`).join('\n')
-                : 'No preview available'
-            alert(
-              `📋 Dry Run Results (Unmatched Custom Emails):\n\nWould send: ${wouldSend} emails\nDate range: ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}\n\nPreview (first ${Math.min(3, preview.length)}):\n${previewText}`,
-            )
-          }
-        } else {
-          throw new Error(result.message || 'Dry run failed')
-        }
-      } catch (error) {
-        console.error('Error in unmatched custom emails dry run:', error)
-        alert(
-          `❌ Error in dry run: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        )
-      } finally {
-        setUnmatchedEmailLoading(false)
-      }
-    }
-
-    const handleSendUnmatchedCustomEmails = async () => {
-      if (!unmatchedEmailDateStart || !unmatchedEmailDateEnd) {
-        alert(
-          '⚠️ Please select both start and end dates for the unmatched email range.',
-        )
-        return
-      }
-
-      if (
-        !confirm(
-          `Send emails to all unmatched riders between ${unmatchedEmailDateStart} and ${unmatchedEmailDateEnd}? This will notify them that no match was found.`,
-        )
-      ) {
-        return
-      }
-
-      try {
-        setUnmatchedEmailLoading(true)
-
-        const result = await postJson<any>('/api/admin/send-unmatched-emails', {
-          date_start: unmatchedEmailDateStart,
-          date_end: unmatchedEmailDateEnd,
-          dry_run: false,
-          custom_subject: subject,
-          custom_body: email_body,
-        })
-
-        if (result.success) {
-          const sent = result.sent ?? 0
-          const failed = result.failed ?? 0
-          const total = result.total ?? 0
-
-          if (total === 0) {
-            alert(
-              `✅ Unmatched Custom email sending complete!\n\nNo unmatched flights found in date range ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}.`,
-            )
-          } else {
-            alert(
-              `✅ Unmatched Custom email sending complete!\n\nSent: ${sent}\nFailed: ${failed}\nTotal: ${total}\nDate range: ${unmatchedEmailDateStart} to ${unmatchedEmailDateEnd}`,
-            )
-          }
-        } else {
-          throw new Error(
-            result.message || 'Unmatched Custom email sending failed',
-          )
-        }
-      } catch (error) {
-        console.error('Error sending unmatched custom emails:', error)
-        alert(
-          `❌ Error sending unmatched custom emails: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        )
-      } finally {
-        setUnmatchedEmailLoading(false)
-      }
-    }
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
-        {/* Backdrop */}
-        <div
-          className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-          onClick={onClose}
-        />
-
-        {/* Modal */}
-        <div
-          className="
-          relative w-full max-w-3xl scale-100 transform animate-[fadeIn_0.15s_ease-out] rounded-xl
-          border border-gray-200
-          bg-white
-          p-6 opacity-100 shadow-2xl
-          transition-all duration-200
-        "
-        >
-          {/* Header */}
-          <div className="mb-6 flex items-center justify-between border-b pb-2">
-            <h2 className="text-2xl font-semibold tracking-tight text-gray-800">
-              Custom Email
-            </h2>
-
-            <button
-              onClick={onClose}
-              className="
-              rounded-full p-2
-              text-gray-500 transition-colors
-              duration-150 hover:bg-gray-100 hover:text-gray-700
-            "
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* Subject */}
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            Subject
-          </label>
-          <input
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            className="
-            mb-5 w-full rounded-md border border-gray-300 p-2
-            transition-all duration-150 hover:border-gray-400
-            focus:outline-none focus:ring-2
-            focus:ring-blue-400
-          "
-            placeholder="Email subject..."
-          />
-
-          {/* Body */}
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            Body
-          </label>
-          <textarea
-            value={email_body}
-            onChange={(e) => setBody(e.target.value)}
-            className="
-            h-40 w-full rounded-md border border-gray-300 p-3
-            transition-all duration-150 hover:border-gray-400
-            focus:outline-none focus:ring-2
-            focus:ring-blue-400
-          "
-            placeholder="Write your email here..."
-          />
-
-          {/* Preview Panel */}
-          <div className="mt-8 border-t pt-5">
-            <h3 className="mb-3 text-lg font-semibold text-gray-800">
-              Preview
-            </h3>
-
-            <div
-              className="
-              whitespace-pre-wrap rounded-md border border-gray-200 bg-gray-50
-              p-4 shadow-sm
-              transition-all duration-150
-            "
-            >
-              <div className="mb-2 font-medium text-gray-900">
-                {subject || '(No subject)'}
-              </div>
-
-              <div className="leading-relaxed text-gray-700">
-                {email_body || '(No body content)'}
-              </div>
-            </div>
-          </div>
-
-          {unmatchedEmailLoading && (
-            <div className="mt-6 flex animate-pulse items-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-blue-700">
-              <Spinner />
-              <span>Processing your request…</span>
-            </div>
-          )}
-
-          {/* Footer */}
-          <div className="mt-8 flex justify-end gap-3 border-t pt-4">
-            {/* Preview Button */}
-            <button
-              onClick={handleDryRunUnmatchedCustomEmails}
-              disabled={unmatchedEmailLoading}
-              className={`
-            flex items-center gap-2 rounded-md px-4 py-2 font-medium
-            shadow-sm transition-all duration-150 hover:shadow-md
-            ${
-              unmatchedEmailLoading
-                ? 'cursor-not-allowed bg-green-400 opacity-70'
-                : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'
-            }
-          `}
-            >
-              {unmatchedEmailLoading ? <Spinner /> : 'Preview Email'}
-            </button>
-
-            {/* Send Button */}
-            <button
-              onClick={handleSendUnmatchedCustomEmails}
-              disabled={unmatchedEmailLoading}
-              className={`
-            flex items-center gap-2 rounded-md px-4 py-2 font-medium
-            shadow-sm transition-all duration-150 hover:shadow-md
-            ${
-              unmatchedEmailLoading
-                ? 'cursor-not-allowed bg-blue-400 opacity-70'
-                : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
-            }
-          `}
-            >
-              {unmatchedEmailLoading ? <Spinner /> : 'Send Email'}
-            </button>
-
-            {/* Cancel Button */}
-            <button
-              onClick={onClose}
-              disabled={unmatchedEmailLoading}
-              className={`
-            flex items-center gap-2 rounded-md px-4 py-2 font-medium
-            shadow-sm transition-all duration-150 hover:shadow-md
-            ${
-              unmatchedEmailLoading
-                ? 'cursor-not-allowed bg-gray-300 opacity-70'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }
-          `}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   const fetchCancellations = async (waived: boolean) => {
     if (!cancellationsDateStart || !cancellationsDateEnd) return
@@ -1369,16 +765,20 @@ export default function AdminDashboard() {
           </div>
 
           <div className="p-6">
-            <div className="mb-4 flex flex-wrap items-end gap-4">
-              <div className="min-w-[200px] flex-1">
+            <p className="mb-4 text-sm text-gray-600">
+              Emails every verified match that has not been emailed yet. Narrow
+              the recipients by ride date, airport and direction.
+            </p>
+            <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
                 <label
-                  htmlFor="start_date_optional"
+                  htmlFor="match-email-date-start"
                   className="mb-2 block text-sm font-medium text-gray-700"
                 >
-                  Start Date (optional)
+                  Ride date from (optional)
                 </label>
                 <input
-                  id="start_date_optional"
+                  id="match-email-date-start"
                   type="date"
                   value={matchEmailDateStart}
                   onChange={(e) => setMatchEmailDateStart(e.target.value)}
@@ -1386,119 +786,103 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              <div className="min-w-[200px] flex-1">
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  End Date (optional)
+              <div>
+                <label
+                  htmlFor="match-email-date-end"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
+                  Ride date to (optional)
                 </label>
                 <input
+                  id="match-email-date-end"
                   type="date"
                   value={matchEmailDateEnd}
+                  min={matchEmailDateStart || undefined}
                   onChange={(e) => setMatchEmailDateEnd(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 grid-rows-2 gap-4">
-              {/* Date Field- start coverage for rides */}
-              <div className="flex-1">
+              <div>
                 <label
-                  htmlFor="arrival_date"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Ride Date: Start of Coverage
-                </label>
-                <input
-                  type="date"
-                  id="ride_date_start"
-                  name="ride_date_start"
-                  value={rideDateStart}
-                  onChange={(e) => setRideDateStart(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm
-                     focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Date Field-end coverage for rides*/}
-              <div className="flex-1">
-                <label
-                  htmlFor="arrival_date"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Ride Date: End of Coverage
-                </label>
-                <input
-                  type="date"
-                  id="ride_date_end"
-                  name="ride_date_end"
-                  value={rideDateEnd}
-                  onChange={(e) => setRideDateEnd(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm
-                     focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Airport Selection */}
-              <div className="flex-1">
-                <label
-                  htmlFor="airport"
-                  className="block text-sm font-medium text-gray-700"
+                  htmlFor="match-email-airport"
+                  className="mb-2 block text-sm font-medium text-gray-700"
                 >
                   Airport
                 </label>
                 <select
-                  id="airport"
-                  name="airport"
-                  value={coveredAirport}
-                  onChange={(e) => setCoveredAirport(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm
-                     focus:border-blue-500 focus:ring-blue-500"
+                  id="match-email-airport"
+                  value={matchEmailAirport}
+                  onChange={(e) =>
+                    setMatchEmailAirport(e.target.value as EmailAirport)
+                  }
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="">All airports</option>
                   <option value="LAX">LAX</option>
                   <option value="ONT">ONT</option>
-                  <option value="BOTH">BOTH</option>
                 </select>
               </div>
 
-              {/* Direction Selection */}
-              <div className="flex-1">
+              <div>
                 <label
-                  htmlFor="direction"
-                  className="block text-sm font-medium text-gray-700"
+                  htmlFor="match-email-direction"
+                  className="mb-2 block text-sm font-medium text-gray-700"
                 >
                   Direction
                 </label>
                 <select
-                  id="direction"
-                  name="direction"
-                  value={coveredDirections}
-                  onChange={(e) => setCoveredDirections(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm
-                     focus:border-blue-500 focus:ring-blue-500"
+                  id="match-email-direction"
+                  value={matchEmailDirection}
+                  onChange={(e) =>
+                    setMatchEmailDirection(e.target.value as EmailDirection)
+                  }
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="TO">TO</option>
-                  <option value="FROM">FROM</option>
-                  <option value="BOTH">BOTH</option>
+                  <option value="">Both directions</option>
+                  <option value="TO">To the airport</option>
+                  <option value="FROM">From the airport</option>
                 </select>
               </div>
             </div>
 
             <div className="flex justify-end">
               <button
-                onClick={() => setShowEditor(true)}
-                className="
-                mt-6
-                rounded-md bg-blue-600 px-4 py-2 font-medium text-white
-                hover:bg-blue-700 focus:outline-none
-                focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 active:bg-blue-800
-              "
+                type="button"
+                onClick={() => setShowMatchEmailComposer(true)}
+                className="rounded-lg bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
               >
-                Send Email(Matched)
+                Email matched riders
               </button>
-              {showEditor && (
-                <EmailEditorModal onClose={() => setShowEditor(false)} />
-              )}
             </div>
+            {showMatchEmailComposer && (
+              <EmailComposerModal
+                title="Email matched riders"
+                audience={describeMatchEmailAudience(
+                  matchEmailDateStart,
+                  matchEmailDateEnd,
+                  matchEmailAirport,
+                  matchEmailDirection,
+                )}
+                placeholders={[
+                  '{{name}}',
+                  '{{rideDate}}',
+                  '{{rideTime}}',
+                  '{{airport}}',
+                  '{{terminal}}',
+                  '{{flightNumber}}',
+                  '{{groupMembers}}',
+                ]}
+                endpoint="/api/admin/send-match-emails"
+                filters={{
+                  date_start: matchEmailDateStart || undefined,
+                  date_end: matchEmailDateEnd || undefined,
+                  airport: matchEmailAirport || undefined,
+                  direction: matchEmailDirection || undefined,
+                }}
+                onClose={() => setShowMatchEmailComposer(false)}
+              />
+            )}
           </div>
         </div>
 
@@ -1511,16 +895,20 @@ export default function AdminDashboard() {
           </div>
 
           <div className="p-6">
-            <div className="mb-4 flex flex-wrap items-end gap-4">
-              <div className="min-w-[200px] flex-1">
+            <p className="mb-4 text-sm text-gray-600">
+              Emails riders whose flights in this date range were not matched
+              and have not been emailed yet.
+            </p>
+            <div className="mb-4 grid gap-4 sm:grid-cols-2">
+              <div>
                 <label
-                  htmlFor="start_date"
+                  htmlFor="unmatched-email-date-start"
                   className="mb-2 block text-sm font-medium text-gray-700"
                 >
-                  Start Date
+                  Flight date from
                 </label>
                 <input
-                  id="start_date"
+                  id="unmatched-email-date-start"
                   type="date"
                   value={unmatchedEmailDateStart}
                   onChange={(e) => setUnmatchedEmailDateStart(e.target.value)}
@@ -1528,13 +916,18 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              <div className="min-w-[200px] flex-1">
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  End Date
+              <div>
+                <label
+                  htmlFor="unmatched-email-date-end"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
+                  Flight date to
                 </label>
                 <input
+                  id="unmatched-email-date-end"
                   type="date"
                   value={unmatchedEmailDateEnd}
+                  min={unmatchedEmailDateStart || undefined}
                   onChange={(e) => setUnmatchedEmailDateEnd(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
@@ -1543,22 +936,36 @@ export default function AdminDashboard() {
 
             <div className="flex justify-end">
               <button
-                onClick={() => setShowUnmatchedEditor(true)}
-                className="
-                mt-6
-                rounded-md bg-blue-600 px-4 py-2 font-medium text-white
-                hover:bg-blue-700 focus:outline-none
-                focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 active:bg-blue-800
-              "
+                type="button"
+                onClick={() => setShowUnmatchedEmailComposer(true)}
+                className="rounded-lg bg-orange-600 px-6 py-3 font-medium text-white hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-2"
               >
-                Send Email(Unmatched)
+                Email unmatched riders
               </button>
-              {showUnmatchedEditor && (
-                <UnmatchedEmailEditorModal
-                  onClose={() => setShowUnmatchedEditor(false)}
-                />
-              )}
             </div>
+            {showUnmatchedEmailComposer && (
+              <EmailComposerModal
+                title="Email unmatched riders"
+                audience={`unmatched riders not yet emailed (flights ${unmatchedEmailDateStart || '?'} to ${unmatchedEmailDateEnd || '?'})`}
+                placeholders={[
+                  '{{name}}',
+                  '{{rideDate}}',
+                  '{{airport}}',
+                  '{{direction}}',
+                ]}
+                endpoint="/api/admin/send-unmatched-emails"
+                filters={{
+                  date_start: unmatchedEmailDateStart,
+                  date_end: unmatchedEmailDateEnd,
+                }}
+                validate={() =>
+                  unmatchedEmailDateStart && unmatchedEmailDateEnd
+                    ? null
+                    : 'Select both flight dates before previewing or sending.'
+                }
+                onClose={() => setShowUnmatchedEmailComposer(false)}
+              />
+            )}
           </div>
         </div>
       </div>
