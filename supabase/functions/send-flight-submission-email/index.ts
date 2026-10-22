@@ -1,6 +1,8 @@
 // supabase/functions/send-flight-submission-email/index.ts
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { requireServiceRole } from '../_shared/auth.ts'
+import { escapeHtml } from '../_shared/html.ts'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
@@ -12,21 +14,11 @@ serve(async (req) => {
       headers: corsHeaders,
     })
   }
+  // Called by the trg_flights_after_insert_notify trigger with app.secrets.edge_auth
+  const unauthorized = requireServiceRole(req, corsHeaders)
+  if (unauthorized) return unauthorized
+
   try {
-    // Basic auth gate (optional, but recommended)
-    // const incomingAuth = req.headers.get("authorization") ?? "";
-    // const expectedAuth = Deno.env.get("EDGE_AUTH") ?? "";
-    // if (!expectedAuth || incomingAuth !== expectedAuth) {
-    //   return new Response(JSON.stringify({
-    //     error: "Unauthorized"
-    //   }), {
-    //     status: 401,
-    //     headers: {
-    //       ...corsHeaders,
-    //       "Content-Type": "application/json"
-    //     }
-    //   });
-    // }
     const {
       user_id,
       flight_id,
@@ -52,6 +44,7 @@ serve(async (req) => {
       .eq('user_id', user_id)
       .single()
     if (userErr) throw new Error(`Users fetch error: ${userErr.message}`)
+    if (!userData?.email) throw new Error(`User ${user_id} has no email`)
     // Fetch flight (source of truth for details; fallback to payload if any field is null)
     const { data: flightData, error: flightErr } = await supabase
       .from('Flights')
@@ -59,6 +52,7 @@ serve(async (req) => {
         'date, airport, earliest_time, latest_time, to_airport, airline_iata, flight_no, terminal, bag_no, bag_no_large, bag_no_personal, max_price, max_dropoff',
       )
       .eq('flight_id', flight_id)
+      .eq('user_id', user_id)
       .single()
     if (flightErr) throw new Error(`Flights fetch error: ${flightErr.message}`)
     // Compose display-friendly values with safe fallbacks
@@ -106,7 +100,7 @@ If anything looks off, edit your flight to improve your match quality.
   <div style="font-size:0; height:0; overflow:hidden;">id:${flight_id}&#8203;</div>
 
   <h2 style="color:${TURQ}; margin: 0 0 10px 0;">We got your flight submission ✈️</h2>
-  <p style="margin:0 0 16px 0;">Hi ${userData?.firstname ?? 'there'}, thanks for submitting your flight to <strong>PICKUP</strong>! We’ll use these details to find you the best ride match.</p>
+  <p style="margin:0 0 16px 0;">Hi ${escapeHtml(userData.firstname ?? 'there')}, thanks for submitting your flight to <strong>PICKUP</strong>! We’ll use these details to find you the best ride match.</p>
 
   <div style="background:#f7f9fb; padding:16px 20px; border-radius:10px; margin:20px 0;">
     <h3 style="margin:0 0 10px 0; color:#222;">Your flight</h3>
@@ -114,7 +108,7 @@ If anything looks off, edit your flight to improve your match quality.
       <li><strong>Date:</strong> ${displayDate}</li>
       <li><strong>Route:</strong> ${direction}</li>
       <li><strong>Time window:</strong> ${displayEarliest} – ${displayLatest}</li>
-      <li><strong>Airline / Flight:</strong> ${displayAirline || '—'} ${displayFlightNo || ''}</li>
+      <li><strong>Airline / Flight:</strong> ${escapeHtml(displayAirline || '—')} ${escapeHtml(displayFlightNo)}</li>
     </ul>
   </div>
 
@@ -142,7 +136,7 @@ If anything looks off, edit your flight to improve your match quality.
       },
       body: JSON.stringify({
         from: 'PICKUP <match@notify.p-ickup.com>',
-        to: [userData?.email || user_id],
+        to: [userData.email],
         subject: 'PICKUP: Flight received ✔︎', // <- use the unique subject here
         text: textBody, // keep your text part (quick to scan, good for inboxing)
         html: htmlBody,
@@ -169,7 +163,7 @@ If anything looks off, edit your flight to improve your match quality.
     console.error('send-flight-submission-email error:', error)
     return new Response(
       JSON.stringify({
-        error: `${error.message ?? error}`,
+        error: `${error instanceof Error ? error.message : error}`,
       }),
       {
         status: 500,
